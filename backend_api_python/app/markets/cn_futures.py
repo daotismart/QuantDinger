@@ -203,7 +203,7 @@ _ROOTS_BY_LEN: Tuple[str, ...] = tuple(
 _ROOT_ALT = "|".join(_ROOTS_BY_LEN)
 
 _FUTURE_RE = re.compile(
-    rf"^(?P<root>{_ROOT_ALT})(?P<month>\d{{3,4}})?$",
+    rf"^(?P<root>{_ROOT_ALT})(?P<month>\d{{3,4}}|0|888|999)?$",
     re.IGNORECASE,
 )
 _OPTION_RE = re.compile(
