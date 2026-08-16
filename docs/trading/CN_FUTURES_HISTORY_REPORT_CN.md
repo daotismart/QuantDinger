@@ -55,7 +55,7 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 - 六大期交所历史日线抽样覆盖: **CFFEX, CZCE, DCE, GFEX, INE, SHFE**
 - 主力连续（`*0`）可返回完整可获得历史；带月份合约返回该交割月序列。
 - 期权代码当前以标的主力连续作为参考历史序列。
-- 分钟/4H 历史需具体合约月（多数行情源不提供连续分钟线）。
+- 分钟线可通过跨交割月拼接获得多月历史（见第 6 节）。
 
 
 ## 6. 分钟线历史抽样（跨合约拼接）
