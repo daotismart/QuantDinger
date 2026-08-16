@@ -6,7 +6,7 @@ The production deployment uses one backend image with independent process roles.
 | --- | --- | --- |
 | API | `gunicorn -c gunicorn_config.py run:app` | HTTP, authentication, validation, durable command submission |
 | Migration | `python -m app.commands.migrate` | Fail-fast schema application before services start |
-| Trading | `python -m app.commands.trading_worker` | Strategy runtimes, pending orders, grid fills, exchange connections |
+| Trading | `python -m app.commands.trading_worker` | Strategy runtimes, pending orders, grid fills, exchange connections, optional CTP MdApi + realtime market-data maint |
 | Scheduler | `python -m app.commands.scheduler` | Portfolio monitoring, deployment schedules, payment scans, signal alerts |
 | Celery Worker | `celery -A app.celery_app:celery_app worker` | AI, backtests, reports, and maintenance jobs |
 | Celery Beat | `celery -A app.celery_app:celery_app beat` | Periodic maintenance dispatch |
@@ -29,6 +29,7 @@ Celery owns finite jobs that can be serialized, retried, and observed independen
 - agent backtests;
 - reflection and AI calibration;
 - market catalog synchronization;
+- market data historical continuity / retention maintenance;
 - runtime metadata cleanup.
 
 Celery must not own long-lived strategy loops, exchange polling, broker sessions, or grid runtime state. Those remain in the trading process because they require renewable ownership, reconciliation, and controlled shutdown.

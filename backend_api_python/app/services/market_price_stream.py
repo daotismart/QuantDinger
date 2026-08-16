@@ -3,6 +3,9 @@
 The stream deliberately carries prices only. Private authenticated execution
 streams remain responsible for orders and fills, keeping market data failure
 independent from account event processing.
+
+CN futures can optionally use CTP MdApi ticks via :func:`create_market_price_feed`
+when ``exchange_id`` is ``ctp``.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ import ssl
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, Mapping
+from typing import Any, Callable, Dict, Iterable, Mapping, Protocol
 
 from app.services.live_trading.base import _get_requests_verify
 from app.utils.logger import get_logger
@@ -27,6 +30,42 @@ class PriceFeedSnapshot:
     source: str
     age_ms: int
     connected: bool
+
+
+class MarketPriceFeed(Protocol):
+    """Minimal surface shared by public WS and CTP tick feeds."""
+
+    def start(self) -> None: ...
+
+    def stop(self, timeout: float = 3.0) -> None: ...
+
+    def snapshot(self, *, max_age_seconds: float = 10.0) -> PriceFeedSnapshot: ...
+
+
+def create_market_price_feed(
+    *,
+    exchange_id: str,
+    market_type: str,
+    instruments: Iterable[Mapping[str, Any]],
+    rest_fallback: Callable[[], Dict[str, float]],
+) -> MarketPriceFeed:
+    """Build the best available live price feed for an exchange id."""
+    exchange = str(exchange_id or "").strip().lower()
+    if exchange == "ctp":
+        from app.services.ctp_md.price_feed import CtpTickPriceFeed
+
+        return CtpTickPriceFeed(
+            exchange_id=exchange,
+            market_type=market_type,
+            instruments=instruments,
+            rest_fallback=rest_fallback,
+        )
+    return PublicMarketPriceFeed(
+        exchange_id=exchange,
+        market_type=market_type,
+        instruments=instruments,
+        rest_fallback=rest_fallback,
+    )
 
 
 def _normalized_symbol(value: object) -> str:

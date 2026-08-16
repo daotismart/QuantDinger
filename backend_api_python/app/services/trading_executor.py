@@ -484,9 +484,9 @@ class TradingExecutor:
                 "connected": False,
             }
             if execution_mode == "live" and account_exchange:
-                from app.services.market_price_stream import PublicMarketPriceFeed
+                from app.services.market_price_stream import create_market_price_feed
 
-                market_price_feed = PublicMarketPriceFeed(
+                market_price_feed = create_market_price_feed(
                     exchange_id=account_exchange,
                     market_type=str(primary.get("market_type") or "spot"),
                     instruments=candidates,
@@ -1182,9 +1182,9 @@ class TradingExecutor:
         last_prices: dict[str, float] = {}
         stale_logged = False
         grid_exit_reason = "grid strategy stopped"
-        from app.services.market_price_stream import PublicMarketPriceFeed
+        from app.services.market_price_stream import create_market_price_feed
 
-        grid_price_feed = PublicMarketPriceFeed(
+        grid_price_feed = create_market_price_feed(
             exchange_id=exchange_id,
             market_type=market_type,
             instruments=candidates,
