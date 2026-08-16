@@ -19,6 +19,8 @@ def test_celery_beat_owns_periodic_maintenance():
     assert schedule["reflection-cycle"]["task"] == "quantdinger.tasks.reflection"
     assert schedule["ai-calibration-cycle"]["task"] == "quantdinger.tasks.ai_calibration"
     assert schedule["market-catalog-sync"]["task"] == "quantdinger.tasks.market_catalog_sync"
+    assert schedule["market-data-historical-maint"]["task"] == "quantdinger.tasks.market_data_historical_maint"
+    assert schedule["market-data-retention-maint"]["task"] == "quantdinger.tasks.market_data_retention_maint"
     assert schedule["market-catalog-sync"]["schedule"] == 86400
 
 

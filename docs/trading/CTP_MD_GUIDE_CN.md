@@ -45,3 +45,7 @@ pip install openctp-ctp
 
 - 不包含 CTP 下单
 - 未安装 native 绑定时，期货 ticker 仍走原有 Twelve Data / yfinance / CCXT 降级链
+
+## 数据维护
+
+建议同时启用 `MARKET_DATA_MAINT_ENABLED=true`，由实时/历史维护程序保证 tick 与 1m K 线连续准确，见 `docs/trading/MARKET_DATA_MAINT_GUIDE_CN.md`。

@@ -67,3 +67,7 @@ The trading executor uses that factory for live price snapshots.
 - Credentials stay in env / addon config; do not commit secrets.
 - If the OpenCTP binding is missing, the gateway records an error and leaves
   Futures ticker fallbacks (Twelve Data / yfinance / CCXT) unchanged.
+
+## Data maintenance
+
+Enable `MARKET_DATA_MAINT_ENABLED=true` so realtime/historical maintainers keep ticks and 1m bars continuous. See `docs/trading/MARKET_DATA_MAINT_GUIDE.md`.

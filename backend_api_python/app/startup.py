@@ -116,6 +116,18 @@ def start_ctp_md_service():
         logger.error(f"Failed to start CTP market-data service: {e}", exc_info=True)
 
 
+def start_market_data_realtime_maint():
+    """Start realtime tick/bar continuity maintenance when enabled."""
+    if _is_debug_reloader_parent():
+        return
+    try:
+        from app.services.market_data_maint import start_realtime_maintenance
+
+        start_realtime_maintenance()
+    except Exception as e:
+        logger.error(f"Failed to start market-data realtime maint: {e}", exc_info=True)
+
+
 def start_usdt_order_worker():
     """Start the USDT order background worker."""
     raw_enabled = os.getenv("USDT_PAY_ENABLED", "")
@@ -246,6 +258,7 @@ def _start_trading_support_services() -> None:
     """Start exchange-facing services that belong with the trading runtime."""
     start_execution_stream_supervisor()
     start_ctp_md_service()
+    start_market_data_realtime_maint()
     start_pending_order_worker()
     start_grid_fill_poller()
 

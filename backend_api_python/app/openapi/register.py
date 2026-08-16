@@ -76,6 +76,7 @@ def register_human_blueprints(api: Api) -> None:
     from app.routes.ibkr import ibkr_blp
     from app.routes.alpaca import alpaca_blp
     from app.routes.ctp_md import ctp_md_blp
+    from app.routes.market_data_maint import market_data_maint_blp
     from app.routes.global_market import global_market_blp
     from app.routes.community import community_blp
     from app.routes.fast_analysis import fast_analysis_blp
@@ -104,6 +105,7 @@ def register_human_blueprints(api: Api) -> None:
         (ibkr_blp, "/api/ibkr"),
         (alpaca_blp, "/api/alpaca"),
         (ctp_md_blp, "/api/ctp-md"),
+        (market_data_maint_blp, "/api/market-data-maint"),
         (global_market_blp, "/api/global-market"),
         (community_blp, "/api/community"),
         (fast_analysis_blp, "/api/fast-analysis"),
