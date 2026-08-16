@@ -112,6 +112,10 @@ def exchange_trading_environment(cfg: Dict[str, Any], exchange_id: str = "") -> 
             )
         )
         if not legacy_demo:
+            # CTP/QMT default to paper simulation — live needs an explicit
+            # environment=live (plus CFFEX_LIVE_TRADING_ENABLED).
+            if ex in ("ctp", "qmt"):
+                return "demo"
             return "live"
         environment = "testnet" if ex == "gate" else "demo"
 
@@ -124,9 +128,14 @@ def exchange_trading_environment(cfg: Dict[str, Any], exchange_id: str = "") -> 
 
 def exchange_market_scope(cfg: Dict[str, Any]) -> str:
     raw = str(cfg.get("market_scope") or cfg.get("marketScope") or "both").strip().lower()
+    ex = str(cfg.get("exchange_id") or cfg.get("exchangeId") or "").strip().lower()
     if raw in ("future", "futures", "perp", "perpetual", "contract", "contracts"):
+        # CFFEX CTP/QMT credentials keep delivery ``futures`` scope; crypto
+        # venues continue to treat these aliases as USDT-M swap.
+        if ex in ("ctp", "qmt"):
+            return "futures"
         return "swap"
-    if raw in ("spot", "swap", "both"):
+    if raw in ("spot", "swap", "both", "futures"):
         return raw
     return raw
 
@@ -142,12 +151,16 @@ def validate_exchange_environment(exchange_id: str, environment: str, market_sco
         "bybit": {"live", "demo"},
         "gate": {"live", "testnet"},
         "htx": {"live"},
+        "ctp": {"live", "demo"},
+        "qmt": {"live", "demo"},
     }
     if env not in allowed.get(ex, {"live"}):
         if ex == "htx" and env != "live":
             raise LiveTradingError("HTX_DEMO_NOT_SUPPORTED")
         raise LiveTradingError("UNSUPPORTED_TRADING_ENVIRONMENT")
-    if scope not in ("spot", "swap", "both"):
+    if scope not in ("spot", "swap", "both", "futures"):
+        raise LiveTradingError("INVALID_CREDENTIAL_MARKET_SCOPE")
+    if ex in ("ctp", "qmt") and scope not in ("futures", "both"):
         raise LiveTradingError("INVALID_CREDENTIAL_MARKET_SCOPE")
 
 
@@ -218,7 +231,10 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
     passphrase = _get(exchange_config, "passphrase", "password")
 
     mt = (market_type or exchange_config.get("market_type") or exchange_config.get("defaultType") or "swap").strip().lower()
-    if mt in ("futures", "future", "perp", "perpetual"):
+    if exchange_id in ("ctp", "qmt"):
+        if mt in ("future", "futures", "swap", "perp", "perpetual", ""):
+            mt = "futures"
+    elif mt in ("futures", "future", "perp", "perpetual"):
         mt = "swap"
 
     environment = exchange_trading_environment(exchange_config, exchange_id)
@@ -327,7 +343,41 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
     if exchange_id == "alpaca":
         return create_alpaca_client(exchange_config)
 
+    if exchange_id == "ctp":
+        return create_ctp_client(exchange_config, environment=environment)
+
+    if exchange_id == "qmt":
+        return create_qmt_client(exchange_config, environment=environment)
+
     raise LiveTradingError(f"Unsupported exchange_id: {exchange_id}")
+
+
+def create_ctp_client(exchange_config: Dict[str, Any], *, environment: str = "demo"):
+    from app.services.cffex_trading import CtpClient, CtpConfig
+
+    cfg = dict(exchange_config or {})
+    cfg.setdefault("exchange_id", "ctp")
+    if environment != "live":
+        cfg["mode"] = "simulation"
+        cfg["environment"] = "demo"
+    else:
+        cfg["mode"] = "live"
+        cfg["environment"] = "live"
+    return CtpClient(CtpConfig.from_exchange_config(cfg))
+
+
+def create_qmt_client(exchange_config: Dict[str, Any], *, environment: str = "demo"):
+    from app.services.cffex_trading import QmtClient, QmtConfig
+
+    cfg = dict(exchange_config or {})
+    cfg.setdefault("exchange_id", "qmt")
+    if environment != "live":
+        cfg["mode"] = "simulation"
+        cfg["environment"] = "demo"
+    else:
+        cfg["mode"] = "live"
+        cfg["environment"] = "live"
+    return QmtClient(QmtConfig.from_exchange_config(cfg))
 
 
 def create_ibkr_client(exchange_config: Dict[str, Any]):

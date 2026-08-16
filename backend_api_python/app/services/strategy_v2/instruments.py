@@ -15,6 +15,13 @@ _MARKETS = {
     "forex": "Forex",
     "futures": "Futures",
     "moex": "MOEX",
+    "cnindexfutures": "CNIndexFutures",
+    "cn_index_futures": "CNIndexFutures",
+    "cffex": "CNIndexFutures",
+    "cffexfutures": "CNIndexFutures",
+    "cnindexoptions": "CNIndexOptions",
+    "cn_index_options": "CNIndexOptions",
+    "cffexoptions": "CNIndexOptions",
 }
 _CRYPTO_MARKET_TYPES = {"spot", "swap"}
 
@@ -103,6 +110,15 @@ def infer_market(symbol: str) -> str:
         return "CNStock"
     if re.fullmatch(r"\d{6}", value):
         return "CNStock"
+    # CFFEX equity-index derivatives must not fall through to the USStock regex
+    # (e.g. IF2509). Require an explicit market prefix for strategy instruments.
+    try:
+        from app.markets.cn_index_derivatives import is_cffex_index_derivative
+
+        if is_cffex_index_derivative(value):
+            return ""
+    except Exception:
+        pass
     if re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,14}", value):
         return "USStock"
     return ""

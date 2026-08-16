@@ -80,6 +80,8 @@ class TestHelpers:
         assert allowed_bot_types("Forex") == set()
         # USStock: no grid (overnight gaps), no martingale.
         assert allowed_bot_types("USStock") == {"dca", "trend"}
+        # CFFEX index futures: trend only (session gaps + lot size).
+        assert allowed_bot_types("CNIndexFutures") == {"trend"}
 
     def test_list_supported_brokers_for_market(self):
         usstock_brokers = list_supported_brokers_for_market("USStock")
@@ -87,6 +89,7 @@ class TestHelpers:
         assert "alpaca" in usstock_brokers
         assert "binance" not in usstock_brokers
         assert list_supported_brokers_for_market("Forex") == set()
+        assert list_supported_brokers_for_market("CNIndexFutures") == {"ctp", "qmt"}
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +114,8 @@ class TestValidateLegalCombos:
         ("htx", "Crypto", "spot", "long"),
         # IBKR US stocks
         ("ibkr", "USStock", "spot", "long"),
+        ("ctp", "CNIndexFutures", "futures", "both"),
+        ("qmt", "CNIndexFutures", "futures", "short"),
     ])
     def test_valid_strategy_combo_raises_nothing(
         self, exchange_id, market_category, market_type, trade_direction
@@ -352,7 +357,16 @@ class TestToDictSnapshot:
         assert sorted(bot_markets["martingale"]) == ["Crypto"]
 
     def test_live_market_categories_serialized(self):
-        assert sorted(to_dict()["live_market_categories"]) == ["Crypto", "USStock"]
+        assert sorted(to_dict()["live_market_categories"]) == [
+            "CNIndexFutures",
+            "Crypto",
+            "USStock",
+        ]
+
+    def test_cffex_brokers_serialized(self):
+        bm = to_dict()["broker_markets"]
+        assert bm["ctp"] == {"CNIndexFutures": ["futures"]}
+        assert bm["qmt"] == {"CNIndexFutures": ["futures"]}
 
     def test_matrix_internal_consistency(self):
         # Every long-only broker must be present in BROKER_MARKETS.

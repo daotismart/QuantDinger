@@ -16,6 +16,10 @@ ways in:
 
 Adding a new broker now means updating BROKER_MARKETS here, plus the
 broker's client implementation. Everything else picks it up automatically.
+
+CFFEX equity-index futures use exchange_id ``ctp`` / ``qmt`` with
+market_category ``CNIndexFutures`` and market_type ``futures`` (open/close
+semantics, not crypto ``swap``).
 """
 
 from typing import Dict, Optional, Set
@@ -36,6 +40,11 @@ def _build_broker_markets() -> Dict[str, Dict[str, Set[str]]]:
         # US stocks via Interactive Brokers (TWS/Gateway, local desktop only)
         "ibkr": {"USStock": {"spot"}},
         "alpaca": {"USStock": {"spot"}},
+        # Mainland CFFEX equity-index futures via CTP / QMT (miniQMT) bridges.
+        # market_type stays ``futures`` (delivery / open-close semantics), not
+        # crypto-style ``swap``.
+        "ctp": {"CNIndexFutures": {"futures"}},
+        "qmt": {"CNIndexFutures": {"futures"}},
     }
     for ex, capability in CRYPTO_VENUE_CAPABILITIES.items():
         matrix[ex] = {"Crypto": set(capability.market_types)}
@@ -62,18 +71,20 @@ LONG_ONLY_BROKERS: Set[str] = {"ibkr", "alpaca"}
 #   martingale: needs tiny add-on lots + bidirectional. Stock min-share size
 #               + gap risk makes it impractical outside crypto perpetuals.
 #   dca / trend: long-only by nature, fine on every market we support.
+#   CNIndexFutures: session gaps + lot size make grid/martingale a poor fit;
+#                   trend bots can express long/short with open-close offsets.
 BOT_TYPE_MARKETS: Dict[str, Set[str]] = {
     "grid":       {"Crypto"},
     "martingale": {"Crypto"},
     "dca":        {"Crypto", "USStock"},
-    "trend":      {"Crypto", "USStock"},
+    "trend":      {"Crypto", "USStock", "CNIndexFutures"},
 }
 
 
 # Markets we recognize as legal canonical values. Anything outside this set
 # is considered analysis/backtest-only (e.g. CNStock, HKStock, MOEX, Futures
-# generic) and may not be used for live strategies.
-LIVE_MARKET_CATEGORIES: Set[str] = {"Crypto", "USStock"}
+# generic, CNIndexOptions) and may not be used for live strategies.
+LIVE_MARKET_CATEGORIES: Set[str] = {"Crypto", "USStock", "CNIndexFutures"}
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +95,20 @@ def _norm_exchange(value: Optional[str]) -> str:
     return (value or "").strip().lower()
 
 
-def _norm_market_type(value: Optional[str]) -> str:
+def _norm_market_type(
+    value: Optional[str],
+    *,
+    market_category: Optional[str] = None,
+) -> str:
     raw = (value or "").strip().lower()
-    if raw in ("futures", "future", "perp", "perpetual"):
+    mc = (market_category or "").strip()
+    # Crypto callers historically pass market_type='futures' meaning swap.
+    # CFFEX index futures keep delivery ``futures`` open/close semantics.
+    if raw in ("perp", "perpetual"):
+        return "swap"
+    if raw in ("futures", "future"):
+        if mc in ("CNIndexFutures", "CNIndexOptions", "CFFEX"):
+            return "futures"
         return "swap"
     if raw in ("usstock", "us_stock", "stock", "stocks", "equity", "cash"):
         return "spot"
@@ -164,7 +186,7 @@ def validate_strategy_config(
     """
     ex = _norm_exchange(exchange_id)
     mc = (market_category or "").strip()
-    mt = _norm_market_type(market_type)
+    mt = _norm_market_type(market_type, market_category=mc)
     td = (trade_direction or "").strip().lower()
     bt = (bot_type or "").strip().lower()
 
@@ -174,7 +196,7 @@ def validate_strategy_config(
             raise ValueError(
                 f"market_category='{mc}' is not supported for live trading. "
                 f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
-                "(CNStock / HKStock / MOEX / Futures are analysis-only.)"
+                "(CNStock / HKStock / MOEX / Futures / CNIndexOptions are analysis-only.)"
             )
         if require_exchange:
             raise ValueError(
@@ -199,7 +221,7 @@ def validate_strategy_config(
         raise ValueError(
             f"market_category='{mc}' is not supported for live trading. "
             f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
-            "(CNStock / HKStock / MOEX / Futures are analysis-only.)"
+            "(CNStock / HKStock / MOEX / Futures / CNIndexOptions are analysis-only.)"
         )
 
     if mc and mc not in BROKER_MARKETS[ex]:
@@ -226,7 +248,8 @@ def validate_strategy_config(
             f"{ex.upper()} live execution in QuantDinger is currently "
             f"long-only (got trade_direction='{td}'). For short selling "
             f"please use a perpetual-swap crypto exchange "
-            f"(Binance/OKX/Bybit/Bitget) for crypto. "
+            f"(Binance/OKX/Bybit/Bitget) for crypto, or CTP/QMT for "
+            f"CFFEX index futures. "
             f"Stock short selling on IBKR/Alpaca is not yet implemented."
         )
 
@@ -235,6 +258,12 @@ def validate_strategy_config(
         raise ValueError(
             f"Short selling crypto requires market_type='swap', got '{mt}'. "
             "Crypto spot markets cannot be shorted - use a perpetual contract."
+        )
+
+    # Rule 6b: CFFEX channels only pair with index-futures market_type.
+    if ex in ("ctp", "qmt") and mc == "CNIndexFutures" and mt and mt != "futures":
+        raise ValueError(
+            f"{ex.upper()} + CNIndexFutures requires market_type='futures', got '{mt}'."
         )
 
     # Rule 7: bot_type compatibility.

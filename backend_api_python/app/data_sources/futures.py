@@ -113,7 +113,11 @@ class FuturesDataSource(BaseDataSource):
         Traditional futures: Twelve Data → yfinance fallback.
         Crypto futures: CCXT.
         """
+        from app.markets.cn_index_derivatives import cffex_misroute_error, is_cffex_index_derivative
+
         sym = (symbol or "").strip()
+        if is_cffex_index_derivative(sym):
+            raise cffex_misroute_error(sym)
         is_traditional = sym in self.YF_SYMBOLS or sym.endswith("=F") or sym in _TD_FUTURES_SYMBOLS
         if is_traditional:
             for fetcher in (self._get_ticker_twelvedata, self._get_ticker_yfinance, self._get_ticker_tiingo):
@@ -235,6 +239,10 @@ class FuturesDataSource(BaseDataSource):
             after_time: 预留与基类一致（当前期货链路未使用）
         """
         _ = after_time
+        from app.markets.cn_index_derivatives import cffex_misroute_error, is_cffex_index_derivative
+
+        if is_cffex_index_derivative(symbol):
+            raise cffex_misroute_error(symbol)
         base_symbol = symbol.replace("=F", "").upper()
         if base_symbol in _TD_FUTURES_SYMBOLS or symbol.endswith('=F'):
             return self._get_traditional_futures(symbol, timeframe, limit, before_time)
