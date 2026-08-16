@@ -22,15 +22,22 @@ if _ROOT not in sys.path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch full CN futures OHLCV history")
     parser.add_argument("--symbol", required=True, help="RB0 / rb2509 / IF2509 / ...")
-    parser.add_argument("--timeframe", default="1D", help="1D / 1W / 1m / 5m / 15m / 30m / 1H / 4H")
+    parser.add_argument("--timeframe", default="1D", help="1D / 1W / 1m / 3m / 5m / 15m / 30m / 1H / 4H")
     parser.add_argument("--start", default="", help="YYYY-MM-DD start date (CST)")
     parser.add_argument("--end", default="", help="YYYY-MM-DD end date (CST, inclusive day)")
     parser.add_argument("--provider", default="", help="auto|akshare|compliance")
+    parser.add_argument(
+        "--stitch-months",
+        default="",
+        help="Nearby delivery months to stitch for minute history (default env/12)",
+    )
     parser.add_argument("-o", "--output", default="", help="Write JSON to this path")
     args = parser.parse_args()
 
     if args.provider:
         os.environ["CN_FUTURES_MARKET_DATA_PROVIDER"] = args.provider
+    if args.stitch_months:
+        os.environ["CN_FUTURES_MINUTE_STITCH_MONTHS"] = str(args.stitch_months)
 
     from app.data_sources.cn_futures import CnFuturesDataSource, resolve_history_symbol
 

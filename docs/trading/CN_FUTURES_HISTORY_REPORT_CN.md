@@ -57,3 +57,23 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 - 期权代码当前以标的主力连续作为参考历史序列。
 - 分钟/4H 历史需具体合约月（多数行情源不提供连续分钟线）。
 
+
+## 6. 分钟线历史抽样（跨合约拼接）
+
+**拼接月数**: 8  | **生成时间**: 2026-08-16 18:33:53 CST
+
+| 交易所 | 代码 | 周期 | 根数 | 起始 | 结束 |
+| --- | --- | --- | ---: | --- | --- |
+| SHFE | `RB0` | 5m | 10459 | 2025-10-21 14:25 | 2026-08-14 23:00 |
+| SHFE | `RB0` | 1m | 11236 | 2025-11-04 21:44 | 2026-08-14 23:00 |
+| DCE | `M0` | 15m | 5285 | 2025-08-28 14:00 | 2026-08-14 23:00 |
+| CFFEX | `IF0` | 5m | 11253 | 2024-02-07 13:50 | 2026-08-14 15:00 |
+| INE | `SC0` | 5m | 11253 | 2025-10-16 23:35 | 2026-08-17 00:00 |
+| GFEX | `SI0` | 5m | 8922 | 2025-09-29 13:55 | 2026-08-14 15:00 |
+
+说明：新浪单合约约 1023 根；通过拼接邻近交割月可得到多月分钟历史。
+
+```bash
+GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=5m
+PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe 5m --stitch-months 12 -o rb0_5m.json
+```

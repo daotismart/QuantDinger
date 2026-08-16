@@ -38,6 +38,7 @@ _CST = timezone(timedelta(hours=8))
 
 _MINUTE_PERIOD_MAP = {
     "1m": "1",
+    "3m": "1",  # resampled from 1m
     "5m": "5",
     "15m": "15",
     "30m": "30",
@@ -45,7 +46,8 @@ _MINUTE_PERIOD_MAP = {
     "1h": "60",
 }
 
-_DAILY_LIKE = frozenset({"1D", "1d", "1W", "1w", "1W", "daily", "weekly"})
+# How many nearby delivery months to stitch when building deeper minute history.
+_MINUTE_STITCH_MONTHS = max(1, int(os.getenv("CN_FUTURES_MINUTE_STITCH_MONTHS", "12") or 12))
 
 
 def _provider_name() -> str:
@@ -275,6 +277,10 @@ class CnFuturesDataSource(BaseDataSource):
             "w": "1W",
             "week": "1W",
             "weekly": "1W",
+            "3min": "3m",
+            "5min": "5m",
+            "15min": "15m",
+            "30min": "30m",
             "60m": "1H",
             "60min": "1H",
             "h1": "1H",
@@ -283,7 +289,7 @@ class CnFuturesDataSource(BaseDataSource):
         key = raw.lower()
         if key in aliases:
             return aliases[key]
-        if raw in TIMEFRAME_SECONDS:
+        if raw in TIMEFRAME_SECONDS or raw in _MINUTE_PERIOD_MAP:
             return raw
         upper = raw.upper()
         if upper in TIMEFRAME_SECONDS:
@@ -445,13 +451,14 @@ class CnFuturesDataSource(BaseDataSource):
         try:
             frame = ak.futures_zh_minute_sina(symbol=fetch_symbol, period=period)
         except Exception as exc:
-            raise ValueError(f"CN futures minute history failed for {fetch_symbol}: {exc}") from exc
+            logger.debug("minute fetch failed for %s period=%s: %s", fetch_symbol, period, exc)
+            return []
         if frame is None or getattr(frame, "empty", True):
             return []
         rows: List[Dict[str, Any]] = []
         for _, item in frame.iterrows():
             raw_dt = item.get("datetime") or item.get("date") or item.get("时间")
-            ts = _to_cst_midnight_ts(raw_dt)
+            ts = _to_cst_ts(raw_dt)
             if ts is None:
                 continue
             try:
@@ -469,6 +476,115 @@ class CnFuturesDataSource(BaseDataSource):
                 continue
         rows.sort(key=lambda r: r["time"])
         return rows
+
+    def _candidate_minute_symbols(self, symbol: str, *, months: int) -> List[str]:
+        """Build continuous + nearby dated contract codes for minute stitching."""
+        code = normalize_cn_symbol(symbol)
+        fetch_symbol, mode = resolve_history_symbol(code)
+        parsed = parse_cn_future_symbol(code) or parse_cn_option_symbol(code)
+        if not parsed:
+            return [fetch_symbol]
+        root = parsed["root"]
+        product = get_future_product(root)
+        out: List[str] = []
+        seen = set()
+
+        def _add(sym: str) -> None:
+            key = sym.upper()
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+
+        # Prefer continuous feed when available (recent window).
+        _add(f"{root}0")
+        if mode == "contract" and parsed.get("month") and parsed["month"] not in ("0", "888", "999"):
+            _add(f"{root}{parsed['month']}")
+
+        now = datetime.now(_CST)
+        year, month = now.year, now.month
+        index_like = product.exchange == "CFFEX" and product.product_class in ("index", "financial")
+        for _ in range(max(1, int(months)) * (4 if index_like else 1) + 2):
+            if index_like:
+                # Equity-index / treasury: mainly Mar/Jun/Sep/Dec cycle.
+                if month in (3, 6, 9, 12):
+                    _add(f"{root}{year % 100:02d}{month:02d}")
+            else:
+                _add(f"{root}{year % 100:02d}{month:02d}")
+            month -= 1
+            if month <= 0:
+                month = 12
+                year -= 1
+            if len(out) >= months + 3:
+                break
+        return out
+
+    def _merge_minute_rows(self, chunks: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        merged: Dict[int, Dict[str, Any]] = {}
+        for rows in chunks:
+            for row in rows:
+                ts = int(row["time"])
+                prev = merged.get(ts)
+                if prev is None or float(row.get("volume") or 0) >= float(prev.get("volume") or 0):
+                    merged[ts] = row
+        return [merged[k] for k in sorted(merged)]
+
+    def _load_minute_history(
+        self,
+        ak: Any,
+        symbol: str,
+        period: str,
+        *,
+        prefer_full: bool,
+    ) -> List[Dict[str, Any]]:
+        """Load minute bars, optionally stitching nearby contracts for depth.
+
+        Sina ``getFewMinLine`` returns ~1023 bars per symbol/period. Stitching
+        successive delivery months yields multi-month intraday history.
+        """
+        fetch_symbol, mode = resolve_history_symbol(symbol)
+        primary = self._load_minute_rows(ak, fetch_symbol, period)
+        if not prefer_full:
+            if primary:
+                return primary
+            # Continuous sometimes needs a dated fallback even for short windows.
+            for cand in self._candidate_minute_symbols(symbol, months=3):
+                if cand == fetch_symbol:
+                    continue
+                rows = self._load_minute_rows(ak, cand, period)
+                if rows:
+                    return rows
+            return []
+
+        months = _MINUTE_STITCH_MONTHS
+        candidates = self._candidate_minute_symbols(symbol, months=months)
+        chunks: List[List[Dict[str, Any]]] = []
+        if primary:
+            chunks.append(primary)
+        for cand in candidates:
+            if cand == fetch_symbol:
+                continue
+            rows = self._load_minute_rows(ak, cand, period)
+            if rows:
+                chunks.append(rows)
+                logger.debug(
+                    "stitched minute chunk %s period=%s bars=%s %s->%s",
+                    cand,
+                    period,
+                    len(rows),
+                    rows[0]["time"],
+                    rows[-1]["time"],
+                )
+        if not chunks:
+            return []
+        merged = self._merge_minute_rows(chunks)
+        logger.info(
+            "CN futures minute history symbol=%s period=%s chunks=%s bars=%s",
+            normalize_cn_symbol(symbol),
+            period,
+            len(chunks),
+            len(merged),
+        )
+        return merged
 
     def _resample(self, rows: List[Dict[str, Any]], seconds: int) -> List[Dict[str, Any]]:
         if not rows or seconds <= 0:
@@ -523,36 +639,28 @@ class CnFuturesDataSource(BaseDataSource):
                 normalize_cn_symbol(symbol),
             )
 
-        if tf in ("1m", "5m", "15m", "30m", "1H"):
+        if tf in ("1m", "3m", "5m", "15m", "30m", "1H"):
             period = _MINUTE_PERIOD_MAP[tf]
-            # Minute feeds need a concrete contract month when possible.
-            if mode == "continuous":
-                # Try continuous first; some venues only expose dated contracts.
-                try:
-                    rows = self._load_minute_rows(ak, fetch_symbol, period)
-                except Exception:
-                    rows = []
-                if not rows:
-                    # Fall back to a recent dated contract guess is not reliable;
-                    # raise a clear error for continuous+minute.
-                    raise ValueError(
-                        f"Minute history for continuous symbol {fetch_symbol} is unavailable; "
-                        "pass a dated contract such as RB2509 / IF2509."
-                    )
-            else:
-                rows = self._load_minute_rows(ak, fetch_symbol, period)
+            rows = self._load_minute_history(
+                ak, symbol, period, prefer_full=prefer_full or after_time is not None
+            )
+            if not rows:
+                raise ValueError(
+                    f"Minute history unavailable for {normalize_cn_symbol(symbol)!r}. "
+                    "Try a dated contract (e.g. RB2509) or continuous root (RB0)."
+                )
+            if tf == "3m":
+                return self._resample(rows, 180)
             return rows
 
         if tf == "4H":
-            minute_rows = self._load_minute_rows(
-                ak,
-                fetch_symbol if mode == "contract" else fetch_symbol,
-                "60",
+            minute_rows = self._load_minute_history(
+                ak, symbol, "60", prefer_full=prefer_full or after_time is not None
             )
-            if not minute_rows and mode == "continuous":
+            if not minute_rows:
                 raise ValueError(
-                    f"4H history for continuous symbol {fetch_symbol} is unavailable; "
-                    "pass a dated contract such as RB2509."
+                    f"4H history unavailable for {normalize_cn_symbol(symbol)!r}; "
+                    "pass RB0 / RB2509 style symbols."
                 )
             return self._resample(minute_rows, TIMEFRAME_SECONDS["4H"])
 

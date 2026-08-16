@@ -184,7 +184,8 @@ def get_kline_history():
     Query params:
         market: CNFutures / CNFuturesOptions / CNIndexFutures / CNIndexOptions
         symbol: e.g. RB0, rb2509, IF2509, m2509-C-2800
-        timeframe: 1m/5m/15m/30m/1H/4H/1D/1W (daily recommended for full history)
+        timeframe: 1m/3m/5m/15m/30m/1H/4H/1D/1W
+                    (minute bars stitch nearby contracts for deeper history)
         start_date / end_date: YYYY-MM-DD (CST calendar day, optional)
         start_time / end_time: Unix seconds (optional)
     """
