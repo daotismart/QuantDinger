@@ -16,11 +16,25 @@ ways in:
 
 Adding a new broker now means updating BROKER_MARKETS here, plus the
 broker's client implementation. Everything else picks it up automatically.
+
+Mainland China futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX) use exchange_id
+``ctp`` / ``qmt`` with market_category ``CNFutures`` /
+``CNFuturesOptions`` (and legacy ``CNIndexFutures`` /
+``CNIndexOptions`` aliases). market_type is ``futures`` or ``options``
+(open/close semantics, not crypto ``swap``).
 """
 
 from typing import Dict, Optional, Set
 
 from app.services.live_trading.capabilities import CRYPTO_VENUE_CAPABILITIES
+
+_CN_FUTURES_MARKETS = {
+    "CNFutures": {"futures"},
+    "CNFuturesOptions": {"options"},
+    # Legacy / specialized aliases kept for existing strategies & UI.
+    "CNIndexFutures": {"futures"},
+    "CNIndexOptions": {"options"},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +50,9 @@ def _build_broker_markets() -> Dict[str, Dict[str, Set[str]]]:
         # US stocks via Interactive Brokers (TWS/Gateway, local desktop only)
         "ibkr": {"USStock": {"spot"}},
         "alpaca": {"USStock": {"spot"}},
+        # Mainland China futures & futures-options via CTP / QMT bridges.
+        "ctp": {k: set(v) for k, v in _CN_FUTURES_MARKETS.items()},
+        "qmt": {k: set(v) for k, v in _CN_FUTURES_MARKETS.items()},
     }
     for ex, capability in CRYPTO_VENUE_CAPABILITIES.items():
         matrix[ex] = {"Crypto": set(capability.market_types)}
@@ -62,18 +79,34 @@ LONG_ONLY_BROKERS: Set[str] = {"ibkr", "alpaca"}
 #   martingale: needs tiny add-on lots + bidirectional. Stock min-share size
 #               + gap risk makes it impractical outside crypto perpetuals.
 #   dca / trend: long-only by nature, fine on every market we support.
+#   CN futures: session gaps + lot size make grid/martingale a poor fit;
+#               trend bots can express long/short with open-close offsets.
 BOT_TYPE_MARKETS: Dict[str, Set[str]] = {
     "grid":       {"Crypto"},
     "martingale": {"Crypto"},
     "dca":        {"Crypto", "USStock"},
-    "trend":      {"Crypto", "USStock"},
+    "trend":      {
+        "Crypto",
+        "USStock",
+        "CNFutures",
+        "CNFuturesOptions",
+        "CNIndexFutures",
+        "CNIndexOptions",
+    },
 }
 
 
 # Markets we recognize as legal canonical values. Anything outside this set
 # is considered analysis/backtest-only (e.g. CNStock, HKStock, MOEX, Futures
 # generic) and may not be used for live strategies.
-LIVE_MARKET_CATEGORIES: Set[str] = {"Crypto", "USStock"}
+LIVE_MARKET_CATEGORIES: Set[str] = {
+    "Crypto",
+    "USStock",
+    "CNFutures",
+    "CNFuturesOptions",
+    "CNIndexFutures",
+    "CNIndexOptions",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -84,10 +117,29 @@ def _norm_exchange(value: Optional[str]) -> str:
     return (value or "").strip().lower()
 
 
-def _norm_market_type(value: Optional[str]) -> str:
+def _norm_market_type(
+    value: Optional[str],
+    *,
+    market_category: Optional[str] = None,
+) -> str:
     raw = (value or "").strip().lower()
-    if raw in ("futures", "future", "perp", "perpetual"):
+    mc = (market_category or "").strip()
+    # Crypto callers historically pass market_type='futures' meaning swap.
+    # CFFEX index futures keep delivery ``futures`` open/close semantics.
+    if raw in ("perp", "perpetual"):
         return "swap"
+    if raw in ("futures", "future"):
+        if mc in (
+            "CNFutures",
+            "CNFuturesOptions",
+            "CNIndexFutures",
+            "CNIndexOptions",
+            "CFFEX",
+        ):
+            return "futures"
+        return "swap"
+    if raw in ("option", "options"):
+        return "options"
     if raw in ("usstock", "us_stock", "stock", "stocks", "equity", "cash"):
         return "spot"
     return raw
@@ -164,7 +216,7 @@ def validate_strategy_config(
     """
     ex = _norm_exchange(exchange_id)
     mc = (market_category or "").strip()
-    mt = _norm_market_type(market_type)
+    mt = _norm_market_type(market_type, market_category=mc)
     td = (trade_direction or "").strip().lower()
     bt = (bot_type or "").strip().lower()
 
@@ -226,7 +278,8 @@ def validate_strategy_config(
             f"{ex.upper()} live execution in QuantDinger is currently "
             f"long-only (got trade_direction='{td}'). For short selling "
             f"please use a perpetual-swap crypto exchange "
-            f"(Binance/OKX/Bybit/Bitget) for crypto. "
+            f"(Binance/OKX/Bybit/Bitget) for crypto, or CTP/QMT for "
+            f"mainland China futures/options. "
             f"Stock short selling on IBKR/Alpaca is not yet implemented."
         )
 
@@ -235,6 +288,22 @@ def validate_strategy_config(
         raise ValueError(
             f"Short selling crypto requires market_type='swap', got '{mt}'. "
             "Crypto spot markets cannot be shorted - use a perpetual contract."
+        )
+
+    # Rule 6b: CTP/QMT market_type must match the China futures category.
+    if ex in ("ctp", "qmt") and mc in (
+        "CNFutures",
+        "CNIndexFutures",
+    ) and mt and mt != "futures":
+        raise ValueError(
+            f"{ex.upper()} + {mc} requires market_type='futures', got '{mt}'."
+        )
+    if ex in ("ctp", "qmt") and mc in (
+        "CNFuturesOptions",
+        "CNIndexOptions",
+    ) and mt and mt != "options":
+        raise ValueError(
+            f"{ex.upper()} + {mc} requires market_type='options', got '{mt}'."
         )
 
     # Rule 7: bot_type compatibility.

@@ -114,6 +114,8 @@ class FuturesDataSource(BaseDataSource):
         Traditional futures: Twelve Data → yfinance fallback.
         Crypto futures: CCXT.
         """
+        from app.markets.cn_futures import cn_misroute_error, is_cn_derivative
+
         sym = (symbol or "").strip()
         try:
             from app.services.ctp_md.service import ctp_ticker_for_symbol
@@ -123,6 +125,10 @@ class FuturesDataSource(BaseDataSource):
                 return ctp_ticker
         except Exception as e:
             logger.debug("CTP futures ticker unavailable for %s: %s", sym, e)
+
+        # Domestic CN futures must not fall through to Twelve Data / yfinance / CCXT.
+        if is_cn_derivative(sym):
+            raise cn_misroute_error(sym)
 
         is_traditional = sym in self.YF_SYMBOLS or sym.endswith("=F") or sym in _TD_FUTURES_SYMBOLS
         if is_traditional:
@@ -245,6 +251,10 @@ class FuturesDataSource(BaseDataSource):
             after_time: 预留与基类一致（当前期货链路未使用）
         """
         _ = after_time
+        from app.markets.cn_futures import cn_misroute_error, is_cn_derivative
+
+        if is_cn_derivative(symbol):
+            raise cn_misroute_error(symbol)
         base_symbol = symbol.replace("=F", "").upper()
         if base_symbol in _TD_FUTURES_SYMBOLS or symbol.endswith('=F'):
             return self._get_traditional_futures(symbol, timeframe, limit, before_time)

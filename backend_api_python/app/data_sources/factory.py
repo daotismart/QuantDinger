@@ -60,6 +60,18 @@ _MARKET_ALIASES: Dict[str, str] = {
     "hk": "HKStock",
     "hongkong": "HKStock",
     "futures": "Futures",
+    "cnfutures": "CNFutures",
+    "cn_futures": "CNFutures",
+    "chinafutures": "CNFutures",
+    "cnfuturesoptions": "CNFuturesOptions",
+    "cn_futures_options": "CNFuturesOptions",
+    "cnindexfutures": "CNIndexFutures",
+    "cn_index_futures": "CNIndexFutures",
+    "cffex": "CNIndexFutures",
+    "cffexfutures": "CNIndexFutures",
+    "cnindexoptions": "CNIndexOptions",
+    "cn_index_options": "CNIndexOptions",
+    "cffexoptions": "CNIndexOptions",
     "moex": "MOEX",
     "rustock": "MOEX",
     "rustocks": "MOEX",
@@ -80,7 +92,19 @@ class DataSourceFactory:
     _noise_interval_sec = _env_positive_int("LOG_DEDUPE_INTERVAL_SEC", 60)
     
     # Markets that pass through normalize_market unchanged.
-    _CANONICAL_MARKETS = ("Crypto", "Forex", "Futures", "USStock", "CNStock", "HKStock", "MOEX")
+    _CANONICAL_MARKETS = (
+        "Crypto",
+        "Forex",
+        "Futures",
+        "USStock",
+        "CNStock",
+        "CNFutures",
+        "CNFuturesOptions",
+        "CNIndexFutures",
+        "CNIndexOptions",
+        "HKStock",
+        "MOEX",
+    )
 
     @classmethod
     def _log_limited(cls, level: str, key: str, message: str, *args: Any) -> None:
@@ -168,6 +192,14 @@ class DataSourceFactory:
             return cls.get_source("Crypto")
         if key in ("futures",):
             return cls.get_source("Futures")
+        if key in ("cnfutures", "chinafutures", "cn_futures"):
+            return cls.get_source("CNFutures")
+        if key in ("cnfuturesoptions", "cn_futures_options"):
+            return cls.get_source("CNFuturesOptions")
+        if key in ("cnindexfutures", "cffex", "cffexfutures"):
+            return cls.get_source("CNIndexFutures")
+        if key in ("cnindexoptions", "cffexoptions"):
+            return cls.get_source("CNIndexOptions")
         if key in ("forex", "fx"):
             return cls.get_source("Forex")
         if key in ("usstock", "us_stocks", "stock", "stocks", "ibkr", "alpaca"):
@@ -203,6 +235,9 @@ class DataSourceFactory:
         elif market == 'Futures':
             from app.data_sources.futures import FuturesDataSource
             return FuturesDataSource()
+        elif market in ('CNFutures', 'CNFuturesOptions', 'CNIndexFutures', 'CNIndexOptions'):
+            from app.data_sources.cn_futures import CnFuturesDataSource
+            return CnFuturesDataSource()
         elif market == 'MOEX':
             from app.data_sources.moex import MOEXDataSource
             return MOEXDataSource()

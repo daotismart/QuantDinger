@@ -481,6 +481,94 @@ def fetch_futures_symbols() -> List[SymbolMasterRow]:
     return _unique_rows(_static_rows("Futures"))
 
 
+def fetch_cn_futures_symbols() -> List[SymbolMasterRow]:
+    """Return mainland China futures roots across all six exchanges."""
+    from app.markets.cn_futures import list_symbol_master_rows
+
+    rows: List[SymbolMasterRow] = []
+    for item in list_symbol_master_rows():
+        if item["market"] != "CNFutures":
+            continue
+        rows.append(
+            SymbolMasterRow(
+                market=item["market"],
+                symbol=item["symbol"],
+                name=item["name"],
+                exchange=item["exchange"],
+                currency=item["currency"],
+                market_type=item["market_type"],
+                asset_class=item["asset_class"],
+            )
+        )
+    return _unique_rows(rows)
+
+
+def fetch_cn_futures_options_symbols() -> List[SymbolMasterRow]:
+    """Return mainland China futures-options roots."""
+    from app.markets.cn_futures import list_symbol_master_rows
+
+    rows: List[SymbolMasterRow] = []
+    for item in list_symbol_master_rows():
+        if item["market"] != "CNFuturesOptions":
+            continue
+        rows.append(
+            SymbolMasterRow(
+                market=item["market"],
+                symbol=item["symbol"],
+                name=item["name"],
+                exchange=item["exchange"],
+                currency=item["currency"],
+                market_type=item["market_type"],
+                asset_class=item["asset_class"],
+            )
+        )
+    return _unique_rows(rows)
+
+
+def fetch_cn_index_futures_symbols() -> List[SymbolMasterRow]:
+    """Return CFFEX equity-index futures roots."""
+    from app.markets.cn_futures import list_symbol_master_rows
+
+    rows: List[SymbolMasterRow] = []
+    for item in list_symbol_master_rows():
+        if item["market"] != "CNIndexFutures":
+            continue
+        rows.append(
+            SymbolMasterRow(
+                market=item["market"],
+                symbol=item["symbol"],
+                name=item["name"],
+                exchange=item["exchange"],
+                currency=item["currency"],
+                market_type=item["market_type"],
+                asset_class=item["asset_class"],
+            )
+        )
+    return _unique_rows(rows)
+
+
+def fetch_cn_index_options_symbols() -> List[SymbolMasterRow]:
+    """Return CFFEX equity-index options roots."""
+    from app.markets.cn_futures import list_symbol_master_rows
+
+    rows: List[SymbolMasterRow] = []
+    for item in list_symbol_master_rows():
+        if item["market"] != "CNIndexOptions":
+            continue
+        rows.append(
+            SymbolMasterRow(
+                market=item["market"],
+                symbol=item["symbol"],
+                name=item["name"],
+                exchange=item["exchange"],
+                currency=item["currency"],
+                market_type=item["market_type"],
+                asset_class=item["asset_class"],
+            )
+        )
+    return _unique_rows(rows)
+
+
 def fetch_moex_symbols() -> List[SymbolMasterRow]:
     """Fetch MOEX TQBR shares, with a static blue-chip fallback."""
     rows = _static_rows("MOEX")
@@ -512,6 +600,10 @@ FETCHERS = {
     "Crypto": fetch_crypto_symbols,
     "Forex": fetch_forex_symbols,
     "Futures": fetch_futures_symbols,
+    "CNFutures": fetch_cn_futures_symbols,
+    "CNFuturesOptions": fetch_cn_futures_options_symbols,
+    "CNIndexFutures": fetch_cn_index_futures_symbols,
+    "CNIndexOptions": fetch_cn_index_options_symbols,
     "MOEX": fetch_moex_symbols,
 }
 
@@ -565,6 +657,10 @@ def _default_asset_class(market: str) -> str:
         "Crypto": "crypto",
         "Forex": "forex",
         "Futures": "futures",
+        "CNFutures": "futures",
+        "CNFuturesOptions": "options",
+        "CNIndexFutures": "futures",
+        "CNIndexOptions": "options",
     }.get(str(market or ""), "equity")
 
 
