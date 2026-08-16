@@ -104,6 +104,18 @@ def start_execution_stream_supervisor():
         logger.error(f"Failed to start execution stream supervisor: {e}", exc_info=True)
 
 
+def start_ctp_md_service():
+    """Start optional CTP MdApi tick market-data gateway when enabled."""
+    if _is_debug_reloader_parent():
+        return
+    try:
+        from app.services.ctp_md import start_ctp_md_service as _start
+
+        _start()
+    except Exception as e:
+        logger.error(f"Failed to start CTP market-data service: {e}", exc_info=True)
+
+
 def start_usdt_order_worker():
     """Start the USDT order background worker."""
     raw_enabled = os.getenv("USDT_PAY_ENABLED", "")
@@ -233,6 +245,7 @@ def run_startup_hooks(app: Flask) -> None:
 def _start_trading_support_services() -> None:
     """Start exchange-facing services that belong with the trading runtime."""
     start_execution_stream_supervisor()
+    start_ctp_md_service()
     start_pending_order_worker()
     start_grid_fill_poller()
 

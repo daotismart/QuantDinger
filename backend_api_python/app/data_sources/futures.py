@@ -110,10 +110,20 @@ class FuturesDataSource(BaseDataSource):
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
         Get latest ticker for futures symbol.
+        CN futures: prefer live CTP MdApi ticks when configured.
         Traditional futures: Twelve Data → yfinance fallback.
         Crypto futures: CCXT.
         """
         sym = (symbol or "").strip()
+        try:
+            from app.services.ctp_md.service import ctp_ticker_for_symbol
+
+            ctp_ticker = ctp_ticker_for_symbol(sym)
+            if ctp_ticker and float(ctp_ticker.get("last") or 0) > 0:
+                return ctp_ticker
+        except Exception as e:
+            logger.debug("CTP futures ticker unavailable for %s: %s", sym, e)
+
         is_traditional = sym in self.YF_SYMBOLS or sym.endswith("=F") or sym in _TD_FUTURES_SYMBOLS
         if is_traditional:
             for fetcher in (self._get_ticker_twelvedata, self._get_ticker_yfinance, self._get_ticker_tiingo):
