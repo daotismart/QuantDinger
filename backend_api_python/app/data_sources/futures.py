@@ -13,6 +13,10 @@ import requests
 import yfinance as yf
 
 from app.data_sources.base import BaseDataSource, TIMEFRAME_SECONDS
+from app.markets.cn_index_derivatives import (
+    cffex_unsupported_error,
+    is_cffex_index_derivative,
+)
 from app.utils.logger import get_logger
 from app.config import CCXTConfig, TiingoConfig, APIKeys
 
@@ -114,6 +118,8 @@ class FuturesDataSource(BaseDataSource):
         Crypto futures: CCXT.
         """
         sym = (symbol or "").strip()
+        if is_cffex_index_derivative(sym):
+            raise cffex_unsupported_error(sym)
         is_traditional = sym in self.YF_SYMBOLS or sym.endswith("=F") or sym in _TD_FUTURES_SYMBOLS
         if is_traditional:
             for fetcher in (self._get_ticker_twelvedata, self._get_ticker_yfinance, self._get_ticker_tiingo):
@@ -235,6 +241,8 @@ class FuturesDataSource(BaseDataSource):
             after_time: 预留与基类一致（当前期货链路未使用）
         """
         _ = after_time
+        if is_cffex_index_derivative(symbol):
+            raise cffex_unsupported_error(symbol)
         base_symbol = symbol.replace("=F", "").upper()
         if base_symbol in _TD_FUTURES_SYMBOLS or symbol.endswith('=F'):
             return self._get_traditional_futures(symbol, timeframe, limit, before_time)
