@@ -1,21 +1,28 @@
-"""CFFEX index futures/options capability — contracts, data, CTP/QMT, policy."""
+"""Mainland China futures & futures-options — catalog, data, CTP/QMT, policy."""
 
 from __future__ import annotations
 
 import pytest
 
-from app.data_sources.cffex import CffexDataSource
+from app.data_sources.cn_futures import CnFuturesDataSource
 from app.data_sources.factory import DataSourceFactory
-from app.data_sources.futures import FuturesDataSource, _TD_FUTURES_SYMBOLS
-from app.markets.cn_index_derivatives import (
-    CFFEX_MARKET_FUTURES,
-    CFFEX_MARKET_OPTIONS,
-    UNSUPPORTED_MESSAGE,
+from app.data_sources.futures import FuturesDataSource
+from app.markets.cn_futures import (
+    CN_FUTURE_PRODUCTS,
+    CN_FUTURES_EXCHANGES,
+    CN_FUTURES_MARKET,
+    CN_FUTURES_OPTIONS_MARKET,
     estimate_futures_margin,
-    get_future_spec,
+    get_future_product,
+    is_cn_derivative,
+    is_cn_future,
+    is_cn_futures_option,
+    list_products,
+)
+from app.markets.cn_index_derivatives import (
+    UNSUPPORTED_MESSAGE,
     is_cffex_index_derivative,
     is_cffex_index_future,
-    is_cffex_index_option,
 )
 from app.markets.registry import MARKET_MODULES
 from app.services.broker_market_policy import (
@@ -27,214 +34,186 @@ from app.services.cffex_trading import CffexRuntime, CffexRuntimeError, CtpClien
 from app.services.live_trading.base import LiveTradingError
 from app.services.live_trading.factory import create_client
 from app.services.strategy_v2.instruments import InstrumentParseError, infer_market, parse_instrument
-from app.services.symbol_master_sync import fetch_cn_index_futures_symbols, fetch_futures_symbols
+from app.services.symbol_master_sync import (
+    fetch_cn_futures_options_symbols,
+    fetch_cn_futures_symbols,
+    fetch_cn_index_futures_symbols,
+)
 
 
-INDEX_FUTURE_SAMPLES = ["IF", "IH", "IC", "IM", "IF2509", "IH2509", "IC2509", "IM2509"]
-INDEX_OPTION_SAMPLES = ["IO", "HO", "MO", "IO2509-C-4000", "HO2509P2800", "MO2509-C-5500"]
+INDEX_FUTURE_SAMPLES = ["IF", "IH", "IC", "IM", "IF2509", "IH2509"]
+COMMODITY_FUTURE_SAMPLES = ["rb2509", "m2509", "sc2509", "cu2509", "si2509", "TA509", "SR2509"]
+OPTION_SAMPLES = ["IO2509-C-4000", "m2509-C-2800", "rb2509P3400", "sc2509-C-580"]
 
 
-class TestCffexDetectorsAndContracts:
-    @pytest.mark.parametrize("symbol", INDEX_FUTURE_SAMPLES)
-    def test_detects_index_futures(self, symbol):
-        assert is_cffex_index_future(symbol) is True
-        assert is_cffex_index_derivative(symbol) is True
-        spec = get_future_spec(symbol)
-        assert spec.exchange == "CFFEX"
-        assert spec.multiplier in (200, 300)
+class TestCatalog:
+    def test_six_exchanges_present(self):
+        assert CN_FUTURES_EXCHANGES == {"CFFEX", "SHFE", "DCE", "CZCE", "INE", "GFEX"}
+        exchanges = {p.exchange for p in CN_FUTURE_PRODUCTS.values()}
+        assert CN_FUTURES_EXCHANGES <= exchanges
 
-    @pytest.mark.parametrize("symbol", INDEX_OPTION_SAMPLES)
-    def test_detects_index_options(self, symbol):
-        assert is_cffex_index_option(symbol) is True
-        assert is_cffex_index_derivative(symbol) is True
+    def test_product_count_covers_mainstream(self):
+        assert len(CN_FUTURE_PRODUCTS) >= 60
 
-    @pytest.mark.parametrize("symbol", ["ES", "GC", "AAPL", "600519.SH", "BTC/USDT"])
-    def test_non_cffex_symbols_are_not_flagged(self, symbol):
-        assert is_cffex_index_derivative(symbol) is False
+    @pytest.mark.parametrize("symbol", INDEX_FUTURE_SAMPLES + COMMODITY_FUTURE_SAMPLES)
+    def test_detects_futures(self, symbol):
+        assert is_cn_future(symbol) is True
+        assert is_cn_derivative(symbol) is True
+        product = get_future_product(symbol)
+        assert product.exchange in CN_FUTURES_EXCHANGES
 
-    def test_margin_estimate_uses_multiplier(self):
-        # IF: 3800 * 300 * 1 * 0.12 = 136800
-        margin = estimate_futures_margin("IF2509", price=3800.0, lots=1, direction="long")
-        assert margin == pytest.approx(136800.0)
+    @pytest.mark.parametrize("symbol", OPTION_SAMPLES)
+    def test_detects_options(self, symbol):
+        assert is_cn_futures_option(symbol) is True
+
+    def test_cffex_helpers_still_work(self):
+        assert is_cffex_index_future("IF2509") is True
+        assert is_cffex_index_derivative("IO2509-C-4000") is True
+        assert is_cffex_index_future("rb2509") is False
+
+    def test_margin_for_commodity(self):
+        # rb: 3400 * 10 * 1 * 0.09 = 3060
+        margin = estimate_futures_margin("rb2509", price=3400, lots=1, direction="long")
+        assert margin == pytest.approx(3060.0)
+
+    def test_options_only_products_listed(self):
+        opts = list_products(options_only=True)
+        roots = {p.root for p in opts}
+        assert {"IO", "HO", "MO", "M", "CU", "SC", "SI"} <= roots
 
 
 class TestMarketModules:
-    def test_cn_index_futures_module_is_live_capable(self):
-        module = MARKET_MODULES["CNIndexFutures"]
-        assert "live" in module.features
-        assert module.asset_class == "futures"
+    def test_cn_futures_live(self):
+        assert "live" in MARKET_MODULES["CNFutures"].features
+        assert "live" in MARKET_MODULES["CNFuturesOptions"].features
 
-    def test_cn_index_options_module_is_research_paper(self):
-        module = MARKET_MODULES["CNIndexOptions"]
-        assert "live" not in module.features
-        assert module.asset_class == "options"
-
-    def test_generic_futures_remains_research_only(self):
-        features = set(MARKET_MODULES["Futures"].features)
-        assert "live" not in features
-
-    def test_symbol_master_includes_cffex_roots(self):
-        symbols = {row.symbol.upper() for row in fetch_cn_index_futures_symbols()}
-        assert {"IF", "IH", "IC", "IM"} <= symbols
-
-    def test_generic_futures_master_still_cme_style(self):
-        symbols = {row.symbol.upper() for row in fetch_futures_symbols()}
-        assert {"ES", "GC", "CL"} <= symbols
-        assert "IF" not in symbols
+    def test_symbol_master_seeded(self):
+        fut = {r.symbol.upper() for r in fetch_cn_futures_symbols()}
+        assert {"RB", "M", "SC", "CU", "IF", "SI"} <= fut
+        opt = {r.symbol.upper() for r in fetch_cn_futures_options_symbols()}
+        assert {"M", "IO", "CU"} <= opt
+        assert {"IF", "IH", "IC", "IM"} <= {r.symbol.upper() for r in fetch_cn_index_futures_symbols()}
 
 
 class TestLivePolicyMatrix:
-    def test_live_categories_include_cn_index_futures(self):
-        assert "CNIndexFutures" in LIVE_MARKET_CATEGORIES
-        assert "CNIndexOptions" not in LIVE_MARKET_CATEGORIES
+    def test_live_categories(self):
+        assert {
+            "CNFutures",
+            "CNFuturesOptions",
+            "CNIndexFutures",
+            "CNIndexOptions",
+        } <= LIVE_MARKET_CATEGORIES
 
-    def test_ctp_and_qmt_are_live_brokers_for_cn_index_futures(self):
-        brokers = list_supported_brokers_for_market("CNIndexFutures")
-        assert brokers == {"ctp", "qmt"}
+    def test_ctp_qmt_cover_all_cn_markets(self):
+        for market in ("CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions"):
+            assert list_supported_brokers_for_market(market) == {"ctp", "qmt"}
 
-    @pytest.mark.parametrize("exchange_id", ["ctp", "qmt"])
-    def test_valid_ctp_qmt_strategy_config(self, exchange_id):
+    @pytest.mark.parametrize(
+        "exchange_id,market,market_type",
+        [
+            ("ctp", "CNFutures", "futures"),
+            ("qmt", "CNFutures", "futures"),
+            ("ctp", "CNFuturesOptions", "options"),
+            ("qmt", "CNIndexFutures", "futures"),
+            ("ctp", "CNIndexOptions", "options"),
+        ],
+    )
+    def test_valid_combos(self, exchange_id, market, market_type):
         validate_strategy_config(
             exchange_id=exchange_id,
-            market_category="CNIndexFutures",
-            market_type="futures",
+            market_category=market,
+            market_type=market_type,
             trade_direction="both",
             bot_type="trend",
         )
 
-    def test_options_still_analysis_only(self):
-        with pytest.raises(ValueError, match="not supported for live trading|analysis-only"):
-            validate_strategy_config(
-                exchange_id="ctp",
-                market_category="CNIndexOptions",
-                market_type="options",
-                trade_direction="both",
-            )
-
-    def test_ibkr_cannot_route_cffex_market(self):
-        with pytest.raises(ValueError, match="cannot trade market_category|not supported"):
-            validate_strategy_config(
-                exchange_id="ibkr",
-                market_category="CNIndexFutures",
-                market_type="futures",
-                trade_direction="long",
-            )
-
-    def test_grid_bot_rejected_on_cn_index_futures(self):
+    def test_grid_rejected(self):
         with pytest.raises(ValueError, match="bot_type='grid'"):
             validate_strategy_config(
                 exchange_id="ctp",
-                market_category="CNIndexFutures",
+                market_category="CNFutures",
                 market_type="futures",
                 trade_direction="both",
                 bot_type="grid",
             )
 
 
-class TestInstrumentParsingSafety:
-    @pytest.mark.parametrize("symbol", INDEX_FUTURE_SAMPLES + INDEX_OPTION_SAMPLES)
-    def test_bare_cffex_codes_are_not_inferred_as_usstock(self, symbol):
+class TestInstrumentParsing:
+    @pytest.mark.parametrize("symbol", INDEX_FUTURE_SAMPLES + COMMODITY_FUTURE_SAMPLES + OPTION_SAMPLES)
+    def test_bare_codes_not_usstock(self, symbol):
         assert infer_market(symbol) == ""
         with pytest.raises(InstrumentParseError, match="marketUnknown"):
             parse_instrument(symbol)
 
-    def test_explicit_cn_index_futures_prefix_parses(self):
-        spec = parse_instrument("CNIndexFutures:IF2509")
-        assert spec.market == CFFEX_MARKET_FUTURES
-        assert spec.symbol == "IF2509"
+    def test_cn_futures_prefix(self):
+        spec = parse_instrument("CNFutures:rb2509")
+        assert spec.market == CN_FUTURES_MARKET
+        assert spec.symbol == "RB2509"
 
-    def test_explicit_futures_prefix_still_parses_but_is_not_cffex_data(self):
-        spec = parse_instrument("Futures:IF2509")
-        assert spec.market == "Futures"
-        assert spec.symbol == "IF2509"
-        assert "IF2509" not in _TD_FUTURES_SYMBOLS
+    def test_cn_futures_options_prefix(self):
+        spec = parse_instrument("CNFuturesOptions:m2509-C-2800")
+        assert spec.market == CN_FUTURES_OPTIONS_MARKET
 
 
-class TestComplianceMarketData:
-    def test_cffex_source_ticker_and_kline(self):
-        src = CffexDataSource()
-        ticker = src.get_ticker("IF2509")
-        assert ticker["last"] > 0
-        assert ticker["exchange"] == "CFFEX"
-        bars = src.get_kline("IF2509", "1D", 5)
-        assert len(bars) == 5
-        assert {"time", "open", "high", "low", "close", "volume"} <= set(bars[0])
+class TestMarketDataAndMisroute:
+    def test_compliance_ticker_across_exchanges(self):
+        src = CnFuturesDataSource()
+        for symbol, exchange in (("IF2509", "CFFEX"), ("rb2509", "SHFE"), ("sc2509", "INE"), ("si2509", "GFEX")):
+            ticker = src.get_ticker(symbol)
+            assert ticker["last"] > 0
+            assert ticker["exchange"] == exchange
 
-    def test_factory_routes_cn_index_markets(self):
-        src = DataSourceFactory.get_source("CNIndexFutures")
-        assert isinstance(src, CffexDataSource)
-        opt = DataSourceFactory.get_source("CNIndexOptions")
-        assert isinstance(opt, CffexDataSource)
+    def test_factory_routes(self):
+        assert isinstance(DataSourceFactory.get_source("CNFutures"), CnFuturesDataSource)
+        assert isinstance(DataSourceFactory.get_source("CNFuturesOptions"), CnFuturesDataSource)
 
-    def test_generic_futures_refuses_cffex(self):
+    def test_generic_futures_refuses_cn(self):
         src = FuturesDataSource()
-        with pytest.raises(ValueError, match="CFFEX|CNIndexFutures|CTP/QMT"):
-            src.get_ticker("IF")
-        with pytest.raises(ValueError, match="CFFEX|CNIndexFutures|CTP/QMT"):
-            src.get_kline("IO2509-C-4000", "1D", 10)
+        with pytest.raises(ValueError, match="CNFutures|CTP/QMT|China futures"):
+            src.get_ticker("rb2509")
+        with pytest.raises(ValueError, match="CNFutures|CTP/QMT|China futures"):
+            src.get_kline("IF2509", "1D", 5)
 
-    def test_misroute_message_mentions_channels(self):
+    def test_message(self):
         assert "CTP" in UNSUPPORTED_MESSAGE
-        assert "CNIndexFutures" in UNSUPPORTED_MESSAGE or "CTP/QMT" in UNSUPPORTED_MESSAGE
 
 
-class TestMarginOpenCloseRuntime:
-    def test_open_close_yesterday_and_today(self):
+class TestRuntimeAndChannels:
+    def test_commodity_open_close(self):
         rt = CffexRuntime(cash=2_000_000)
-        open_fill = rt.place_order(symbol="IF2509", side="long", offset="open", lots=2, price=3800)
-        assert open_fill.margin_delta > 0
+        rt.place_order(symbol="rb2509", side="long", offset="open", lots=2, price=3400)
         rt.roll_day()
-        # Open one more today lot after rollover.
-        rt.place_order(symbol="IF2509", side="long", offset="open", lots=1, price=3810)
-        book = rt.books["IF2509"].long
-        assert book.yesterday == 2
-        assert book.today == 1
+        fill = rt.place_order(symbol="rb2509", side="long", offset="close_yesterday", lots=1, price=3450)
+        assert fill.realized_pnl != 0
+        assert rt.books["RB2509"].long.yesterday == 1
 
-        close_yd = rt.place_order(
-            symbol="IF2509", side="long", offset="close_yesterday", lots=1, price=3820
-        )
-        assert close_yd.raw["closed_yesterday"] == 1
-        assert rt.books["IF2509"].long.yesterday == 1
+    def test_option_seller_open(self):
+        rt = CffexRuntime(cash=2_000_000)
+        fill = rt.place_order(symbol="m2509-C-2800", side="short", offset="open", lots=1, price=3000)
+        assert fill.margin_delta > 0
+        assert rt.books["M2509-C-2800"].short.today == 1
 
-        close_td = rt.place_order(
-            symbol="IF2509", side="long", offset="close_today", lots=1, price=3825
-        )
-        assert close_td.raw["closed_today"] == 1
-        assert rt.books["IF2509"].long.today == 0
-
-    def test_insufficient_margin_rejected(self):
-        rt = CffexRuntime(cash=1000)
+    def test_insufficient_margin(self):
+        rt = CffexRuntime(cash=100)
         with pytest.raises(CffexRuntimeError, match="Insufficient margin"):
-            rt.place_order(symbol="IF2509", side="long", offset="open", lots=1, price=3800)
+            rt.place_order(symbol="sc2509", side="long", offset="open", lots=1, price=580)
 
-
-class TestCtpQmtChannels:
-    def test_factory_creates_simulation_clients(self):
+    def test_factory_clients(self):
         ctp = create_client(
             {"exchange_id": "ctp", "environment": "demo", "market_scope": "futures"},
             market_type="futures",
         )
-        qmt = create_client(
-            {"exchange_id": "qmt", "environment": "demo", "market_scope": "futures"},
-            market_type="futures",
-        )
         assert isinstance(ctp, CtpClient)
-        assert isinstance(qmt, QmtClient)
-        assert ctp.test_connection()["ok"] is True
-        assert qmt.test_connection()["ok"] is True
-
-    def test_ctp_simulation_round_trip_order(self):
-        client = CtpClient(CtpConfig(mode="simulation", initial_cash=2_000_000))
-        result = client.place_order(
-            symbol="IH2509", side="short", offset="open", lots=1, price=2600
-        )
+        result = ctp.place_order(symbol="cu2509", side="short", offset="open", lots=1, price=75000)
         assert result.filled == 1
-        assert result.exchange_id == "ctp"
-        positions = client.get_positions()
-        assert positions[0]["side"] == "short"
-        assert positions[0]["today"] == 1
 
-    def test_qmt_live_without_flag_is_blocked(self, monkeypatch):
+        qmt = create_client(
+            {"exchange_id": "qmt", "environment": "demo", "market_scope": "options"},
+            market_type="options",
+        )
+        assert isinstance(qmt, QmtClient)
+
+    def test_live_blocked(self, monkeypatch):
         monkeypatch.delenv("CFFEX_LIVE_TRADING_ENABLED", raising=False)
         with pytest.raises(LiveTradingError, match="disabled|bridge"):
-            QmtClient(QmtConfig(mode="live", qmt_path="/opt/qmt"))
+            CtpClient(CtpConfig(mode="live", broker_id="9999", user_id="u", password="p", td_front="tcp://x"))

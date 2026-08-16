@@ -17,14 +17,24 @@ ways in:
 Adding a new broker now means updating BROKER_MARKETS here, plus the
 broker's client implementation. Everything else picks it up automatically.
 
-CFFEX equity-index futures use exchange_id ``ctp`` / ``qmt`` with
-market_category ``CNIndexFutures`` and market_type ``futures`` (open/close
-semantics, not crypto ``swap``).
+Mainland China futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX) use exchange_id
+``ctp`` / ``qmt`` with market_category ``CNFutures`` /
+``CNFuturesOptions`` (and legacy ``CNIndexFutures`` /
+``CNIndexOptions`` aliases). market_type is ``futures`` or ``options``
+(open/close semantics, not crypto ``swap``).
 """
 
 from typing import Dict, Optional, Set
 
 from app.services.live_trading.capabilities import CRYPTO_VENUE_CAPABILITIES
+
+_CN_FUTURES_MARKETS = {
+    "CNFutures": {"futures"},
+    "CNFuturesOptions": {"options"},
+    # Legacy / specialized aliases kept for existing strategies & UI.
+    "CNIndexFutures": {"futures"},
+    "CNIndexOptions": {"options"},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +50,9 @@ def _build_broker_markets() -> Dict[str, Dict[str, Set[str]]]:
         # US stocks via Interactive Brokers (TWS/Gateway, local desktop only)
         "ibkr": {"USStock": {"spot"}},
         "alpaca": {"USStock": {"spot"}},
-        # Mainland CFFEX equity-index futures via CTP / QMT (miniQMT) bridges.
-        # market_type stays ``futures`` (delivery / open-close semantics), not
-        # crypto-style ``swap``.
-        "ctp": {"CNIndexFutures": {"futures"}},
-        "qmt": {"CNIndexFutures": {"futures"}},
+        # Mainland China futures & futures-options via CTP / QMT bridges.
+        "ctp": {k: set(v) for k, v in _CN_FUTURES_MARKETS.items()},
+        "qmt": {k: set(v) for k, v in _CN_FUTURES_MARKETS.items()},
     }
     for ex, capability in CRYPTO_VENUE_CAPABILITIES.items():
         matrix[ex] = {"Crypto": set(capability.market_types)}
@@ -71,20 +79,34 @@ LONG_ONLY_BROKERS: Set[str] = {"ibkr", "alpaca"}
 #   martingale: needs tiny add-on lots + bidirectional. Stock min-share size
 #               + gap risk makes it impractical outside crypto perpetuals.
 #   dca / trend: long-only by nature, fine on every market we support.
-#   CNIndexFutures: session gaps + lot size make grid/martingale a poor fit;
-#                   trend bots can express long/short with open-close offsets.
+#   CN futures: session gaps + lot size make grid/martingale a poor fit;
+#               trend bots can express long/short with open-close offsets.
 BOT_TYPE_MARKETS: Dict[str, Set[str]] = {
     "grid":       {"Crypto"},
     "martingale": {"Crypto"},
     "dca":        {"Crypto", "USStock"},
-    "trend":      {"Crypto", "USStock", "CNIndexFutures"},
+    "trend":      {
+        "Crypto",
+        "USStock",
+        "CNFutures",
+        "CNFuturesOptions",
+        "CNIndexFutures",
+        "CNIndexOptions",
+    },
 }
 
 
 # Markets we recognize as legal canonical values. Anything outside this set
 # is considered analysis/backtest-only (e.g. CNStock, HKStock, MOEX, Futures
-# generic, CNIndexOptions) and may not be used for live strategies.
-LIVE_MARKET_CATEGORIES: Set[str] = {"Crypto", "USStock", "CNIndexFutures"}
+# generic) and may not be used for live strategies.
+LIVE_MARKET_CATEGORIES: Set[str] = {
+    "Crypto",
+    "USStock",
+    "CNFutures",
+    "CNFuturesOptions",
+    "CNIndexFutures",
+    "CNIndexOptions",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -107,9 +129,17 @@ def _norm_market_type(
     if raw in ("perp", "perpetual"):
         return "swap"
     if raw in ("futures", "future"):
-        if mc in ("CNIndexFutures", "CNIndexOptions", "CFFEX"):
+        if mc in (
+            "CNFutures",
+            "CNFuturesOptions",
+            "CNIndexFutures",
+            "CNIndexOptions",
+            "CFFEX",
+        ):
             return "futures"
         return "swap"
+    if raw in ("option", "options"):
+        return "options"
     if raw in ("usstock", "us_stock", "stock", "stocks", "equity", "cash"):
         return "spot"
     return raw
@@ -196,7 +226,7 @@ def validate_strategy_config(
             raise ValueError(
                 f"market_category='{mc}' is not supported for live trading. "
                 f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
-                "(CNStock / HKStock / MOEX / Futures / CNIndexOptions are analysis-only.)"
+                "(CNStock / HKStock / MOEX / Futures are analysis-only.)"
             )
         if require_exchange:
             raise ValueError(
@@ -221,7 +251,7 @@ def validate_strategy_config(
         raise ValueError(
             f"market_category='{mc}' is not supported for live trading. "
             f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
-            "(CNStock / HKStock / MOEX / Futures / CNIndexOptions are analysis-only.)"
+            "(CNStock / HKStock / MOEX / Futures are analysis-only.)"
         )
 
     if mc and mc not in BROKER_MARKETS[ex]:
@@ -249,7 +279,7 @@ def validate_strategy_config(
             f"long-only (got trade_direction='{td}'). For short selling "
             f"please use a perpetual-swap crypto exchange "
             f"(Binance/OKX/Bybit/Bitget) for crypto, or CTP/QMT for "
-            f"CFFEX index futures. "
+            f"mainland China futures/options. "
             f"Stock short selling on IBKR/Alpaca is not yet implemented."
         )
 
@@ -260,10 +290,20 @@ def validate_strategy_config(
             "Crypto spot markets cannot be shorted - use a perpetual contract."
         )
 
-    # Rule 6b: CFFEX channels only pair with index-futures market_type.
-    if ex in ("ctp", "qmt") and mc == "CNIndexFutures" and mt and mt != "futures":
+    # Rule 6b: CTP/QMT market_type must match the China futures category.
+    if ex in ("ctp", "qmt") and mc in (
+        "CNFutures",
+        "CNIndexFutures",
+    ) and mt and mt != "futures":
         raise ValueError(
-            f"{ex.upper()} + CNIndexFutures requires market_type='futures', got '{mt}'."
+            f"{ex.upper()} + {mc} requires market_type='futures', got '{mt}'."
+        )
+    if ex in ("ctp", "qmt") and mc in (
+        "CNFuturesOptions",
+        "CNIndexOptions",
+    ) and mt and mt != "options":
+        raise ValueError(
+            f"{ex.upper()} + {mc} requires market_type='options', got '{mt}'."
         )
 
     # Rule 7: bot_type compatibility.

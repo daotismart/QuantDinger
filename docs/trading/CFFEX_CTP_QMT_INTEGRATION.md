@@ -1,43 +1,32 @@
-# CFFEX Index Futures / Options Integration
+# Mainland China Futures & Futures Options
 
-**Scope**: China Financial Futures Exchange equity-index products  
-**Markets**: `CNIndexFutures` (IF/IH/IC/IM), `CNIndexOptions` (IO/HO/MO)  
-**Channels**: `ctp`, `qmt`  
-**Status**: Index **futures** live policy + simulation runtime are enabled. Options remain research/paper. Real CTP/QMT gateway bridges are operator-supplied.
+**Exchanges**: CFFEX · SHFE · DCE · CZCE · INE · GFEX  
+**Markets**: `CNFutures`, `CNFuturesOptions` (plus legacy `CNIndexFutures` / `CNIndexOptions`)  
+**Channels**: `ctp`, `qmt`
 
-## What landed
+## Capabilities
 
 | Layer | Detail |
 | --- | --- |
-| Contract model | `app/markets/cn_index_derivatives.py` — roots, multipliers, ticks, margin rates |
-| Market modules | `CNIndexFutures` (research/backtest/paper/live), `CNIndexOptions` (research/backtest/paper) |
-| Compliance quotes | `app/data_sources/cffex.py` via `CFFEX_MARKET_DATA_PROVIDER=compliance\|akshare` |
-| Open/close runtime | `app/services/cffex_trading/runtime.py` — margin, 今仓/昨仓, commission |
-| Channels | `CtpClient` / `QmtClient` simulation by default; live needs `CFFEX_LIVE_TRADING_ENABLED=true` + external bridge |
-| Policy matrix | `ctp`/`qmt` × `CNIndexFutures` × `futures` in `broker_market_policy.py` |
+| Contract catalog | 60+ mainstream roots in `app/markets/cn_futures.py` |
+| Quotes | `CnFuturesDataSource` — `CN_FUTURES_MARKET_DATA_PROVIDER=compliance\|akshare` |
+| Open/close runtime | Margin, 今/昨仓, futures + options seller margin |
+| Live policy | CTP/QMT × futures/options for all four market categories |
+| Safety | Generic `Futures` refuses China symbols; live bridge gated by `CFFEX_LIVE_TRADING_ENABLED` |
 
-## Strategy config example
+## Examples
 
 ```json
-{
-  "exchange_id": "ctp",
-  "market_category": "CNIndexFutures",
-  "market_type": "futures",
-  "trade_direction": "both",
-  "bot_type": "trend",
-  "symbol": "CNIndexFutures:IF2509"
-}
+{ "exchange_id": "ctp", "market_category": "CNFutures", "market_type": "futures", "symbol": "CNFutures:rb2509" }
 ```
 
-Instrument prefixes: `CNIndexFutures:IF2509`, `CNIndexOptions:IO2509-C-4000`.  
-Bare codes such as `IF2509` are **not** inferred as US stocks and require an explicit prefix.
+```json
+{ "exchange_id": "qmt", "market_category": "CNFuturesOptions", "market_type": "options", "symbol": "CNFuturesOptions:m2509-C-2800" }
+```
 
-## Safety boundaries
+## Visibility
 
-- Generic `Futures` data source **refuses** CFFEX symbols (no Binance/CME fallback).
-- `CNIndexOptions` is **not** in `LIVE_MARKET_CATEGORIES`.
-- Live CTP/QMT order routing is blocked unless `CFFEX_LIVE_TRADING_ENABLED=true` and a native bridge is configured (not bundled).
-- Visibility defaults off: set `SHOW_CN_INDEX_DERIVATIVES=true` or include the markets in `ENABLED_MARKETS`.
+Set `SHOW_CN_FUTURES=true` or include markets in `ENABLED_MARKETS`.
 
 ## Tests
 

@@ -1,12 +1,6 @@
-"""Margin + open/close (今仓/昨仓) runtime for CFFEX index futures.
+"""Margin + open/close (今仓/昨仓) runtime for mainland China futures & options.
 
-Chinese futures distinguish:
-  - open vs close
-  - close yesterday vs close today
-  - long vs short position legs
-
-This runtime is the shared ledger used by CTP / QMT simulation clients and
-can also size live orders before they hit a gateway bridge.
+Shared ledger for CTP / QMT simulation clients.
 """
 
 from __future__ import annotations
@@ -17,16 +11,22 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from app.markets.cn_index_derivatives import (
+from app.markets.cn_futures import (
     estimate_futures_margin,
-    get_future_spec,
-    is_cffex_index_future,
-    normalize_derivative_symbol,
+    estimate_option_seller_margin,
+    get_future_product,
+    is_cn_future,
+    is_cn_futures_option,
+    normalize_cn_symbol,
 )
 
 
 class CffexRuntimeError(Exception):
-    pass
+    """Legacy name kept for callers; raised for all CN futures runtime errors."""
+
+
+# Preferred alias.
+CnFuturesRuntimeError = CffexRuntimeError
 
 
 class CffexOffsetFlag(str, Enum):
@@ -36,9 +36,15 @@ class CffexOffsetFlag(str, Enum):
     CLOSE_YESTERDAY = "close_yesterday"
 
 
+CnFuturesOffsetFlag = CffexOffsetFlag
+
+
 class CffexPositionSide(str, Enum):
     LONG = "long"
     SHORT = "short"
+
+
+CnFuturesPositionSide = CffexPositionSide
 
 
 def _norm_side(value: str) -> CffexPositionSide:
@@ -74,6 +80,7 @@ class PositionLeg:
     today: float = 0.0
     avg_price: float = 0.0
     margin: float = 0.0
+    product_type: str = "future"  # future | option
 
     @property
     def total(self) -> float:
@@ -101,14 +108,14 @@ class OrderFill:
 
 
 class CffexRuntime:
-    """In-process CFFEX futures ledger with 今/昨仓 semantics."""
+    """In-process China futures/options ledger with 今/昨仓 semantics."""
 
     def __init__(
         self,
         *,
         cash: float = 1_000_000.0,
         currency: str = "CNY",
-        account_id: str = "SIM-CFFEX",
+        account_id: str = "SIM-CN-FUTURES",
     ):
         self.cash = float(cash)
         self.currency = currency
@@ -118,14 +125,14 @@ class CffexRuntime:
         self._order_seq = 0
 
     def _book(self, symbol: str) -> SymbolBook:
-        key = normalize_derivative_symbol(symbol)
+        key = normalize_cn_symbol(symbol)
         if key not in self.books:
             self.books[key] = SymbolBook()
         return self.books[key]
 
     def _next_order_id(self) -> str:
         self._order_seq += 1
-        return f"CFFEX-{self._order_seq}-{uuid.uuid4().hex[:8]}"
+        return f"CNFUT-{self._order_seq}-{uuid.uuid4().hex[:8]}"
 
     def snapshot(self) -> Dict[str, Any]:
         positions: List[Dict[str, Any]] = []
@@ -144,6 +151,7 @@ class CffexRuntime:
                         "volume": leg.total,
                         "avg_price": leg.avg_price,
                         "margin": leg.margin,
+                        "product_type": leg.product_type,
                     }
                 )
         return {
@@ -157,13 +165,14 @@ class CffexRuntime:
         }
 
     def roll_day(self) -> None:
-        """Move today lots into yesterday (session rollover)."""
         for book in self.books.values():
             for leg in (book.long, book.short):
                 leg.yesterday += leg.today
                 leg.today = 0.0
 
     def estimate_open_margin(self, symbol: str, price: float, lots: float, side: str) -> float:
+        if is_cn_futures_option(symbol) and not is_cn_future(symbol):
+            return estimate_option_seller_margin(symbol, underlying_price=price, lots=lots)
         return estimate_futures_margin(symbol, price=price, lots=lots, direction=side)
 
     def place_order(
@@ -175,9 +184,9 @@ class CffexRuntime:
         lots: float,
         price: float,
     ) -> OrderFill:
-        if not is_cffex_index_future(symbol):
+        if not (is_cn_future(symbol) or is_cn_futures_option(symbol)):
             raise CffexRuntimeError(
-                f"CffexRuntime currently supports index futures only, got {symbol!r}"
+                f"Runtime supports mainland China futures/options only, got {symbol!r}"
             )
         qty = abs(float(lots))
         px = float(price)
@@ -186,22 +195,36 @@ class CffexRuntime:
 
         pos_side = _norm_side(side)
         offset_flag = _norm_offset(offset)
-        sym = normalize_derivative_symbol(symbol)
-        spec = get_future_spec(sym)
+        sym = normalize_cn_symbol(symbol)
+        product = get_future_product(sym)
         book = self._book(sym)
+        is_option = is_cn_futures_option(sym) and not is_cn_future(sym)
 
         if offset_flag == CffexOffsetFlag.OPEN:
-            return self._open(sym, book, pos_side, qty, px, spec)
-        return self._close(sym, book, pos_side, qty, px, spec, offset_flag)
+            return self._open(sym, book, pos_side, qty, px, product, is_option=is_option)
+        return self._close(sym, book, pos_side, qty, px, product, offset_flag, is_option=is_option)
 
-    def _commission(self, spec: Any, offset_flag: CffexOffsetFlag, lots: float) -> float:
+    def _commission(self, product: Any, offset_flag: CffexOffsetFlag, lots: float) -> float:
         if offset_flag == CffexOffsetFlag.CLOSE_TODAY:
-            unit = float(spec.close_today_commission)
+            unit = float(product.close_today_commission)
         elif offset_flag in (CffexOffsetFlag.CLOSE, CffexOffsetFlag.CLOSE_YESTERDAY):
-            unit = float(spec.close_commission)
+            unit = float(product.close_commission)
         else:
-            unit = float(spec.open_commission)
+            unit = float(product.open_commission)
         return round(unit * abs(lots), 2)
+
+    def _open_margin(self, symbol: str, price: float, lots: float, side: str, *, is_option: bool) -> float:
+        if is_option:
+            # Buyers pay premium; sellers post margin. ``side=short`` = sell/write.
+            if side in ("short", "sell"):
+                return estimate_option_seller_margin(symbol, underlying_price=price, lots=lots)
+            return round(abs(price) * abs(lots) * float(get_future_product(symbol).option_multiplier or 1), 2)
+        return estimate_futures_margin(symbol, price=price, lots=lots, direction=side)
+
+    def _multiplier(self, product: Any, *, is_option: bool) -> float:
+        if is_option:
+            return float(product.option_multiplier or product.multiplier)
+        return float(product.multiplier)
 
     def _open(
         self,
@@ -210,15 +233,21 @@ class CffexRuntime:
         side: CffexPositionSide,
         lots: float,
         price: float,
-        spec: Any,
+        product: Any,
+        *,
+        is_option: bool,
     ) -> OrderFill:
-        margin = estimate_futures_margin(symbol, price=price, lots=lots, direction=side.value)
+        margin = self._open_margin(symbol, price, lots, side.value, is_option=is_option)
         used = sum(leg.margin for b in self.books.values() for leg in (b.long, b.short))
         available = self.cash - used
-        commission = self._commission(spec, CffexOffsetFlag.OPEN, lots)
-        if margin + commission > available + 1e-9:
+        commission = self._commission(product, CffexOffsetFlag.OPEN, lots)
+        need = margin + commission
+        # Option buyers: premium is cash debit (stored as margin_delta for ledger).
+        if is_option and side == CffexPositionSide.LONG:
+            need = margin + commission
+        if need > available + 1e-9:
             raise CffexRuntimeError(
-                f"Insufficient margin: need {margin + commission:.2f}, available {available:.2f}"
+                f"Insufficient margin: need {need:.2f}, available {available:.2f}"
             )
 
         leg = book.long if side == CffexPositionSide.LONG else book.short
@@ -227,8 +256,15 @@ class CffexRuntime:
             price if leg.total <= 0 else ((leg.avg_price * leg.total) + (price * lots)) / new_total
         )
         leg.today += lots
-        leg.margin += margin
-        self.cash -= commission
+        leg.product_type = "option" if is_option else "future"
+        if is_option and side == CffexPositionSide.LONG:
+            # Premium paid upfront — not exchange margin.
+            self.cash -= margin + commission
+            margin_delta = 0.0
+        else:
+            leg.margin += margin
+            self.cash -= commission
+            margin_delta = margin
 
         fill = OrderFill(
             order_id=self._next_order_id(),
@@ -237,10 +273,15 @@ class CffexRuntime:
             offset=CffexOffsetFlag.OPEN.value,
             lots=lots,
             price=price,
-            margin_delta=margin,
+            margin_delta=margin_delta,
             commission=commission,
             realized_pnl=0.0,
-            raw={"ts": int(time.time()), "multiplier": spec.multiplier},
+            raw={
+                "ts": int(time.time()),
+                "multiplier": self._multiplier(product, is_option=is_option),
+                "exchange": product.exchange,
+                "product_type": "option" if is_option else "future",
+            },
         )
         self.fills.append(fill)
         return fill
@@ -252,11 +293,11 @@ class CffexRuntime:
         side: CffexPositionSide,
         lots: float,
         price: float,
-        spec: Any,
+        product: Any,
         offset_flag: CffexOffsetFlag,
+        *,
+        is_option: bool,
     ) -> OrderFill:
-        # Closing a long position uses sell; closing short uses buy.
-        # ``side`` here is the position side being reduced.
         leg = book.long if side == CffexPositionSide.LONG else book.short
         if leg.total + 1e-12 < lots:
             raise CffexRuntimeError(
@@ -267,9 +308,7 @@ class CffexRuntime:
         today_use = 0.0
         if offset_flag == CffexOffsetFlag.CLOSE_TODAY:
             if leg.today + 1e-12 < lots:
-                raise CffexRuntimeError(
-                    f"Cannot close_today {lots} lots; today={leg.today}"
-                )
+                raise CffexRuntimeError(f"Cannot close_today {lots} lots; today={leg.today}")
             today_use = lots
         elif offset_flag == CffexOffsetFlag.CLOSE_YESTERDAY:
             if leg.yesterday + 1e-12 < lots:
@@ -278,7 +317,6 @@ class CffexRuntime:
                 )
             yesterday_use = lots
         else:
-            # Default CLOSE: prefer yesterday lots first (common CTP behaviour).
             yesterday_use = min(leg.yesterday, lots)
             today_use = lots - yesterday_use
             if today_use > leg.today + 1e-12:
@@ -295,11 +333,12 @@ class CffexRuntime:
 
         prev_total = leg.total
         margin_release = 0.0 if prev_total <= 0 else leg.margin * (lots / prev_total)
+        mult = self._multiplier(product, is_option=is_option)
         if side == CffexPositionSide.LONG:
-            realized = (price - leg.avg_price) * spec.multiplier * lots
+            realized = (price - leg.avg_price) * mult * lots
         else:
-            realized = (leg.avg_price - price) * spec.multiplier * lots
-        commission = self._commission(spec, offset_flag, lots)
+            realized = (leg.avg_price - price) * mult * lots
+        commission = self._commission(product, offset_flag, lots)
 
         leg.yesterday -= yesterday_use
         leg.today -= today_use
@@ -326,8 +365,14 @@ class CffexRuntime:
                 "ts": int(time.time()),
                 "closed_yesterday": yesterday_use,
                 "closed_today": today_use,
-                "multiplier": spec.multiplier,
+                "multiplier": mult,
+                "exchange": product.exchange,
+                "product_type": "option" if is_option else "future",
             },
         )
         self.fills.append(fill)
         return fill
+
+
+# Preferred alias.
+CnFuturesRuntime = CffexRuntime

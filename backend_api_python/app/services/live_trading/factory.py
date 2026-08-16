@@ -135,6 +135,8 @@ def exchange_market_scope(cfg: Dict[str, Any]) -> str:
         if ex in ("ctp", "qmt"):
             return "futures"
         return "swap"
+    if raw in ("option", "options"):
+        return "options"
     if raw in ("spot", "swap", "both", "futures"):
         return raw
     return raw
@@ -158,9 +160,9 @@ def validate_exchange_environment(exchange_id: str, environment: str, market_sco
         if ex == "htx" and env != "live":
             raise LiveTradingError("HTX_DEMO_NOT_SUPPORTED")
         raise LiveTradingError("UNSUPPORTED_TRADING_ENVIRONMENT")
-    if scope not in ("spot", "swap", "both", "futures"):
+    if scope not in ("spot", "swap", "both", "futures", "options"):
         raise LiveTradingError("INVALID_CREDENTIAL_MARKET_SCOPE")
-    if ex in ("ctp", "qmt") and scope not in ("futures", "both"):
+    if ex in ("ctp", "qmt") and scope not in ("futures", "options", "both"):
         raise LiveTradingError("INVALID_CREDENTIAL_MARKET_SCOPE")
 
 
@@ -232,7 +234,9 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
 
     mt = (market_type or exchange_config.get("market_type") or exchange_config.get("defaultType") or "swap").strip().lower()
     if exchange_id in ("ctp", "qmt"):
-        if mt in ("future", "futures", "swap", "perp", "perpetual", ""):
+        if mt in ("option", "options"):
+            mt = "options"
+        elif mt in ("future", "futures", "swap", "perp", "perpetual", ""):
             mt = "futures"
     elif mt in ("futures", "future", "perp", "perpetual"):
         mt = "swap"

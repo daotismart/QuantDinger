@@ -80,8 +80,10 @@ class TestHelpers:
         assert allowed_bot_types("Forex") == set()
         # USStock: no grid (overnight gaps), no martingale.
         assert allowed_bot_types("USStock") == {"dca", "trend"}
-        # CFFEX index futures: trend only (session gaps + lot size).
+        # CFFEX / mainland China futures: trend only (session gaps + lot size).
         assert allowed_bot_types("CNIndexFutures") == {"trend"}
+        assert allowed_bot_types("CNFutures") == {"trend"}
+        assert allowed_bot_types("CNFuturesOptions") == {"trend"}
 
     def test_list_supported_brokers_for_market(self):
         usstock_brokers = list_supported_brokers_for_market("USStock")
@@ -90,6 +92,8 @@ class TestHelpers:
         assert "binance" not in usstock_brokers
         assert list_supported_brokers_for_market("Forex") == set()
         assert list_supported_brokers_for_market("CNIndexFutures") == {"ctp", "qmt"}
+        assert list_supported_brokers_for_market("CNFutures") == {"ctp", "qmt"}
+        assert list_supported_brokers_for_market("CNFuturesOptions") == {"ctp", "qmt"}
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +120,9 @@ class TestValidateLegalCombos:
         ("ibkr", "USStock", "spot", "long"),
         ("ctp", "CNIndexFutures", "futures", "both"),
         ("qmt", "CNIndexFutures", "futures", "short"),
+        ("ctp", "CNFutures", "futures", "both"),
+        ("qmt", "CNFuturesOptions", "options", "both"),
+        ("ctp", "CNIndexOptions", "options", "short"),
     ])
     def test_valid_strategy_combo_raises_nothing(
         self, exchange_id, market_category, market_type, trade_direction
@@ -358,15 +365,20 @@ class TestToDictSnapshot:
 
     def test_live_market_categories_serialized(self):
         assert sorted(to_dict()["live_market_categories"]) == [
+            "CNFutures",
+            "CNFuturesOptions",
             "CNIndexFutures",
+            "CNIndexOptions",
             "Crypto",
             "USStock",
         ]
 
     def test_cffex_brokers_serialized(self):
         bm = to_dict()["broker_markets"]
-        assert bm["ctp"] == {"CNIndexFutures": ["futures"]}
-        assert bm["qmt"] == {"CNIndexFutures": ["futures"]}
+        assert bm["ctp"]["CNFutures"] == ["futures"]
+        assert bm["ctp"]["CNFuturesOptions"] == ["options"]
+        assert bm["ctp"]["CNIndexFutures"] == ["futures"]
+        assert bm["qmt"]["CNIndexOptions"] == ["options"]
 
     def test_matrix_internal_consistency(self):
         # Every long-only broker must be present in BROKER_MARKETS.

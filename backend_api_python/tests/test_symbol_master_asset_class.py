@@ -8,6 +8,8 @@ def test_symbol_master_asset_class_defaults_follow_market_type():
     assert _default_asset_class("Crypto") == "crypto"
     assert _default_asset_class("Forex") == "forex"
     assert _default_asset_class("Futures") == "futures"
+    assert _default_asset_class("CNFutures") == "futures"
+    assert _default_asset_class("CNFuturesOptions") == "options"
     assert _default_asset_class("CNIndexFutures") == "futures"
     assert _default_asset_class("CNIndexOptions") == "options"
 
