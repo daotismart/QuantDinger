@@ -26,3 +26,5 @@ CTP_MD_INSTRUMENTS=rb2505
 - **清理**：Celery Beat 按保留天数清理 tick/K 线
 
 详情见英文文档 `MARKET_DATA_MAINT_GUIDE.md` 与 `env.example`。
+
+各周期上游来源与延迟详见 `docs/trading/KLINE_TIMEFRAME_SOURCES_CN.md`。

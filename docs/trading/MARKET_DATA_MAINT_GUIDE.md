@@ -56,3 +56,5 @@ Bars are rejected when:
 - duplicate timestamps appear in the same batch
 
 Realtime tick spikes beyond `MARKET_DATA_MAINT_PRICE_SPIKE_RATIO` are counted as anomalies and logged; cumulative volume resets are treated as session boundaries.
+
+See `docs/trading/KLINE_TIMEFRAME_SOURCES.md` for per-timeframe upstream sources and latency.
