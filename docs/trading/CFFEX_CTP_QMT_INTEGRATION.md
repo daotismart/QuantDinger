@@ -19,19 +19,23 @@
 Default provider is `auto`: load the complete Sina series (often 10+ years for continuous contracts such as `RB0` / `IF0`), then optionally window by date.
 
 ```bash
-# HTTP
+# Daily
 GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=1D
-GET /api/kline/history?market=CNFutures&symbol=IF2509&timeframe=1D&start_date=2024-01-01&end_date=2024-12-31
+
+# Minute (stitches nearby delivery months; ~1023 bars/contract upstream)
+GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=5m
+GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=1m
 
 # CLI
 cd backend_api_python
-PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe 1D -o rb0.json
+PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe 5m --stitch-months 12 -o rb0_5m.json
 ```
 
 Notes:
 - Root / `*0` codes map to **main continuous** feeds (`RB` → `RB0`).
 - Dated contracts (`rb2509`) fetch that delivery month.
-- Minute/4H history needs a dated contract on most venues.
+- Minute periods: `1m` / `3m` / `5m` / `15m` / `30m` / `1H` / `4H`.
+- Full minute history stitches up to `CN_FUTURES_MINUTE_STITCH_MONTHS` (default 12) nearby contracts.
 - Futures-options history currently uses the underlying continuous series as reference.
 
 ## Strategy / trading examples

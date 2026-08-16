@@ -17,19 +17,23 @@
 ## 完整历史行情
 
 ```bash
-# HTTP（不受普通 /kline 的 1000 条上限限制）
+# 日线
 GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=1D
-GET /api/kline/history?market=CNFutures&symbol=IF2509&timeframe=1D&start_date=2024-01-01&end_date=2024-12-31
+
+# 分钟线（跨邻近交割月拼接；单合约上游约 1023 根）
+GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=5m
+GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=1m
 
 # CLI
 cd backend_api_python
-PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe 1D -o rb0.json
+PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe 5m --stitch-months 12 -o rb0_5m.json
 ```
 
 说明：
-- 根代码 / `*0` → 主力连续（`RB` → `RB0`），可拿到完整历史（螺纹钢等常超过 4000 根日线）
+- 根代码 / `*0` → 主力连续（`RB` → `RB0`）
 - 带月份合约（`rb2509`）拉该交割月
-- 分钟 / 4H 多数需具体合约月
+- 分钟周期：`1m` / `3m` / `5m` / `15m` / `30m` / `1H` / `4H`
+- 完整分钟历史通过 `CN_FUTURES_MINUTE_STITCH_MONTHS`（默认 12）拼接邻近合约
 - 期权历史暂用标的主力连续作参考序列
 
 ## 交易示例
