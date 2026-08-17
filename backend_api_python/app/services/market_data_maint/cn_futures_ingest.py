@@ -363,6 +363,10 @@ def ingest_cn_futures_history(
         results.append(item)
         if on_progress:
             on_progress({"index": index, "total": len(targets), "symbol": symbol, "item": item})
+        if want_1m and index < len(targets):
+            pause = float(os.getenv("CN_FUTURES_INGEST_SYMBOL_PAUSE_SEC", "1.5") or 1.5)
+            if pause > 0:
+                sleeper(pause)
 
     watch_written = 0
     if persist and watch_specs:

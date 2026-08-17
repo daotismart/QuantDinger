@@ -459,34 +459,48 @@ class CnFuturesDataSource(BaseDataSource):
         return rows
 
     def _load_minute_rows(self, ak: Any, fetch_symbol: str, period: str) -> List[Dict[str, Any]]:
-        try:
-            frame = ak.futures_zh_minute_sina(symbol=fetch_symbol, period=period)
-        except Exception as exc:
-            logger.debug("minute fetch failed for %s period=%s: %s", fetch_symbol, period, exc)
-            return []
-        if frame is None or getattr(frame, "empty", True):
-            return []
-        rows: List[Dict[str, Any]] = []
-        for _, item in frame.iterrows():
-            raw_dt = item.get("datetime") or item.get("date") or item.get("时间")
-            ts = _to_cst_ts(raw_dt)
-            if ts is None:
+        symbols = [fetch_symbol]
+        lower = str(fetch_symbol).lower()
+        if lower not in {s.lower() for s in symbols}:
+            symbols.append(lower)
+        if lower != fetch_symbol:
+            symbols.append(lower)
+        seen = set()
+        for symbol in symbols:
+            key = symbol.lower()
+            if key in seen:
                 continue
+            seen.add(key)
             try:
-                rows.append(
-                    self.format_kline(
-                        ts,
-                        float(item.get("open") or item.get("开盘价") or 0),
-                        float(item.get("high") or item.get("最高价") or 0),
-                        float(item.get("low") or item.get("最低价") or 0),
-                        float(item.get("close") or item.get("收盘价") or 0),
-                        float(item.get("volume") or item.get("成交量") or 0),
-                    )
-                )
-            except Exception:
+                frame = ak.futures_zh_minute_sina(symbol=symbol, period=period)
+            except Exception as exc:
+                logger.debug("minute fetch failed for %s period=%s: %s", symbol, period, exc)
                 continue
-        rows.sort(key=lambda r: r["time"])
-        return rows
+            if frame is None or getattr(frame, "empty", True):
+                continue
+            rows: List[Dict[str, Any]] = []
+            for _, item in frame.iterrows():
+                raw_dt = item.get("datetime") or item.get("date") or item.get("时间")
+                ts = _to_cst_ts(raw_dt)
+                if ts is None:
+                    continue
+                try:
+                    rows.append(
+                        self.format_kline(
+                            ts,
+                            float(item.get("open") or item.get("开盘价") or 0),
+                            float(item.get("high") or item.get("最高价") or 0),
+                            float(item.get("low") or item.get("最低价") or 0),
+                            float(item.get("close") or item.get("收盘价") or 0),
+                            float(item.get("volume") or item.get("成交量") or 0),
+                        )
+                    )
+                except Exception:
+                    continue
+            if rows:
+                rows.sort(key=lambda r: r["time"])
+                return rows
+        return []
 
     def _candidate_minute_symbols(self, symbol: str, *, months: int) -> List[str]:
         """Build continuous + nearby dated contract codes for minute stitching."""
