@@ -12,6 +12,82 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 VALID_NOTIFICATION_CHANNELS = {"browser", "email", "telegram", "discord", "webhook", "phone"}
+CANDLE_COLOR_SCHEMES = {"green_up", "red_up"}
+DEFAULT_CHART_PREFERENCES = {"candle_color_scheme": "green_up"}
+_CANDLE_COLOR_ALIASES = {
+    "red_up": "red_up",
+    "redup": "red_up",
+    "cn": "red_up",
+    "china": "red_up",
+    "asian": "red_up",
+    "green_down": "red_up",
+    "green_up": "green_up",
+    "greenup": "green_up",
+    "us": "green_up",
+    "western": "green_up",
+    "red_down": "green_up",
+}
+
+
+def normalize_candle_color_scheme(value: Any, *, default: str = "green_up") -> str:
+    """Map UI / alias values onto ``green_up`` or ``red_up`` (A-share convention)."""
+    raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    mapped = _CANDLE_COLOR_ALIASES.get(raw)
+    if mapped in CANDLE_COLOR_SCHEMES:
+        return mapped
+    fallback = default if default in CANDLE_COLOR_SCHEMES else "green_up"
+    return fallback
+
+
+def ensure_chart_preferences_column() -> None:
+    """Add qd_users.chart_preferences when upgrading existing databases."""
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                ALTER TABLE qd_users
+                ADD COLUMN IF NOT EXISTS chart_preferences TEXT DEFAULT ''
+                """
+            )
+            db.commit()
+            cur.close()
+    except Exception as exc:
+        logger.warning("ensure chart_preferences column skipped: %s", exc)
+
+
+def get_chart_preferences(user_id: int) -> dict:
+    """Return chart display preferences with defaults."""
+    ensure_chart_preferences_column()
+    with get_db_connection() as db:
+        cur = db.cursor()
+        cur.execute("SELECT chart_preferences FROM qd_users WHERE id = ?", (int(user_id),))
+        row = cur.fetchone()
+        cur.close()
+    parsed = _loads_dict((row or {}).get("chart_preferences") if row else "")
+    return {
+        "candle_color_scheme": normalize_candle_color_scheme(parsed.get("candle_color_scheme")),
+    }
+
+
+def update_chart_preferences(user_id: int, data: dict[str, Any]) -> dict:
+    """Validate and persist chart display preferences."""
+    current = get_chart_preferences(user_id)
+    payload = data if isinstance(data, dict) else {}
+    if "candle_color_scheme" in payload or "candleColorScheme" in payload:
+        current["candle_color_scheme"] = normalize_candle_color_scheme(
+            payload.get("candle_color_scheme") or payload.get("candleColorScheme")
+        )
+    ensure_chart_preferences_column()
+    with get_db_connection() as db:
+        cur = db.cursor()
+        cur.execute(
+            "UPDATE qd_users SET chart_preferences = ?, updated_at = NOW() WHERE id = ?",
+            (json.dumps(current, ensure_ascii=False), int(user_id)),
+        )
+        db.commit()
+        cur.close()
+    return current
 
 
 def ensure_chart_templates_column() -> None:

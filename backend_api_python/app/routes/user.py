@@ -14,10 +14,12 @@ from app.services.user_preferences import (
     change_user_password,
     delete_chart_template as delete_chart_template_service,
     ensure_chart_templates_column,
+    get_chart_preferences as get_chart_preferences_service,
     get_notification_settings as get_notification_settings_service,
     list_chart_templates as list_chart_templates_service,
     save_chart_template as save_chart_template_service,
     send_test_notification,
+    update_chart_preferences as update_chart_preferences_service,
     update_notification_settings as update_notification_settings_service,
 )
 from app.services.user_service import get_user_service
@@ -779,6 +781,36 @@ def update_notification_settings():
     except Exception as e:
         logger.error(f"update_notification_settings failed: {e}")
         return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500
+@user_blp.route('/chart-preferences', methods=['GET'])
+@login_required
+def get_chart_preferences():
+    """Get current user's K-line / chart display preferences."""
+    try:
+        user_id = getattr(g, 'user_id', None)
+        if not user_id:
+            return jsonify({'code': 0, 'msg': 'Not authenticated', 'data': None}), 401
+        prefs = get_chart_preferences_service(int(user_id))
+        return jsonify({'code': 1, 'msg': 'success', 'data': prefs})
+    except Exception as e:
+        logger.error(f"get_chart_preferences failed: {e}")
+        return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500
+
+
+@user_blp.route('/chart-preferences', methods=['PUT'])
+@login_required
+def update_chart_preferences():
+    """Update K-line color scheme and other chart display preferences."""
+    try:
+        user_id = getattr(g, 'user_id', None)
+        if not user_id:
+            return jsonify({'code': 0, 'msg': 'Not authenticated', 'data': None}), 401
+        prefs = update_chart_preferences_service(int(user_id), request.get_json() or {})
+        return jsonify({'code': 1, 'msg': 'Chart preferences updated', 'data': prefs})
+    except Exception as e:
+        logger.error(f"update_chart_preferences failed: {e}")
+        return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500
+
+
 @user_blp.route('/chart-templates', methods=['GET'])
 @login_required
 def get_chart_templates():

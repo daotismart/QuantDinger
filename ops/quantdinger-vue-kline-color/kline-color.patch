@@ -1,0 +1,367 @@
+diff --git a/src/api/user.js b/src/api/user.js
+index 6c44533..884ada2 100644
+--- a/src/api/user.js
++++ b/src/api/user.js
+@@ -225,6 +225,21 @@ export function deleteChartTemplate (templateId) {
+   })
+ }
+ 
++export function getChartPreferences () {
++  return request({
++    url: '/api/users/chart-preferences',
++    method: 'get'
++  })
++}
++
++export function saveChartPreferences (data) {
++  return request({
++    url: '/api/users/chart-preferences',
++    method: 'put',
++    data
++  })
++}
++
+ /**
+  * Get current user's login history (password / email code / OAuth)
+  * @param {Object} params - { page, page_size }
+diff --git a/src/locales/lang/ar-SA.js b/src/locales/lang/ar-SA.js
+index dfaaec8..6ca1641 100644
+--- a/src/locales/lang/ar-SA.js
++++ b/src/locales/lang/ar-SA.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-Line",
+   "dashboard.indicator.chart.uptrend": "اتجاه تصاعدي",
+   "dashboard.indicator.chart.volume": "مقدار",
++  "dashboard.indicator.chart.colorSchemeRedUp": "ألوان الشموع: أحمر صعود / أخضر هبوط (انقر للتبديل)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "ألوان الشموع: أخضر صعود / أحمر هبوط (انقر للتبديل)",
+   "dashboard.indicator.create": "إنشاء مؤشر",
+   "dashboard.indicator.delete.confirmCancel": "يلغي",
+   "dashboard.indicator.delete.confirmContent": "هل أنت متأكد من رغبتك في حذف المؤشر \"{name}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+diff --git a/src/locales/lang/de-DE.js b/src/locales/lang/de-DE.js
+index 9c258d0..a3b0676 100644
+--- a/src/locales/lang/de-DE.js
++++ b/src/locales/lang/de-DE.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-Line",
+   "dashboard.indicator.chart.uptrend": "Aufwärtstrend",
+   "dashboard.indicator.chart.volume": "Volumen",
++  "dashboard.indicator.chart.colorSchemeRedUp": "Kerzenfarben: rot aufwärts / grün abwärts (zum Wechseln klicken)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "Kerzenfarben: grün aufwärts / rot abwärts (zum Wechseln klicken)",
+   "dashboard.indicator.create": "Indikator erstellen",
+   "dashboard.indicator.delete.confirmCancel": "Stornieren",
+   "dashboard.indicator.delete.confirmContent": "Sind Sie sicher, dass Sie den Indikator \"{name}\" löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.",
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index cdabb31..ab2f307 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -2090,6 +2090,8 @@ const locale = {
+   "dashboard.indicator.chart.volume": "Volume",
+   "dashboard.indicator.chart.uptrend": "Up Trend",
+   "dashboard.indicator.chart.downtrend": "Down Trend",
++  "dashboard.indicator.chart.colorSchemeRedUp": "Candle colors: red up / green down (click to switch)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "Candle colors: green up / red down (click to switch)",
+   "dashboard.indicator.tooltip.time": "Time",
+   "dashboard.indicator.tooltip.open": "O",
+   "dashboard.indicator.tooltip.close": "C",
+diff --git a/src/locales/lang/fr-FR.js b/src/locales/lang/fr-FR.js
+index 1cf1e9c..c817abc 100644
+--- a/src/locales/lang/fr-FR.js
++++ b/src/locales/lang/fr-FR.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-Line",
+   "dashboard.indicator.chart.uptrend": "Tendance à la hausse",
+   "dashboard.indicator.chart.volume": "Volume",
++  "dashboard.indicator.chart.colorSchemeRedUp": "Couleurs : rouge haussier / vert baissier (cliquer pour changer)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "Couleurs : vert haussier / rouge baissier (cliquer pour changer)",
+   "dashboard.indicator.create": "Créer un indicateur",
+   "dashboard.indicator.delete.confirmCancel": "Annuler",
+   "dashboard.indicator.delete.confirmContent": "Êtes-vous sûr de vouloir supprimer l'indicateur « {name} » ? Cette action est irréversible.",
+diff --git a/src/locales/lang/ja-JP.js b/src/locales/lang/ja-JP.js
+index b85de66..2362af2 100644
+--- a/src/locales/lang/ja-JP.js
++++ b/src/locales/lang/ja-JP.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "Kライン",
+   "dashboard.indicator.chart.uptrend": "上昇傾向",
+   "dashboard.indicator.chart.volume": "音量",
++  "dashboard.indicator.chart.colorSchemeRedUp": "ローソク足：赤が上昇／緑が下落（クリックで切替）",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "ローソク足：緑が上昇／赤が下落（クリックで切替）",
+   "dashboard.indicator.create": "インジケーターを作成する",
+   "dashboard.indicator.delete.confirmCancel": "取り消す",
+   "dashboard.indicator.delete.confirmContent": "インジケーター「{name}」を削除してもよろしいですか？この操作は元に戻せません。",
+diff --git a/src/locales/lang/ko-KR.js b/src/locales/lang/ko-KR.js
+index b443fbe..3e3b06a 100644
+--- a/src/locales/lang/ko-KR.js
++++ b/src/locales/lang/ko-KR.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-라인",
+   "dashboard.indicator.chart.uptrend": "상승 추세",
+   "dashboard.indicator.chart.volume": "용량",
++  "dashboard.indicator.chart.colorSchemeRedUp": "캔들 색: 상승 빨강 / 하락 초록 (클릭하여 전환)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "캔들 색: 상승 초록 / 하락 빨강 (클릭하여 전환)",
+   "dashboard.indicator.create": "지표 생성",
+   "dashboard.indicator.delete.confirmCancel": "취소",
+   "dashboard.indicator.delete.confirmContent": "\"{name}\" 지표를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+diff --git a/src/locales/lang/ru-RU.js b/src/locales/lang/ru-RU.js
+index f10f298..f894191 100644
+--- a/src/locales/lang/ru-RU.js
++++ b/src/locales/lang/ru-RU.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-Line",
+   "dashboard.indicator.chart.uptrend": "Восходящий тренд",
+   "dashboard.indicator.chart.volume": "Объем",
++  "dashboard.indicator.chart.colorSchemeRedUp": "Цвет свечей: красный рост / зелёное падение (нажмите, чтобы сменить)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "Цвет свечей: зелёный рост / красное падение (нажмите, чтобы сменить)",
+   "dashboard.indicator.create": "Создать индикатор",
+   "dashboard.indicator.delete.confirmCancel": "Отмена",
+   "dashboard.indicator.delete.confirmContent": "Вы уверены, что хотите удалить индикатор \"{name}\"? Это действие необратимо.",
+diff --git a/src/locales/lang/th-TH.js b/src/locales/lang/th-TH.js
+index 2b27c4f..106b936 100644
+--- a/src/locales/lang/th-TH.js
++++ b/src/locales/lang/th-TH.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-Line",
+   "dashboard.indicator.chart.uptrend": "แนวโน้มขาขึ้น",
+   "dashboard.indicator.chart.volume": "ปริมาณ",
++  "dashboard.indicator.chart.colorSchemeRedUp": "สีแท่งเทียน: แดงขึ้น เขียวลง (คลิกเพื่อสลับ)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "สีแท่งเทียน: เขียวขึ้น แดงลง (คลิกเพื่อสลับ)",
+   "dashboard.indicator.create": "สร้างตัวบ่งชี้",
+   "dashboard.indicator.delete.confirmCancel": "ยกเลิก",
+   "dashboard.indicator.delete.confirmContent": "คุณแน่ใจหรือไม่ว่าต้องการลบตัวบ่งชี้ \"{name}\"? การกระทำนี้ไม่สามารถย้อนกลับได้",
+diff --git a/src/locales/lang/vi-VN.js b/src/locales/lang/vi-VN.js
+index f6a5334..d3a8854 100644
+--- a/src/locales/lang/vi-VN.js
++++ b/src/locales/lang/vi-VN.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K-Line",
+   "dashboard.indicator.chart.uptrend": "Xu hướng tăng",
+   "dashboard.indicator.chart.volume": "Âm lượng",
++  "dashboard.indicator.chart.colorSchemeRedUp": "Màu nến: đỏ tăng / xanh giảm (bấm để đổi)",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "Màu nến: xanh tăng / đỏ giảm (bấm để đổi)",
+   "dashboard.indicator.create": "Tạo chỉ báo",
+   "dashboard.indicator.delete.confirmCancel": "Hủy bỏ",
+   "dashboard.indicator.delete.confirmContent": "Bạn có chắc chắn muốn xóa chỉ báo \"{name}\" không? Thao tác này không thể hoàn tác.",
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index 7102457..989399b 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -2482,6 +2482,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K线",
+   "dashboard.indicator.chart.uptrend": "上涨趋势",
+   "dashboard.indicator.chart.volume": "成交量",
++  "dashboard.indicator.chart.colorSchemeRedUp": "K线颜色：红涨绿跌（点击切换）",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "K线颜色：绿涨红跌（点击切换）",
+   "dashboard.indicator.create": "创建指标",
+   "dashboard.indicator.delete.confirmCancel": "取消",
+   "dashboard.indicator.delete.confirmContent": "确定要删除指标\"{name}\"吗？此操作不可恢复。",
+diff --git a/src/locales/lang/zh-TW.js b/src/locales/lang/zh-TW.js
+index c28c575..8a49ec3 100644
+--- a/src/locales/lang/zh-TW.js
++++ b/src/locales/lang/zh-TW.js
+@@ -2233,6 +2233,8 @@ const locale = {
+   "dashboard.indicator.chart.kline": "K線",
+   "dashboard.indicator.chart.uptrend": "上升趨勢",
+   "dashboard.indicator.chart.volume": "成交量",
++  "dashboard.indicator.chart.colorSchemeRedUp": "K線顏色：紅漲綠跌（點擊切換）",
++  "dashboard.indicator.chart.colorSchemeGreenUp": "K線顏色：綠漲紅跌（點擊切換）",
+   "dashboard.indicator.create": "創建指標",
+   "dashboard.indicator.delete.confirmCancel": "取消",
+   "dashboard.indicator.delete.confirmContent": "確定要刪除指標\"{name}\"嗎？此操作不可恢復。",
+diff --git a/src/views/indicator-analysis/components/KlineChart.vue b/src/views/indicator-analysis/components/KlineChart.vue
+index a5d97ea..552fb55 100644
+--- a/src/views/indicator-analysis/components/KlineChart.vue
++++ b/src/views/indicator-analysis/components/KlineChart.vue
+@@ -17,6 +17,18 @@
+           </div>
+         </a-tooltip>
+         <a-divider type="vertical" />
++        <a-tooltip :title="candleColorSchemeHint" placement="right">
++          <div
++            class="drawing-tool-btn candle-color-btn"
++            :class="{ 'is-red-up': candleColorScheme === 'red_up' }"
++            @click="toggleCandleColorScheme"
++          >
++            <span class="candle-color-swatch" aria-hidden="true">
++              <i class="candle-color-swatch__up" />
++              <i class="candle-color-swatch__down" />
++            </span>
++          </div>
++        </a-tooltip>
+         <a-tooltip :title="$t('dashboard.indicator.drawing.clearAll')" placement="right">
+           <div class="drawing-tool-btn" @click="clearAllDrawings">
+             <a-icon type="delete" />
+@@ -169,6 +181,13 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch, s
+ import { init, registerIndicator, registerOverlay } from 'klinecharts'
+ import request from '@/utils/request'
+ import ExchangeKlineWs from '@/utils/exchangeWs'
++import { getChartPreferences, saveChartPreferences } from '@/api/user'
++import {
++  candleBarColors,
++  klinechartsCandleBarStyles,
++  resolveCandleColorScheme,
++  writeStoredCandleColorScheme
++} from '@/utils/candleColorScheme'
+ import { splitIndicatorPlotsByPane } from '@/utils/indicatorPlotGrouping'
+ import { usePyodide } from '@/services/pyodide/usePyodide'
+ import {
+@@ -261,6 +280,7 @@ export default {
+ 
+     const chartRef = shallowRef(null)
+     const chartTheme = ref(props.theme || 'light')
++    const candleColorScheme = ref(resolveCandleColorScheme())
+     let chartResizeObserver = null
+     let chartResizeRafId = null
+     let volEnsureRafId = null
+@@ -561,6 +581,35 @@ export default {
+     }
+ 
+     const { proxy } = getCurrentInstance()
++    const candleColorSchemeHint = computed(() => (
++      candleColorScheme.value === 'red_up'
++        ? proxy.$t('dashboard.indicator.chart.colorSchemeRedUp')
++        : proxy.$t('dashboard.indicator.chart.colorSchemeGreenUp')
++    ))
++    const applyCandleColorScheme = (scheme, persistRemote = false) => {
++      candleColorScheme.value = writeStoredCandleColorScheme(scheme)
++      updateChartTheme()
++      if (persistRemote) {
++        saveChartPreferences({ candle_color_scheme: candleColorScheme.value }).catch(() => {})
++      }
++    }
++    const toggleCandleColorScheme = () => {
++      applyCandleColorScheme(
++        candleColorScheme.value === 'red_up' ? 'green_up' : 'red_up',
++        true
++      )
++    }
++    const loadRemoteCandleColorScheme = async () => {
++      try {
++        const res = await getChartPreferences()
++        const remote = res && res.data
++        const scheme = remote && remote.candle_color_scheme
++        if (scheme) {
++          applyCandleColorScheme(scheme, false)
++        }
++      } catch (e) {
++      }
++    }
+ 
+     const drawingTools = computed(() => [
+       {
+@@ -3265,9 +3314,7 @@ registerOverlay({
+             }
+           },
+           bar: {
+-            upColor: isDark ? '#0ecb81' : '#13c2c2',
+-            downColor: isDark ? '#f6465d' : '#fa541c',
+-            noChangeColor: theme.borderColor
++            ...klinechartsCandleBarStyles(candleColorScheme.value, isDark)
+           },
+           area: {
+             point: { animation: false, animationDuration: 0 }
+@@ -3277,7 +3324,10 @@ registerOverlay({
+           tooltip: {
+             showRule: 'always',
+             showType: 'standard'
+-          }
++          },
++          bars: [
++            klinechartsCandleBarStyles(candleColorScheme.value, isDark)
++          ]
+         },
+         xAxis: {
+           show: true,
+@@ -4477,10 +4527,11 @@ registerOverlay({
+               style: 'solid'
+             })
+           })
++          const barColors = candleBarColors(candleColorScheme.value, chartTheme.value === 'dark')
+           const buildBarFigure = (key, title, {
+             baseValue = 0,
+-            upColor = '#ef5350',
+-            downColor = '#26a69a'
++            upColor = barColors.upColor,
++            downColor = barColors.downColor
+           } = {}) => ({
+             key,
+             title,
+@@ -5023,6 +5074,7 @@ registerOverlay({
+       if (props.theme && (props.theme === 'dark' || props.theme === 'light')) {
+         chartTheme.value = props.theme
+       }
++      loadRemoteCandleColorScheme()
+ 
+       prewarmPyodide()
+ 
+@@ -5175,6 +5227,9 @@ registerOverlay({
+       loadingHistory,
+       chartRef,
+       chartTheme,
++      candleColorScheme,
++      candleColorSchemeHint,
++      toggleCandleColorScheme,
+       themeConfig,
+       wmCanvasRef,
+       chartRootEl,
+@@ -5333,6 +5388,61 @@ registerOverlay({
+   height: 20px;
+ }
+ 
++.candle-color-btn {
++  padding: 0;
++}
++
++.candle-color-swatch {
++  width: 16px;
++  height: 16px;
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  overflow: hidden;
++  border-radius: 3px;
++  border: 1px solid rgba(0, 0, 0, 0.12);
++}
++
++.candle-color-swatch__up,
++.candle-color-swatch__down {
++  display: block;
++}
++
++.candle-color-btn .candle-color-swatch__up {
++  background: #13c2c2;
++}
++
++.candle-color-btn .candle-color-swatch__down {
++  background: #fa541c;
++}
++
++.candle-color-btn.is-red-up .candle-color-swatch__up {
++  background: #f5222d;
++}
++
++.candle-color-btn.is-red-up .candle-color-swatch__down {
++  background: #13c2c2;
++}
++
++.chart-left.theme-dark .candle-color-swatch {
++  border-color: rgba(255, 255, 255, 0.18);
++}
++
++.chart-left.theme-dark .candle-color-btn .candle-color-swatch__up {
++  background: #0ecb81;
++}
++
++.chart-left.theme-dark .candle-color-btn .candle-color-swatch__down {
++  background: #f6465d;
++}
++
++.chart-left.theme-dark .candle-color-btn.is-red-up .candle-color-swatch__up {
++  background: #f6465d;
++}
++
++.chart-left.theme-dark .candle-color-btn.is-red-up .candle-color-swatch__down {
++  background: #0ecb81;
++}
++
+ .indicator-toolbar {
+   flex-shrink: 0;
+   display: flex;
