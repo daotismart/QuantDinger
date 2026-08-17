@@ -30,6 +30,7 @@ from app.markets.cn_futures import (
     parse_cn_option_symbol,
     resolve_market_category,
 )
+from app.markets.cn_futures_sessions import md_connection_open
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -59,13 +60,7 @@ def _provider_name() -> str:
 
 
 def _session_open_cst() -> bool:
-    now = datetime.now(_CST)
-    if now.weekday() >= 5:
-        return False
-    minutes = now.hour * 60 + now.minute
-    day = 9 * 60 <= minutes <= 15 * 60
-    night = minutes >= 21 * 60 or minutes <= 2 * 60 + 30
-    return day or night
+    return md_connection_open([])
 
 
 def _to_cst_ts(day_value: Any) -> Optional[int]:

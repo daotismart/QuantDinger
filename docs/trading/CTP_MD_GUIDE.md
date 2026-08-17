@@ -46,6 +46,10 @@ Set these in `backend_api_python/.env` (see `env.example`):
 | `CTP_MD_INSTRUMENTS` | Boot subscriptions (`rb2505,ag2506,IF2503`) |
 | `CTP_MD_FLOW_PATH` | CTP flow directory |
 | `CTP_MD_TICK_STALE_AFTER_SECONDS` | Freshness window for cache consumers |
+| `CTP_MD_IGNORE_SESSION` | `true` to reconnect even when all products are closed |
+| `CTP_MD_SESSION_PREOPEN_MINUTES` | Connect this many minutes before the next matching session (default 10) |
+
+Tick collection follows each product's main matching hours (CST): CFFEX day session, commodity day session with tea/lunch breaks, and night sessions (21:00–23:00 / 01:00 / 02:30) including Friday-night into Saturday morning and Sunday night. The MdApi front is released outside those windows so closed-market disconnects are not retried every few seconds.
 
 ## API
 
