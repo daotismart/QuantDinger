@@ -96,3 +96,40 @@ def run_market_catalog_sync(self):
     from app.services.market_catalog_sync import run_market_catalog_sync_inline
 
     return run_market_catalog_sync_inline("celery-beat")
+
+
+@celery_app.task(
+    bind=True,
+    name="quantdinger.tasks.market_data_historical_maint",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def run_market_data_historical_maint(self):
+    del self
+    if not _enabled("MARKET_DATA_MAINT_ENABLED", "false"):
+        return {"skipped": True}
+    if not _enabled("MARKET_DATA_MAINT_HISTORICAL_ENABLED", "true"):
+        return {"skipped": True, "reason": "historical_disabled"}
+    from app.services.market_data_maint import run_historical_cycle
+
+    return run_historical_cycle(trigger="celery-beat")
+
+
+@celery_app.task(
+    bind=True,
+    name="quantdinger.tasks.market_data_retention_maint",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=2,
+)
+def run_market_data_retention_maint(self):
+    del self
+    if not _enabled("MARKET_DATA_MAINT_ENABLED", "false"):
+        return {"skipped": True}
+    from app.services.market_data_maint import run_retention_cycle
+
+    return run_retention_cycle(trigger="celery-beat")
+

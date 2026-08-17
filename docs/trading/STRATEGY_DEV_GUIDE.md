@@ -284,6 +284,7 @@ Live sessions process each closed bar once and preserve <code>g</code> state whi
 - Moving averages, breakouts, patterns, factors, and all other entry or scale-in signals must use completed bars so backtests, live runs, and restart replay share the same semantics.
 - Real-time prices are reserved for stop loss, take profit, trailing protection, and equity risk. They must not make an unfinished candle look complete or revise a confirmed strategy signal.
 - A future tick-driven strategy product needs a separate API, replay model, and contract. Do not simulate it inside ordinary Strategy API V2 source.
+- CN futures may optionally use CTP MdApi as a realtime price feed (see `docs/trading/CTP_MD_GUIDE.md`); that remains a market-data / risk input, not a tick-driven strategy contract.
 
 ---
 

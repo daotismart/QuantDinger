@@ -13,10 +13,6 @@ import requests
 import yfinance as yf
 
 from app.data_sources.base import BaseDataSource, TIMEFRAME_SECONDS
-from app.markets.cn_index_derivatives import (
-    cffex_unsupported_error,
-    is_cffex_index_derivative,
-)
 from app.utils.logger import get_logger
 from app.config import CCXTConfig, TiingoConfig, APIKeys
 
@@ -114,12 +110,26 @@ class FuturesDataSource(BaseDataSource):
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
         Get latest ticker for futures symbol.
+        CN futures: prefer live CTP MdApi ticks when configured.
         Traditional futures: Twelve Data → yfinance fallback.
         Crypto futures: CCXT.
         """
+        from app.markets.cn_futures import cn_misroute_error, is_cn_derivative
+
         sym = (symbol or "").strip()
-        if is_cffex_index_derivative(sym):
-            raise cffex_unsupported_error(sym)
+        try:
+            from app.services.ctp_md.service import ctp_ticker_for_symbol
+
+            ctp_ticker = ctp_ticker_for_symbol(sym)
+            if ctp_ticker and float(ctp_ticker.get("last") or 0) > 0:
+                return ctp_ticker
+        except Exception as e:
+            logger.debug("CTP futures ticker unavailable for %s: %s", sym, e)
+
+        # Domestic CN futures must not fall through to Twelve Data / yfinance / CCXT.
+        if is_cn_derivative(sym):
+            raise cn_misroute_error(sym)
+
         is_traditional = sym in self.YF_SYMBOLS or sym.endswith("=F") or sym in _TD_FUTURES_SYMBOLS
         if is_traditional:
             for fetcher in (self._get_ticker_twelvedata, self._get_ticker_yfinance, self._get_ticker_tiingo):
@@ -241,8 +251,10 @@ class FuturesDataSource(BaseDataSource):
             after_time: 预留与基类一致（当前期货链路未使用）
         """
         _ = after_time
-        if is_cffex_index_derivative(symbol):
-            raise cffex_unsupported_error(symbol)
+        from app.markets.cn_futures import cn_misroute_error, is_cn_derivative
+
+        if is_cn_derivative(symbol):
+            raise cn_misroute_error(symbol)
         base_symbol = symbol.replace("=F", "").upper()
         if base_symbol in _TD_FUTURES_SYMBOLS or symbol.endswith('=F'):
             return self._get_traditional_futures(symbol, timeframe, limit, before_time)

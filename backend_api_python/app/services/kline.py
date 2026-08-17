@@ -2,6 +2,7 @@
 K线数据服务
 """
 from typing import Dict, List, Any, Optional
+from datetime import datetime
 
 from app.data_sources import DataSourceFactory
 from app.utils.cache import CacheManager
@@ -68,6 +69,57 @@ class KlineService:
         
         return klines
     
+    def get_history(
+        self,
+        market: str,
+        symbol: str,
+        timeframe: str = "1D",
+        *,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch complete historical OHLCV for a symbol.
+
+        Currently implemented end-to-end for mainland China futures markets
+        (``CNFutures`` / ``CNFuturesOptions`` / ``CNIndex*``). Other markets
+        fall back to a wide ``get_kline`` window.
+        """
+        normalized_market = DataSourceFactory.normalize_market(market or "")
+        source = DataSourceFactory.get_source(normalized_market)
+        if hasattr(source, "get_history"):
+            return source.get_history(
+                symbol,
+                timeframe,
+                start_time=start_time,
+                end_time=end_time,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+        # Generic fallback: use after_time/before_time on get_kline without truncating.
+        after_time = start_time
+        before_time = end_time
+        if start_date and after_time is None:
+            try:
+                after_time = int(datetime.strptime(start_date[:10], "%Y-%m-%d").timestamp())
+            except Exception:
+                after_time = None
+        if end_date and before_time is None:
+            try:
+                before_time = int(datetime.strptime(end_date[:10], "%Y-%m-%d").timestamp()) + 86400
+            except Exception:
+                before_time = None
+        return DataSourceFactory.get_kline(
+            market=normalized_market,
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=100000,
+            before_time=before_time,
+            after_time=after_time,
+        )
+
     def get_latest_price(self, market: str, symbol: str) -> Optional[Dict[str, Any]]:
         """获取最新价格（使用1分钟K线，已弃用，建议使用 get_realtime_price）"""
         klines = self.get_kline(market, symbol, '1m', 1)

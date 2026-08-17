@@ -22,6 +22,10 @@ MARKET_ORDER = [
     "Crypto",
     "USStock",
     "CNStock",
+    "CNFutures",
+    "CNFuturesOptions",
+    "CNIndexFutures",
+    "CNIndexOptions",
     "HKStock",
     "Forex",
     "Futures",
@@ -120,6 +124,110 @@ MARKET_MODULES: Dict[str, MarketModule] = {
             ),
         ],
         supports={"spot": True, "swap": False, "short": False, "session": "exchange-hours"},
+    ),
+    "CNFutures": MarketModule(
+        key="CNFutures",
+        label="China Futures",
+        description="Mainland China futures across CFFEX/SHFE/DCE/CZCE/INE/GFEX.",
+        asset_class="futures",
+        symbol_hint="rb2509",
+        base_currency="CNY",
+        features=["research", "backtest", "paper", "live"],
+        data_requirements=[
+            DataRequirement(
+                key="cn_futures_compliance",
+                label="CN futures compliance feed",
+                setting_keys=["CN_FUTURES_MARKET_DATA_PROVIDER", "CFFEX_MARKET_DATA_PROVIDER"],
+                built_in=True,
+                purpose="quotes and OHLCV (compliance simulator or akshare)",
+            ),
+        ],
+        supports={
+            "spot": False,
+            "swap": False,
+            "futures": True,
+            "short": True,
+            "open_close": True,
+            "session": "exchange-hours",
+        },
+    ),
+    "CNFuturesOptions": MarketModule(
+        key="CNFuturesOptions",
+        label="China Futures Options",
+        description="Mainland China futures options (commodity + CFFEX index options).",
+        asset_class="options",
+        symbol_hint="m2509-C-2800",
+        base_currency="CNY",
+        features=["research", "backtest", "paper", "live"],
+        data_requirements=[
+            DataRequirement(
+                key="cn_futures_compliance",
+                label="CN futures compliance feed",
+                setting_keys=["CN_FUTURES_MARKET_DATA_PROVIDER", "CFFEX_MARKET_DATA_PROVIDER"],
+                built_in=True,
+                purpose="quotes and OHLCV",
+            ),
+        ],
+        supports={
+            "spot": False,
+            "swap": False,
+            "options": True,
+            "short": True,
+            "open_close": True,
+            "session": "exchange-hours",
+        },
+    ),
+    "CNIndexFutures": MarketModule(
+        key="CNIndexFutures",
+        label="CFFEX Index Futures",
+        description="CFFEX equity-index futures (IF/IH/IC/IM). Alias subset of CNFutures.",
+        asset_class="futures",
+        symbol_hint="IF2509",
+        base_currency="CNY",
+        features=["research", "backtest", "paper", "live"],
+        data_requirements=[
+            DataRequirement(
+                key="cn_futures_compliance",
+                label="CN futures compliance feed",
+                setting_keys=["CN_FUTURES_MARKET_DATA_PROVIDER", "CFFEX_MARKET_DATA_PROVIDER"],
+                built_in=True,
+                purpose="quotes and OHLCV (compliance simulator or akshare)",
+            ),
+        ],
+        supports={
+            "spot": False,
+            "swap": False,
+            "futures": True,
+            "short": True,
+            "open_close": True,
+            "session": "exchange-hours",
+        },
+    ),
+    "CNIndexOptions": MarketModule(
+        key="CNIndexOptions",
+        label="CFFEX Index Options",
+        description="CFFEX equity-index options (IO/HO/MO). Alias subset of CNFuturesOptions.",
+        asset_class="options",
+        symbol_hint="IO2509-C-4000",
+        base_currency="CNY",
+        features=["research", "backtest", "paper", "live"],
+        data_requirements=[
+            DataRequirement(
+                key="cn_futures_compliance",
+                label="CN futures compliance feed",
+                setting_keys=["CN_FUTURES_MARKET_DATA_PROVIDER", "CFFEX_MARKET_DATA_PROVIDER"],
+                built_in=True,
+                purpose="quotes and OHLCV",
+            ),
+        ],
+        supports={
+            "spot": False,
+            "swap": False,
+            "options": True,
+            "short": True,
+            "open_close": True,
+            "session": "exchange-hours",
+        },
     ),
     "HKStock": MarketModule(
         key="HKStock",
@@ -262,6 +370,8 @@ def _enabled_from_env(env: Mapping[str, str], market: str) -> bool:
         return market in allowed
     if market == "CNStock":
         return _flag(env, "SHOW_CN_STOCK", "false")
+    if market in ("CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions"):
+        return _flag(env, "SHOW_CN_FUTURES", env.get("SHOW_CN_INDEX_DERIVATIVES", "false"))
     if market == "HKStock":
         return _flag(env, "SHOW_HK_STOCK", "true")
     return True

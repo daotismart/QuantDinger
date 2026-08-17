@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 VALID_MARKETS = frozenset({
     "Crypto", "USStock", "CNStock", "HKStock", "Forex", "Futures", "MOEX",
+    "CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions",
 })
 CN_A_SHARE_PATTERN = re.compile(r"^\d{6}$")
 
