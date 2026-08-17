@@ -82,7 +82,7 @@ Notes:
 
 ## Visibility
 
-Set `SHOW_CN_FUTURES=true` or include markets in `ENABLED_MARKETS`.
+Set `SHOW_CN_FUTURES=true` (the default) or include the CN futures keys in **Settings → Market Modules** / `ENABLED_MARKETS`.
 
 ## Tests
 
