@@ -3,7 +3,7 @@
 
 Usage:
     python scripts/sync_market_symbols.py
-    python scripts/sync_market_symbols.py --markets CNStock HKStock USStock
+    python scripts/sync_market_symbols.py --markets CNFutures CNFuturesOptions CNIndexFutures CNIndexOptions
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ def main() -> None:
         "--markets",
         nargs="*",
         default=None,
-        help="Markets to sync. Defaults to CNStock HKStock USStock Crypto.",
+        help="Markets to sync. Defaults to all FETCHERS (CNStock, HKStock, USStock, Crypto, CNFutures, CNFuturesOptions, ...).",
     )
     args = parser.parse_args()
 

@@ -43,7 +43,15 @@ from app.services.symbol_master_sync import (
 
 INDEX_FUTURE_SAMPLES = ["IF", "IH", "IC", "IM", "IF2509", "IH2509"]
 COMMODITY_FUTURE_SAMPLES = ["rb2509", "m2509", "sc2509", "cu2509", "si2509", "TA509", "SR2509"]
-OPTION_SAMPLES = ["IO2509-C-4000", "m2509-C-2800", "rb2509P3400", "sc2509-C-580"]
+OPTION_SAMPLES = [
+    "IO2509-C-4000",
+    "m2509-C-2800",
+    "rb2509P3400",
+    "sc2509-C-580",
+    "a2609-C-3400",
+    "cu2609C100000",
+    "AP610C10000",
+]
 
 
 class TestCatalog:
@@ -79,7 +87,7 @@ class TestCatalog:
     def test_options_only_products_listed(self):
         opts = list_products(options_only=True)
         roots = {p.root for p in opts}
-        assert {"IO", "HO", "MO", "M", "CU", "SC", "SI"} <= roots
+        assert {"IO", "HO", "MO", "M", "CU", "SC", "SI", "A", "AD"} <= roots
 
 
 class TestMarketModules:
