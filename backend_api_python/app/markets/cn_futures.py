@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 CN_FUTURES_MARKET = "CNFutures"
@@ -226,6 +227,69 @@ def normalize_cn_symbol(symbol: str) -> str:
     if ":" in raw:
         raw = raw.split(":", 1)[-1]
     return raw.replace("=F", "").strip()
+
+
+def expand_cn_delivery_month(
+    month: str,
+    *,
+    exchange: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    """Expand CZCE-style 3-digit ``YMM`` months to Sina/YYMM ``YYMM``.
+
+    CTP on Zhengzhou often publishes ``SA701`` / ``TA509`` (last year digit +
+    month). Public Sina / akshare minute feeds expect ``SA2701`` / ``TA2509``.
+    Four-digit months and continuous sentinels (``0`` / ``888`` / ``999``) are
+    returned unchanged.
+    """
+    raw = str(month or "").strip().upper()
+    if not raw or raw in {"0", "888", "999"}:
+        return raw
+    if len(raw) == 4 and raw.isdigit():
+        return raw
+    if len(raw) != 3 or not raw.isdigit():
+        return raw
+    # Only CZCE (and unknown exchange) use the 3-digit form in practice.
+    exch = str(exchange or "").strip().upper()
+    if exch and exch not in {"CZCE", "ZCE"}:
+        return raw
+
+    year_digit = int(raw[0])
+    mon = int(raw[1:3])
+    if mon < 1 or mon > 12:
+        return raw
+
+    ref = now or datetime.now().astimezone()
+    year = (int(ref.year) // 10) * 10 + year_digit
+    # Keep the contract inside a sensible window around "now".
+    # Too far in the future → previous decade; too far in the past → next.
+    try:
+        from datetime import date as _date
+
+        pivot = _date(int(ref.year), int(ref.month), 1)
+        contract = _date(year, mon, 1)
+        if contract > _date(pivot.year + 2, pivot.month, 1):
+            year -= 10
+        elif contract < _date(pivot.year - 8, pivot.month, 1):
+            year += 10
+    except Exception:
+        pass
+    return f"{year % 100:02d}{mon:02d}"
+
+
+def to_sina_contract_symbol(symbol: str, *, now: Optional[datetime] = None) -> str:
+    """Map a CN futures instrument id onto the Sina/akshare contract code."""
+    code = normalize_cn_symbol(symbol)
+    parsed = parse_cn_future_symbol(code)
+    if not parsed:
+        return code
+    root = parsed["root"]
+    month = parsed.get("month") or ""
+    if not month or month in {"0", "888", "999"}:
+        return f"{root}0"
+    exchange = CN_FUTURE_PRODUCTS[root].exchange
+    expanded = expand_cn_delivery_month(month, exchange=exchange, now=now)
+    return f"{root}{expanded}"
 
 
 def _match_future(symbol: str) -> Optional[re.Match[str]]:

@@ -114,6 +114,10 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
       - ``continuous``: main-continuous root code like ``RB0`` / ``IF0``
       - ``contract``: specific delivery month like ``RB2509``
       - ``option``: listed option, Sina compact code like ``m2609C2800``
+
+    CZCE CTP codes such as ``SA701`` are expanded to Sina ``SA2701`` so minute
+    history does not silently fall back to the main-continuous series (which
+    can introduce day/night session price jumps on roll days).
     """
     code = normalize_cn_symbol(symbol)
     parsed = parse_cn_future_symbol(code)
@@ -122,7 +126,9 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
         month = parsed.get("month") or ""
         if not month or month in ("0", "888", "999"):
             return f"{root}0", "continuous"
-        return f"{root}{month}", "contract"
+        from app.markets.cn_futures import to_sina_contract_symbol
+
+        return to_sina_contract_symbol(code), "contract"
     opt = parse_cn_option_symbol(code)
     if opt:
         from app.markets.cn_options import (
@@ -383,10 +389,10 @@ class CnFuturesDataSource(BaseDataSource):
 
     def _get_ticker_akshare(self, symbol: str) -> Optional[Dict[str, Any]]:
         ak = self._import_akshare()
-        fetch_symbol, _mode = resolve_history_symbol(symbol)
-        # Spot endpoint prefers contract codes; continuous roots often work as ROOT0.
         code = normalize_cn_symbol(symbol)
-        query = code if parse_cn_future_symbol(code) and parse_cn_future_symbol(code).get("month") else fetch_symbol
+        fetch_symbol, _mode = resolve_history_symbol(symbol)
+        # Spot endpoint prefers the Sina contract code (CZCE 3-digit expanded).
+        query = fetch_symbol
         try:
             frame = ak.futures_zh_spot(symbol=query, market="CF", adjust="0")
             if frame is None or getattr(frame, "empty", True):
@@ -513,6 +519,8 @@ class CnFuturesDataSource(BaseDataSource):
 
     def _candidate_minute_symbols(self, symbol: str, *, months: int) -> List[str]:
         """Build continuous + nearby dated contract codes for minute stitching."""
+        from app.markets.cn_futures import to_sina_contract_symbol
+
         code = normalize_cn_symbol(symbol)
         fetch_symbol, mode = resolve_history_symbol(code)
         parsed = parse_cn_future_symbol(code) or parse_cn_option_symbol(code)
@@ -529,10 +537,18 @@ class CnFuturesDataSource(BaseDataSource):
                 seen.add(key)
                 out.append(key)
 
-        # Prefer continuous feed when available (recent window).
+        # Prefer the dated Sina contract (CZCE 3-digit expanded to YYMM) before
+        # the main-continuous series so short windows never inherit roll jumps.
+        if mode == "contract":
+            _add(fetch_symbol)
+            raw_month = parsed.get("month") or ""
+            if raw_month and raw_month not in ("0", "888", "999"):
+                raw_code = f"{root}{raw_month}"
+                if raw_code.upper() != fetch_symbol.upper():
+                    _add(raw_code)
+                sina_code = to_sina_contract_symbol(code)
+                _add(sina_code)
         _add(f"{root}0")
-        if mode == "contract" and parsed.get("month") and parsed["month"] not in ("0", "888", "999"):
-            _add(f"{root}{parsed['month']}")
 
         now = datetime.now(_CST)
         year, month = now.year, now.month
