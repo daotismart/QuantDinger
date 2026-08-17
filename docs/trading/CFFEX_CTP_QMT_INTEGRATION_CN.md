@@ -12,7 +12,40 @@
 | 行情 / 历史 | `CnFuturesDataSource`，默认 `auto`：akshare 拉取完整日线历史，失败回落 compliance |
 | 开平仓运行时 | 保证金、今/昨仓；期权卖方保证金 |
 | 实盘政策 | CTP/QMT × futures/options 全市场白名单 |
-| 安全 | 通用 `Futures` 拒绝国内品种；实盘需 `CFFEX_LIVE_TRADING_ENABLED=true` + 外部桥 |
+| 实盘下单 | OpenCTP TdApi（`app.services.ctp_td`），经 `CtpClient` 且 `mode=live` |
+| 安全 | 通用 `Futures` 拒绝国内品种；实盘需 `CFFEX_LIVE_TRADING_ENABLED=true` |
+
+## CTP 实盘下单（TdApi）
+
+1. 后端安装 OpenCTP（如 `pip install openctp-ctp`），按券商要求配置中文 locale（如 `zh_CN.GB18030`）。
+2. 配置交易前置（缺省时可回退同名 `CTP_MD_*`）：
+
+```bash
+CFFEX_LIVE_TRADING_ENABLED=true
+CTP_TD_FRONT=tcp://host:port
+CTP_TD_BROKER_ID=...
+CTP_TD_USER_ID=...
+CTP_TD_PASSWORD=...
+CTP_TD_APP_ID=...          # 需要鉴权时
+CTP_TD_AUTH_CODE=...
+CTP_TD_PRODUCT_INFO=...    # 可选
+```
+
+3. 交易所凭证 `exchange_id=ctp` 且 `environment=live`（字段留空则继承环境变量）。
+4. 策略市场类别为 `CNFutures` / `CNFuturesOptions`；下单数量单位为**手**。
+
+仅验证连通（不下单）：
+
+```python
+from app.services.live_trading.factory import create_client
+client = create_client(
+    {"exchange_id": "ctp", "environment": "live", "market_scope": "futures"},
+    market_type="futures",
+)
+print(client.test_connection())
+```
+
+未明确接受实盘风险前，请保持 `CFFEX_LIVE_TRADING_ENABLED=false`。
 
 ## 完整历史行情
 

@@ -129,6 +129,9 @@ IBKRClient = None
 # Lazy import Alpaca to avoid ImportError if alpaca-py not installed
 AlpacaClient = None
 
+# Lazy import CTP (OpenCTP TdApi) — always available; live still gated by env
+CtpClient = None
+
 logger = get_logger(__name__)
 
 ALPACA_FILL_DELTA_EPSILON = 1e-8
@@ -1691,6 +1694,29 @@ class PendingOrderWorker(PendingOrderPositionSyncMixin):
             )
             return
 
+        global CtpClient
+        if CtpClient is None:
+            try:
+                from app.services.cffex_trading import CtpClient as _CtpClient
+
+                CtpClient = _CtpClient
+            except ImportError:
+                pass
+
+        if CtpClient is not None and isinstance(client, CtpClient):
+            self._execute_ctp_order(
+                order_id=order_id,
+                order_row=order_row,
+                payload=payload,
+                client=client,
+                strategy_id=strategy_id,
+                exchange_config=exchange_config,
+                market_type=market_type,
+                _notify_live_best_effort=_notify_live_best_effort,
+                _console_print=_console_print,
+            )
+            return
+
         client_oid = make_client_order_id(exchange_id=exchange_id, strategy_id=strategy_id, order_id=order_id)
         self._register_pending_order_binding(
             order_id=order_id,
@@ -2554,6 +2580,155 @@ class PendingOrderWorker(PendingOrderPositionSyncMixin):
             append_strategy_log(strategy_id, "error", f"IBKR order exception ({symbol} {signal_type}): {e}")
             if is_fatal_exchange_error(str(e)):
                 auto_stop_live_strategy(int(strategy_id), str(e), source="ibkr_order")
+
+    def _execute_ctp_order(
+        self,
+        *,
+        order_id: int,
+        order_row: Dict[str, Any],
+        payload: Dict[str, Any],
+        client,
+        strategy_id: int,
+        exchange_config: Dict[str, Any],
+        market_type: str,
+        _notify_live_best_effort,
+        _console_print,
+    ) -> None:
+        """Execute mainland China futures/options order via CTP TdApi."""
+        from app.services.ctp_td.gateway import signal_to_side_offset
+        from app.services.live_trading.base import LiveTradingError
+
+        signal_type = payload.get("signal_type") or order_row.get("signal_type")
+        symbol = str(payload.get("symbol") or order_row.get("symbol") or "").strip()
+        if ":" in symbol:
+            symbol = symbol.split(":", 1)[-1].strip()
+        amount = float(payload.get("amount") or order_row.get("amount") or 0.0)
+        ref_price = float(
+            payload.get("ref_price") or payload.get("price") or order_row.get("price") or 0.0
+        )
+        mt = str(market_type or "futures").strip() or "futures"
+
+        try:
+            side, offset = signal_to_side_offset(str(signal_type or ""))
+        except Exception as exc:
+            self._mark_failed(order_id=order_id, error=f"ctp_unsupported_signal:{signal_type}")
+            _console_print(
+                f"[worker] CTP order rejected: strategy_id={strategy_id} pending_id={order_id} {exc}"
+            )
+            _notify_live_best_effort(status="failed", error=f"ctp_unsupported_signal:{signal_type}")
+            return
+
+        if amount <= 0:
+            self._mark_failed(order_id=order_id, error="ctp_invalid_amount")
+            _notify_live_best_effort(status="failed", error="ctp_invalid_amount")
+            return
+
+        order_type, limit_price = _broker_order_type(payload, ref_price)
+        price = float(limit_price or ref_price or 0.0)
+        if order_type == "limit" and price <= 0:
+            self._mark_failed(order_id=order_id, error="ctp_limit_requires_price")
+            _notify_live_best_effort(status="failed", error="ctp_limit_requires_price")
+            return
+
+        try:
+            result = client.place_order(
+                symbol=symbol,
+                side=side,
+                offset=offset,
+                lots=amount,
+                price=price,
+                order_type="limit" if order_type == "limit" else "market",
+            )
+            filled = float(result.filled or 0.0)
+            avg_price = float(result.avg_price or 0.0)
+            exchange_order_id = str(result.exchange_order_id or "")
+            executed_at = int(time.time())
+
+            self._mark_sent(
+                order_id=order_id,
+                note="ctp_order_sent",
+                exchange_id="ctp",
+                exchange_order_id=exchange_order_id,
+                exchange_response_json=json.dumps(result.raw or {}, ensure_ascii=False),
+                filled=filled,
+                avg_price=avg_price,
+                executed_at=executed_at if filled > 0 else None,
+                final_filled=is_final_fill(amount, filled, avg_price, str((result.raw or {}).get("status") or "")),
+            )
+            _console_print(
+                f"[worker] CTP order sent: strategy_id={strategy_id} pending_id={order_id} "
+                f"order_id={exchange_order_id} filled={filled} avg={avg_price}"
+            )
+
+            try:
+                recordable_filled = self._unrecorded_pending_fill(order_id, filled)
+                if recordable_filled > 0 and avg_price > 0:
+                    profit, _matched = persist_strategy_fill(
+                        strategy_id=int(strategy_id),
+                        symbol=str(symbol),
+                        signal_type=str(signal_type),
+                        filled=float(recordable_filled),
+                        avg_price=float(avg_price),
+                        exchange_config=exchange_config,
+                        market_type=mt,
+                        order_id=int(order_id),
+                        fill_source="worker_ctp",
+                        commission=0.0,
+                        commission_ccy="CNY",
+                        commission_quote=0.0,
+                        close_reason=trade_close_reason_from_payload(payload, str(signal_type)),
+                        strategy_run_id=int(
+                            payload.get("strategy_run_id") or order_row.get("strategy_run_id") or 0
+                        ),
+                        order_intent_id=int(
+                            payload.get("order_intent_id") or order_row.get("order_intent_id") or 0
+                        ),
+                        exchange_id="ctp",
+                        exchange_order_id=str(exchange_order_id or ""),
+                        fee_status="pending",
+                        fee_source="",
+                        raw_fill=result.raw or {},
+                    )
+                    _pstr = f", profit={profit:.4f}" if profit is not None else ""
+                    append_strategy_log(
+                        strategy_id,
+                        "trade",
+                        f"Trade executed: {signal_type} {symbol} filled={filled:.6f} @ {avg_price:.6f}{_pstr} (exchange=ctp)",
+                    )
+            except Exception as exc:
+                logger.warning("CTP record_trade failed: pending_id=%s err=%s", order_id, exc)
+
+            _notify_live_best_effort(
+                status="sent",
+                exchange_id="ctp",
+                exchange_order_id=exchange_order_id,
+                price_hint=avg_price,
+                amount_hint=filled,
+            )
+        except LiveTradingError as exc:
+            self._mark_failed(order_id=order_id, error=f"ctp_order_failed:{exc}")
+            _console_print(
+                f"[worker] CTP order failed: strategy_id={strategy_id} pending_id={order_id} err={exc}"
+            )
+            _notify_live_best_effort(status="failed", error=str(exc))
+            append_strategy_log(strategy_id, "error", f"CTP order failed ({symbol} {signal_type}): {exc}")
+            if is_fatal_exchange_error(str(exc)):
+                auto_stop_live_strategy(int(strategy_id), str(exc), source="ctp_order")
+        except Exception as exc:
+            logger.error(
+                "CTP order execution failed: pending_id=%s strategy_id=%s err=%s",
+                order_id,
+                strategy_id,
+                exc,
+            )
+            self._mark_failed(order_id=order_id, error=f"ctp_exception:{exc}")
+            _console_print(
+                f"[worker] CTP order exception: strategy_id={strategy_id} pending_id={order_id} err={exc}"
+            )
+            _notify_live_best_effort(status="failed", error=str(exc))
+            append_strategy_log(strategy_id, "error", f"CTP order exception ({symbol} {signal_type}): {exc}")
+            if is_fatal_exchange_error(str(exc)):
+                auto_stop_live_strategy(int(strategy_id), str(exc), source="ctp_order")
 
     def _execute_alpaca_order(
         self,

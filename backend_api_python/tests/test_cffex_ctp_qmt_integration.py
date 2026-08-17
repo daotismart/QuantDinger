@@ -215,5 +215,5 @@ class TestRuntimeAndChannels:
 
     def test_live_blocked(self, monkeypatch):
         monkeypatch.delenv("CFFEX_LIVE_TRADING_ENABLED", raising=False)
-        with pytest.raises(LiveTradingError, match="disabled|bridge"):
+        with pytest.raises(LiveTradingError, match="disabled"):
             CtpClient(CtpConfig(mode="live", broker_id="9999", user_id="u", password="p", td_front="tcp://x"))

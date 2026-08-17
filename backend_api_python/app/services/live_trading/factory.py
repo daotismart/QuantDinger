@@ -367,6 +367,8 @@ def create_ctp_client(exchange_config: Dict[str, Any], *, environment: str = "de
     else:
         cfg["mode"] = "live"
         cfg["environment"] = "live"
+    # CtpConfig.from_exchange_config already merges CTP_TD_* / CTP_MD_* env defaults
+    # when credential fields are blank (useful for single-seat docker deployments).
     return CtpClient(CtpConfig.from_exchange_config(cfg))
 
 
