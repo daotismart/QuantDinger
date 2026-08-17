@@ -12,7 +12,43 @@
 | Quotes / history | `CnFuturesDataSource` — provider `auto` (akshare full history) / `akshare` / `compliance` |
 | Open/close runtime | Margin, 今/昨仓, futures + options seller margin |
 | Live policy | CTP/QMT × futures/options for all four market categories |
-| Safety | Generic `Futures` refuses China symbols; live bridge gated by `CFFEX_LIVE_TRADING_ENABLED` |
+| Live CTP orders | OpenCTP TdApi (`app.services.ctp_td`) via `CtpClient` when `mode=live` |
+| Safety | Generic `Futures` refuses China symbols; live gated by `CFFEX_LIVE_TRADING_ENABLED` |
+
+## CTP live trading (TdApi)
+
+1. Install OpenCTP bindings in the backend image/venv (`pip install openctp-ctp`) and ensure `zh_CN.GB18030` locale if required by the broker stack.
+2. Set trader front credentials (or reuse Md credentials where the broker allows):
+
+```bash
+CFFEX_LIVE_TRADING_ENABLED=true
+CTP_TD_FRONT=tcp://host:port
+CTP_TD_BROKER_ID=...
+CTP_TD_USER_ID=...
+CTP_TD_PASSWORD=...
+CTP_TD_APP_ID=...          # when the broker requires ReqAuthenticate
+CTP_TD_AUTH_CODE=...
+CTP_TD_PRODUCT_INFO=...    # optional UserProductInfo
+```
+
+3. Create / bind an exchange credential with `exchange_id=ctp` and `environment=live`
+   (UI/API: `POST /api/credentials/create`). Field aliases such as `CTP_USERNAME`,
+   `CTP_TRADE_SERVER`, `CTP_ENVIRONMENT=实盘` are accepted. Omitting fields falls back
+   to `CTP_TD_*` / `CTP_MD_*` env defaults on the server.
+4. Strategy market category must be `CNFutures` / `CNFuturesOptions` (or legacy index aliases). Amount is **lots**.
+
+Smoke-check connection only (no order):
+
+```python
+from app.services.live_trading.factory import create_client
+client = create_client(
+    {"exchange_id": "ctp", "environment": "live", "market_scope": "futures"},
+    market_type="futures",
+)
+print(client.test_connection())
+```
+
+Do **not** enable the kill switch or place live orders unless you accept real futures risk.
 
 ## Full historical OHLCV
 

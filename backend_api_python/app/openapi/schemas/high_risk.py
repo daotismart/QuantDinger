@@ -57,12 +57,41 @@ class CredentialCreateRequestSchema(Schema):
     testnet = fields.Boolean(load_default=False)
     environment = fields.String(load_default="", validate=validate.Length(max=32))
     network = fields.String(load_default="", validate=validate.Length(max=32))
-    market_scope = fields.String(load_default="", validate=validate.OneOf(["", "spot", "swap", "both"]))
+    market_scope = fields.String(load_default="", validate=validate.OneOf(["", "spot", "swap", "both", "futures", "options"]))
     marketScope = fields.String(load_default="", validate=validate.Length(max=32))
     ibkr_host = fields.String(load_default="127.0.0.1", validate=validate.Length(max=255))
     ibkr_port = fields.Integer(load_default=7497, validate=validate.Range(min=1, max=65535))
     ibkr_client_id = fields.Integer(load_default=7, validate=validate.Range(min=0, max=2147483647))
     ibkr_account = fields.String(load_default="", validate=validate.Length(max=128))
+    # CTP / QMT (mainland China futures)
+    user_id = fields.String(load_default="", validate=validate.Length(max=64))
+    userId = fields.String(load_default="", validate=validate.Length(max=64))
+    username = fields.String(load_default="", validate=validate.Length(max=64))
+    CTP_USERNAME = fields.String(load_default="", validate=validate.Length(max=64))
+    password = fields.String(load_default="", validate=validate.Length(max=256))
+    CTP_PASSWORD = fields.String(load_default="", validate=validate.Length(max=256))
+    broker_id = fields.String(load_default="", validate=validate.Length(max=64))
+    brokerId = fields.String(load_default="", validate=validate.Length(max=64))
+    CTP_BROKER_ID = fields.String(load_default="", validate=validate.Length(max=64))
+    td_front = fields.String(load_default="", validate=validate.Length(max=255))
+    tdFront = fields.String(load_default="", validate=validate.Length(max=255))
+    CTP_TRADE_SERVER = fields.String(load_default="", validate=validate.Length(max=255))
+    md_front = fields.String(load_default="", validate=validate.Length(max=255))
+    mdFront = fields.String(load_default="", validate=validate.Length(max=255))
+    CTP_MD_SERVER = fields.String(load_default="", validate=validate.Length(max=255))
+    app_id = fields.String(load_default="", validate=validate.Length(max=128))
+    appId = fields.String(load_default="", validate=validate.Length(max=128))
+    CTP_APP_ID = fields.String(load_default="", validate=validate.Length(max=128))
+    auth_code = fields.String(load_default="", validate=validate.Length(max=128))
+    authCode = fields.String(load_default="", validate=validate.Length(max=128))
+    CTP_AUTH_CODE = fields.String(load_default="", validate=validate.Length(max=128))
+    product_info = fields.String(load_default="", validate=validate.Length(max=128))
+    productInfo = fields.String(load_default="", validate=validate.Length(max=128))
+    CTP_PRODUCT_INFO = fields.String(load_default="", validate=validate.Length(max=128))
+    investor_id = fields.String(load_default="", validate=validate.Length(max=64))
+    investorId = fields.String(load_default="", validate=validate.Length(max=64))
+    CTP_ENVIRONMENT = fields.String(load_default="", validate=validate.Length(max=32))
+    mode = fields.String(load_default="", validate=validate.Length(max=32))
 
     @pre_load
     def normalize_exchange(self, data, **kwargs):
@@ -72,7 +101,8 @@ class CredentialCreateRequestSchema(Schema):
 
     @validates_schema
     def validate_exchange_secret(self, data, **kwargs):
-        if str(data.get("exchange_id") or "").lower() == "ibkr":
+        ex = str(data.get("exchange_id") or "").lower()
+        if ex in ("ibkr", "ctp", "qmt"):
             return
         if not (data.get("api_key") or data.get("apiKey")):
             raise ValidationError("api_key is required", field_name="api_key")

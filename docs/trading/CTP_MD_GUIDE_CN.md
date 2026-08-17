@@ -34,6 +34,8 @@ pip install openctp-ctp
 - 可选：`CTP_MD_APP_ID` / `CTP_MD_AUTH_CODE`
 - `CTP_MD_INSTRUMENTS=rb2505,ag2506,IF2503`
 
+Tick 采集按品种**主交易时段**（北京时间）开关：中金所日盘、商品日盘（含午休/茶歇保持连接）、夜盘（21:00–23:00 / 01:00 / 02:30），含周五夜盘跨周六凌晨与周日夜盘。休市时释放 MdApi 前置，避免反复重连。可用 `CTP_MD_IGNORE_SESSION=true` 关闭此时段门控。
+
 ## 接口
 
 - `GET /api/ctp-md/status`
