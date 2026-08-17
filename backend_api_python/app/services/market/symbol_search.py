@@ -26,6 +26,12 @@ SYMBOL_SEARCH_CACHE_TTL_SEC = 21600
 _market_cache = CacheManager()
 _crypto_markets_cache: dict[str, dict] = {}
 CRYPTO_EXCHANGE_FALLBACK_ORDER = ("binance", "bitget", "bybit", "okx", "gate", "htx")
+_CN_DERIVATIVE_MARKETS = frozenset({
+    "CNFutures",
+    "CNFuturesOptions",
+    "CNIndexFutures",
+    "CNIndexOptions",
+})
 
 
 def dedupe_symbol_results(items: Iterable[dict], limit: int) -> list:
@@ -85,6 +91,14 @@ def search_market_symbols(
         out = _search_cached_crypto_symbols(keyword, limit, exchange_id, market_type)
         return dedupe_symbol_results(out, limit)
 
+    if market in _CN_DERIVATIVE_MARKETS:
+        out = dedupe_symbol_results(
+            _search_cn_derivative_symbols(market, keyword, limit),
+            limit,
+        )
+        if out:
+            return out
+
     out = dedupe_symbol_results(
         seed_search_symbols(market=market, keyword=keyword, limit=limit),
         limit,
@@ -118,6 +132,14 @@ def find_market_symbol(
             return None
         market_type = normalize_market_type(market_type, market=market)
         rows = _search_cached_crypto_symbols(symbol, 20, exchange_id, market_type)
+    elif market in _CN_DERIVATIVE_MARKETS:
+        matched = _find_cn_derivative_symbol(market, symbol)
+        if matched:
+            return matched
+        rows = dedupe_symbol_results(
+            seed_search_symbols(market=market, keyword=symbol, limit=10),
+            10,
+        )
     elif market in {"USStock", "CNStock", "HKStock"}:
         local = dedupe_symbol_results(
             seed_search_symbols(market=market, keyword=symbol, limit=10),
@@ -170,6 +192,8 @@ def get_hot_symbols(market: str, limit: int = 10) -> list:
     market = (market or "").strip()
     limit = max(1, int(limit or 10))
     curated = seed_get_hot_symbols(market=market, limit=limit)
+    if market in _CN_DERIVATIVE_MARKETS and not curated:
+        return dedupe_symbol_results(_hot_cn_derivative_symbols(market, limit), limit)
     if market != "Crypto":
         return curated
 
@@ -186,6 +210,161 @@ def get_hot_symbols(market: str, limit: int = 10) -> list:
         matched["name"] = (item.get("name") or matched.get("name") or symbol).strip()
         available.append(matched)
     return dedupe_symbol_results(available, limit)
+
+
+def _cn_market_accepts(requested: str, category: str) -> bool:
+    requested = (requested or "").strip()
+    category = (category or "").strip()
+    if not requested or not category:
+        return False
+    if requested == category:
+        return True
+    # Parent markets also accept their CFFEX alias subset.
+    if requested == "CNFutures" and category == "CNIndexFutures":
+        return True
+    if requested == "CNFuturesOptions" and category == "CNIndexOptions":
+        return True
+    return False
+
+
+def _nearby_cn_contract_months(count: int = 4) -> list[str]:
+    """Return upcoming China futures YYMM codes (e.g. 2510)."""
+    from datetime import date
+
+    months: list[str] = []
+    today = date.today()
+    year, month = today.year, today.month
+    for _ in range(max(1, count)):
+        months.append(f"{year % 100:02d}{month:02d}")
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return months
+
+
+def _cn_symbol_row(market: str, symbol: str, name: str, exchange: str = "") -> dict:
+    return {
+        "market": market,
+        "symbol": symbol,
+        "name": name,
+        "exchange_id": "",
+        "exchange": exchange,
+        "market_type": "options" if "Options" in market else "futures",
+        "instrument_id": symbol,
+        "settle_currency": "CNY",
+        "asset_class": "options" if "Options" in market else "futures",
+    }
+
+
+def _find_cn_derivative_symbol(market: str, symbol: str) -> dict | None:
+    from app.markets.cn_futures import (
+        get_future_product,
+        parse_cn_future_symbol,
+        parse_cn_option_symbol,
+        resolve_market_category,
+    )
+
+    category = resolve_market_category(symbol)
+    if not category or not _cn_market_accepts(market, category):
+        return None
+    try:
+        product = get_future_product(symbol)
+    except ValueError:
+        return None
+    parsed = parse_cn_future_symbol(symbol) or parse_cn_option_symbol(symbol) or {}
+    instrument = str(parsed.get("instrument_id") or parsed.get("symbol") or symbol).upper()
+    row = _cn_symbol_row(market, instrument, product.name, product.exchange)
+    return row
+
+
+def _search_cn_derivative_symbols(market: str, keyword: str, limit: int) -> list:
+    from app.markets.cn_futures import (
+        CN_FUTURE_PRODUCTS,
+        get_future_product,
+        list_products,
+        parse_cn_future_symbol,
+    )
+
+    kw = (keyword or "").strip().upper()
+    if not kw:
+        return []
+
+    out: list[dict] = []
+    exact = _find_cn_derivative_symbol(market, kw)
+    if exact:
+        out.append(exact)
+
+    months = _nearby_cn_contract_months(4)
+    want_index = market in {"CNIndexFutures", "CNIndexOptions"}
+    want_options = market in {"CNFuturesOptions", "CNIndexOptions"}
+
+    for product in list_products():
+        root = product.root
+        name_u = (product.name or "").upper()
+        name_hit = len(kw) >= 3 and kw in name_u
+        if not (
+            kw in root
+            or root.startswith(kw)
+            or (len(root) >= 2 and kw.startswith(root))
+            or name_hit
+        ):
+            continue
+        if want_index and product.product_class != "index":
+            continue
+        if want_options and not (product.has_options or root in {"IO", "HO", "MO"}):
+            continue
+        if market == "CNIndexOptions" and root not in {"IO", "HO", "MO"}:
+            continue
+
+        if want_options and root in {"IO", "HO", "MO"}:
+            out.append(_cn_symbol_row(market, root, product.name, product.exchange))
+        elif want_options:
+            # Commodity options still need a concrete strike; expose root for discovery.
+            out.append(_cn_symbol_row(market, root, product.name, product.exchange))
+        else:
+            for month in months:
+                contract = f"{root}{month}"
+                if not parse_cn_future_symbol(contract):
+                    continue
+                if not (kw in contract or root.startswith(kw) or kw.startswith(root) or kw in name_u):
+                    continue
+                try:
+                    prod = get_future_product(contract)
+                except ValueError:
+                    continue
+                out.append(_cn_symbol_row(market, contract, prod.name, prod.exchange))
+                break  # one nearby month per root is enough for search UX
+        if len(out) >= limit:
+            break
+
+    if kw in CN_FUTURE_PRODUCTS and not any(r.get("symbol") == kw for r in out):
+        matched = _find_cn_derivative_symbol(market, kw)
+        if matched:
+            out.insert(0, matched)
+    return out[:limit]
+
+
+def _hot_cn_derivative_symbols(market: str, limit: int) -> list:
+    favorites = {
+        "CNFutures": ["RB", "AG", "AU", "CU", "M", "TA", "SC"],
+        "CNIndexFutures": ["IF", "IH", "IC", "IM"],
+        "CNFuturesOptions": ["M", "SR", "CU"],
+        "CNIndexOptions": ["IO", "HO", "MO"],
+    }
+    roots = favorites.get(market) or []
+    month = _nearby_cn_contract_months(1)[0]
+    out: list[dict] = []
+    for root in roots:
+        symbol = root if market in {"CNFuturesOptions", "CNIndexOptions"} and root in {
+            "IO", "HO", "MO",
+        } else f"{root}{month}"
+        matched = _find_cn_derivative_symbol(market, symbol) or _find_cn_derivative_symbol(market, root)
+        if matched:
+            out.append(matched)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _first_exact_match(items: Iterable[dict], market: str, symbol: str) -> dict | None:

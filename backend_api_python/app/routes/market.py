@@ -85,8 +85,20 @@ def get_market_types():
     (``/api/agent/v1/markets``) read from the same helper so all three
     user-facing market lists stay in lock-step.
     """
-    # Keep a stable UX order; CN/HK near US; MOEX last (niche vs crypto/FX/futures).
-    desired_order = ['USStock', 'CNStock', 'HKStock', 'Crypto', 'Forex', 'Futures', 'MOEX']
+    # Keep a stable UX order; CN equities/futures near US; MOEX last.
+    desired_order = [
+        'USStock',
+        'CNStock',
+        'CNFutures',
+        'CNIndexFutures',
+        'CNFuturesOptions',
+        'CNIndexOptions',
+        'HKStock',
+        'Crypto',
+        'Forex',
+        'Futures',
+        'MOEX',
+    ]
     order_rank = {v: i for i, v in enumerate(desired_order)}
 
     def _normalize_item(x):
@@ -119,11 +131,18 @@ def get_market_types():
     cfg = load_addon_config()
     data = (cfg.get('market', {}) or {}).get('types')
 
-    # Normalize & force desired order (even if config overrides the list order).
+    # Always include the built-in desired_order so newly added markets
+    # (e.g. CNFutures) appear even when an older market.types override
+    # list is still stored in addon config. Config may only *add* extras.
+    base_items = list(desired_order)
     if isinstance(data, list) and data:
-        data = _sort_items(data)
-    else:
-        data = _sort_items(desired_order)
+        known = set(desired_order)
+        for item in data:
+            norm = _normalize_item(item)
+            if norm and norm['value'] not in known:
+                base_items.append(norm['value'])
+                known.add(norm['value'])
+    data = _sort_items(base_items)
 
     data = filter_market_items(data, key='value')
     return jsonify({'code': 1, 'msg': 'success', 'data': data})
