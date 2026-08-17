@@ -15,9 +15,12 @@ Resolution order (first match wins):
 2. ``SHOW_CN_STOCK`` (legacy boolean, default ``false``). Drops ``CNStock``
    when off. Kept for back-compat with deployments that predate
    ``ENABLED_MARKETS``.
-3. ``SHOW_HK_STOCK`` (legacy boolean, default ``true``). Drops ``HKStock``
+3. ``SHOW_CN_FUTURES`` (default ``true``). When off, hides ``CNFutures``,
+   ``CNFuturesOptions``, ``CNIndexFutures``, and ``CNIndexOptions``.
+   ``SHOW_CN_INDEX_DERIVATIVES`` remains a legacy alias.
+4. ``SHOW_HK_STOCK`` (legacy boolean, default ``true``). Drops ``HKStock``
    when off. Same back-compat reasoning.
-4. Everything else defaults to visible.
+5. Everything else defaults to visible.
 
 The whitelist completely overrides the legacy flags — if ``ENABLED_MARKETS``
 is set and does not list ``CNStock``, the market is hidden regardless of
@@ -71,8 +74,10 @@ def is_market_visible(market: str) -> bool:
         return _flag('SHOW_CN_STOCK', 'false')
     if m in ('CNFutures', 'CNFuturesOptions', 'CNIndexFutures', 'CNIndexOptions'):
         if os.getenv('SHOW_CN_FUTURES') is not None:
-            return _flag('SHOW_CN_FUTURES', 'false')
-        return _flag('SHOW_CN_INDEX_DERIVATIVES', 'false')
+            return _flag('SHOW_CN_FUTURES', 'true')
+        if os.getenv('SHOW_CN_INDEX_DERIVATIVES') is not None:
+            return _flag('SHOW_CN_INDEX_DERIVATIVES', 'false')
+        return True
     if m == 'HKStock':
         return _flag('SHOW_HK_STOCK', 'true')
     return True

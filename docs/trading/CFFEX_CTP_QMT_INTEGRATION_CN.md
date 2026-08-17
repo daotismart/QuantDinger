@@ -81,7 +81,7 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 
 ## 可见性
 
-`SHOW_CN_FUTURES=true`，或写入 `ENABLED_MARKETS`。
+`SHOW_CN_FUTURES=true`（默认开启），或在 **设置 → 市场模块** 勾选 `CNFutures` / `CNFuturesOptions` 写入 `ENABLED_MARKETS`。
 
 ## 测试
 

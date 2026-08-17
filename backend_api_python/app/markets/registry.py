@@ -371,7 +371,11 @@ def _enabled_from_env(env: Mapping[str, str], market: str) -> bool:
     if market == "CNStock":
         return _flag(env, "SHOW_CN_STOCK", "false")
     if market in ("CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions"):
-        return _flag(env, "SHOW_CN_FUTURES", env.get("SHOW_CN_INDEX_DERIVATIVES", "false"))
+        if "SHOW_CN_FUTURES" in env:
+            return _flag(env, "SHOW_CN_FUTURES", "true")
+        if "SHOW_CN_INDEX_DERIVATIVES" in env:
+            return _flag(env, "SHOW_CN_INDEX_DERIVATIVES", "false")
+        return True
     if market == "HKStock":
         return _flag(env, "SHOW_HK_STOCK", "true")
     return True
@@ -380,7 +384,7 @@ def _enabled_from_env(env: Mapping[str, str], market: str) -> bool:
 def _requirement_status(req: DataRequirement, env: Mapping[str, str]) -> Dict[str, object]:
     configured = bool(req.built_in)
     if req.setting_keys:
-        configured = any(_setting_configured(env, key) for key in req.setting_keys)
+        configured = configured or any(_setting_configured(env, key) for key in req.setting_keys)
     return {
         "key": req.key,
         "label": req.label,
