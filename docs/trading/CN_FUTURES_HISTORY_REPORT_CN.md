@@ -48,6 +48,9 @@ GET /api/kline/history?market=CNFutures&symbol=RB0&timeframe=1D
 # CLI
 cd backend_api_python
 PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe 1D -o rb0.json
+
+# 全市场主力连续入库（日线 + 由日线重采样的周线）
+PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
 ```
 
 ## 5. 结论

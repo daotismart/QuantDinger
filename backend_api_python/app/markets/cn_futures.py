@@ -375,6 +375,40 @@ def list_products(*, exchange: Optional[str] = None, options_only: bool = False)
     return rows
 
 
+def list_continuous_history_targets(
+    *,
+    exchange: Optional[str] = None,
+    include_options_only: bool = False,
+) -> List[Dict[str, Any]]:
+    """Main-continuous symbols covering the listed futures catalog.
+
+    Index-option-only roots (IO/HO/MO) are skipped by default because they have
+    no independent futures continuous series; use the underlying IF/IH/IM feed.
+    """
+    out: List[Dict[str, Any]] = []
+    for product in list_products(exchange=exchange):
+        if product.root in _INDEX_OPTION_ONLY and not include_options_only:
+            continue
+        if product.root in _INDEX_OPTION_ONLY:
+            market = CN_INDEX_OPTIONS_MARKET
+            market_type = "options"
+        else:
+            market = product.market_category
+            market_type = "futures"
+        out.append(
+            {
+                "root": product.root,
+                "symbol": f"{product.root}0",
+                "name": product.name,
+                "exchange": product.exchange,
+                "market": market,
+                "market_type": market_type,
+                "product_class": product.product_class,
+            }
+        )
+    return out
+
+
 def list_symbol_master_rows() -> List[Dict[str, Any]]:
     """Rows suitable for seeding qd_market_symbols."""
     out: List[Dict[str, Any]] = []

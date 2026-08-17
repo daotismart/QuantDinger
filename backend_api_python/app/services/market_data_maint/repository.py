@@ -315,6 +315,10 @@ def purge_old_ticks(*, retention_days: int) -> int:
             cur.close()
 
 
+# Daily / weekly history is a full-market archive; retention only trims intraday.
+INTRADAY_PURGE_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "4h")
+
+
 def purge_old_bars(*, retention_days: int) -> int:
     with get_db_connection() as db:
         cur = db.cursor()
@@ -322,7 +326,8 @@ def purge_old_bars(*, retention_days: int) -> int:
             cur.execute(
                 """
                 DELETE FROM qd_market_bars
-                 WHERE updated_at < NOW() - (%s * INTERVAL '1 day')
+                 WHERE LOWER(timeframe) IN ('1m', '3m', '5m', '15m', '30m', '1h', '4h')
+                   AND bar_time < EXTRACT(EPOCH FROM (NOW() - (%s * INTERVAL '1 day')))::bigint
                 """,
                 (int(retention_days),),
             )
