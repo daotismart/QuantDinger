@@ -31,7 +31,9 @@ CTP_TD_AUTH_CODE=...
 CTP_TD_PRODUCT_INFO=...    # 可选
 ```
 
-3. 交易所凭证 `exchange_id=ctp` 且 `environment=live`（字段留空则继承环境变量）。
+3. 在凭证库创建 `exchange_id=ctp` 且 `environment=live` 的账户
+   （`POST /api/credentials/create`）。支持 `CTP_USERNAME` / `CTP_TRADE_SERVER` /
+   `CTP_ENVIRONMENT=实盘` 等别名；字段留空时可回退服务器 `CTP_TD_*` / `CTP_MD_*`。
 4. 策略市场类别为 `CNFutures` / `CNFuturesOptions`；下单数量单位为**手**。
 
 仅验证连通（不下单）：

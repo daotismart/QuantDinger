@@ -82,10 +82,10 @@ def exchange_trading_environment(cfg: Dict[str, Any], exchange_id: str = "") -> 
     if not isinstance(cfg, dict):
         return "live"
     ex = str(exchange_id or cfg.get("exchange_id") or cfg.get("exchangeId") or "").strip().lower()
-    raw = str(cfg.get("environment") or cfg.get("network") or cfg.get("env") or "").strip().lower()
-    if raw in ("live", "mainnet", "production", "prod", "real"):
+    raw = str(cfg.get("environment") or cfg.get("network") or cfg.get("env") or cfg.get("CTP_ENVIRONMENT") or "").strip().lower()
+    if raw in ("live", "mainnet", "production", "prod", "real", "实盘"):
         environment = "live"
-    elif raw in ("demo", "paper", "simulate", "simulation", "simulated"):
+    elif raw in ("demo", "paper", "simulate", "simulation", "simulated", "模拟", "仿真"):
         environment = "demo"
     elif raw in ("testnet", "sandbox", "test"):
         environment = "testnet"

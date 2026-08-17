@@ -31,7 +31,10 @@ CTP_TD_AUTH_CODE=...
 CTP_TD_PRODUCT_INFO=...    # optional UserProductInfo
 ```
 
-3. Create / bind an exchange credential with `exchange_id=ctp` and `environment=live` (or omit fields to inherit `CTP_TD_*` env defaults).
+3. Create / bind an exchange credential with `exchange_id=ctp` and `environment=live`
+   (UI/API: `POST /api/credentials/create`). Field aliases such as `CTP_USERNAME`,
+   `CTP_TRADE_SERVER`, `CTP_ENVIRONMENT=实盘` are accepted. Omitting fields falls back
+   to `CTP_TD_*` / `CTP_MD_*` env defaults on the server.
 4. Strategy market category must be `CNFutures` / `CNFuturesOptions` (or legacy index aliases). Amount is **lots**.
 
 Smoke-check connection only (no order):

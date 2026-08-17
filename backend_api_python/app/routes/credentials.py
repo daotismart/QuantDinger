@@ -89,7 +89,7 @@ def list_credentials():
         items = []
         for row in rows:
             item = dict(row or {})
-            if str(item.get('exchange_id') or '').strip().lower() not in {*CRYPTO_EXCHANGES, 'ibkr', 'alpaca'}:
+            if str(item.get('exchange_id') or '').strip().lower() not in SUPPORTED_CREDENTIAL_EXCHANGES:
                 continue
             item['enable_demo_trading'] = False
             item['environment'] = 'live'
@@ -113,6 +113,135 @@ def list_credentials():
 
 
 CRYPTO_EXCHANGES = sorted(supported_crypto_exchange_ids(include_aliases=True))
+CN_FUTURES_EXCHANGES = ("ctp", "qmt")
+SUPPORTED_CREDENTIAL_EXCHANGES = {*CRYPTO_EXCHANGES, "ibkr", "alpaca", *CN_FUTURES_EXCHANGES}
+
+
+def _pick_str(data: dict, *keys: str) -> str:
+    for key in keys:
+        value = data.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _normalize_ctp_front(value: str) -> str:
+    front = str(value or "").strip()
+    if front and not front.lower().startswith("tcp://"):
+        front = f"tcp://{front}"
+    return front
+
+
+def _ctp_credential_config(data: dict, exchange_id: str = "ctp") -> dict:
+    """Build encrypted_config payload for CTP (or QMT-shaped) credentials."""
+    ex = str(exchange_id or "ctp").strip().lower() or "ctp"
+    user_id = _pick_str(
+        data,
+        "user_id",
+        "userId",
+        "username",
+        "CTP_USERNAME",
+        "api_key",
+        "apiKey",
+    )
+    password = _pick_str(
+        data,
+        "password",
+        "CTP_PASSWORD",
+        "secret_key",
+        "secretKey",
+        "secret",
+    )
+    broker_id = _pick_str(data, "broker_id", "brokerId", "CTP_BROKER_ID")
+    td_front = _normalize_ctp_front(
+        _pick_str(data, "td_front", "tdFront", "CTP_TRADE_SERVER", "front")
+    )
+    md_front = _normalize_ctp_front(
+        _pick_str(data, "md_front", "mdFront", "CTP_MD_SERVER")
+    )
+    app_id = _pick_str(data, "app_id", "appId", "CTP_APP_ID")
+    auth_code = _pick_str(data, "auth_code", "authCode", "CTP_AUTH_CODE")
+    product_info = _pick_str(data, "product_info", "productInfo", "CTP_PRODUCT_INFO")
+    investor_id = _pick_str(data, "investor_id", "investorId") or user_id
+
+    # Prefer explicit environment / CTP_ENVIRONMENT / mode.
+    env_raw = dict(data or {})
+    if not (
+        env_raw.get("environment")
+        or env_raw.get("network")
+        or env_raw.get("env")
+        or env_raw.get("CTP_ENVIRONMENT")
+    ):
+        mode = _pick_str(data, "mode").lower()
+        if mode in ("live", "real", "production", "prod", "实盘"):
+            env_raw["environment"] = "live"
+        elif mode in ("simulation", "demo", "paper", "simulate", "模拟"):
+            env_raw["environment"] = "demo"
+    environment = exchange_trading_environment({**env_raw, "exchange_id": ex}, ex)
+    market_scope = exchange_market_scope(
+        {
+            **(data or {}),
+            "exchange_id": ex,
+            "market_scope": _pick_str(data, "market_scope", "marketScope") or "futures",
+        }
+    )
+    if market_scope not in ("futures", "options", "both"):
+        market_scope = "futures"
+    validate_exchange_environment(ex, environment, market_scope)
+
+    missing = [
+        name
+        for name, value in (
+            ("broker_id", broker_id),
+            ("user_id", user_id),
+            ("password", password),
+            ("td_front", td_front),
+        )
+        if not value
+    ]
+    if missing:
+        raise ValueError(f"CTP credential incomplete; missing: {', '.join(missing)}")
+
+    return {
+        "exchange_id": ex,
+        "broker_id": broker_id,
+        "user_id": user_id,
+        "password": password,
+        "app_id": app_id,
+        "auth_code": auth_code,
+        "product_info": product_info,
+        "investor_id": investor_id,
+        "td_front": td_front,
+        "md_front": md_front,
+        "environment": environment,
+        "mode": "live" if environment == "live" else "simulation",
+        "market_scope": market_scope,
+        "enable_demo_trading": environment != "live",
+        # Compatibility aliases used by some UI forms.
+        "api_key": user_id,
+        "secret_key": password,
+    }
+
+
+def _probe_ctp_credential(config: dict) -> dict:
+    """Connectivity probe via TdApi (account query). Does not place orders."""
+    from app.services.ctp_td import get_ctp_td_gateway, settings_from_mapping
+
+    settings = settings_from_mapping({**config, "enabled": True})
+    if not settings.configured:
+        raise ValueError("CTP_TD_SETTINGS_INCOMPLETE")
+    gateway = get_ctp_td_gateway(settings)
+    gateway.ensure_started(wait_ready_sec=45)
+    account = gateway.query_account(timeout_sec=15)
+    return {
+        "environment": str(config.get("environment") or "live"),
+        "market_scope": str(config.get("market_scope") or "futures"),
+        "account_id": str(account.get("account_id") or ""),
+        "available": account.get("available"),
+        "balance": account.get("balance"),
+        "currency": str(account.get("currency") or "CNY"),
+        "gateway": gateway.status(),
+    }
 
 
 def _crypto_credential_config(data: dict, exchange_id: str) -> dict:
@@ -233,6 +362,12 @@ def test_credential(data):
             if hasattr(client, 'connect') and not client.connect():
                 raise ValueError('CREDENTIAL_CONNECTION_FAILED')
             return jsonify({'code': 1, 'msg': 'CREDENTIAL_CONNECTION_OK', 'data': None})
+        if exchange_id in CN_FUTURES_EXCHANGES:
+            if exchange_id == 'qmt':
+                return jsonify({'code': 0, 'msg': 'QMT_CREDENTIAL_TEST_NOT_IMPLEMENTED', 'data': None}), 400
+            config = _ctp_credential_config(data, exchange_id='ctp')
+            probed = _probe_ctp_credential(config)
+            return jsonify({'code': 1, 'msg': 'CREDENTIAL_CONNECTION_OK', 'data': probed})
         return jsonify({'code': 0, 'msg': 'UNSUPPORTED_EXCHANGE', 'data': None}), 400
     except Exception as exc:
         return jsonify({'code': 0, 'msg': str(exc) or 'CREDENTIAL_CONNECTION_FAILED', 'data': None}), 400
@@ -245,7 +380,7 @@ def test_credential(data):
 def create_credential(data):
     """Create a new credential for the current user.
 
-    Supports crypto exchanges, IBKR (US stocks), and Alpaca.
+    Supports crypto exchanges, IBKR (US stocks), Alpaca, and CTP/QMT.
     """
     try:
         user_id = g.user_id
@@ -301,6 +436,14 @@ def create_credential(data):
                 'ibkr_account': (data.get('ibkr_account') or '').strip()
             })
             hint = f"{config['ibkr_host']}:{config['ibkr_port']}"
+        elif exchange_id in CN_FUTURES_EXCHANGES:
+            try:
+                config = _ctp_credential_config(data, exchange_id=exchange_id)
+            except Exception as exc:
+                return jsonify({'code': 0, 'msg': str(exc), 'data': None}), 400
+            if not name:
+                name = f"{exchange_id.upper()} {config.get('user_id') or ''}".strip()
+            hint = f"{config.get('broker_id')}/{config.get('user_id')} ({config.get('environment')})"
         elif exchange_id in CRYPTO_EXCHANGES:
             # Crypto exchanges
             try:
