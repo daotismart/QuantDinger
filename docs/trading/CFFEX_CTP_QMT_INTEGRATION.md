@@ -72,7 +72,8 @@ Notes:
 - Dated contracts (`rb2509`) fetch that delivery month.
 - Minute periods: `1m` / `3m` / `5m` / `15m` / `30m` / `1H` / `4H`.
 - Full minute history stitches up to `CN_FUTURES_MINUTE_STITCH_MONTHS` (default 12) nearby contracts.
-- Futures-options history currently uses the underlying continuous series as reference.
+- Listed futures-options daily bars prefer `option_commodity_hist_sina` (e.g. `m2609C2800`), then fall back to the underlying continuous series. Minute history always uses the underlying continuous feed.
+- Search lists every listed CTP option contract after `scripts/sync_cn_option_contracts.py`. Do not subscribe CTP Md to the full chain.
 
 ## Strategy / trading examples
 

@@ -69,7 +69,8 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 - 带月份合约（`rb2509`）拉该交割月
 - 分钟周期：`1m` / `3m` / `5m` / `15m` / `30m` / `1H` / `4H`
 - 完整分钟历史通过 `CN_FUTURES_MINUTE_STITCH_MONTHS`（默认 12）拼接邻近合约
-- 期权历史暂用标的主力连续作参考序列
+- 在市期权日线优先走 `option_commodity_hist_sina`（如 `m2609C2800`），失败再回退标的主力连续；分钟线始终用标的连续。
+- 搜索目录在执行 `scripts/sync_cn_option_contracts.py` 后包含全部 CTP 在市期权。不要用 CTP Md 全订期权链。
 
 ## 交易示例
 

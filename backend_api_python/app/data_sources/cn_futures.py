@@ -113,6 +113,7 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
     mode:
       - ``continuous``: main-continuous root code like ``RB0`` / ``IF0``
       - ``contract``: specific delivery month like ``RB2509``
+      - ``option``: listed option, Sina compact code like ``m2609C2800``
     """
     code = normalize_cn_symbol(symbol)
     parsed = parse_cn_future_symbol(code)
@@ -122,10 +123,18 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
         if not month or month in ("0", "888", "999"):
             return f"{root}0", "continuous"
         return f"{root}{month}", "contract"
-    # Options: fall back to underlying continuous for reference history.
     opt = parse_cn_option_symbol(code)
     if opt:
-        return f"{opt['root']}0", "continuous"
+        from app.markets.cn_options import (
+            option_underlying_continuous,
+            parse_cn_option_instrument,
+            sina_option_symbol,
+        )
+
+        instrument = parse_cn_option_instrument(code)
+        if instrument is not None:
+            return sina_option_symbol(instrument), "option"
+        return option_underlying_continuous(opt["root"]), "continuous"
     # Bare continuous forms that slip past the futures parser.
     if code.endswith("0") and len(code) >= 2:
         maybe_root = code[:-1]
@@ -446,10 +455,10 @@ class CnFuturesDataSource(BaseDataSource):
                 rows.append(
                     self.format_kline(
                         ts,
-                        float(item.get("open") or item.get("开盘价") or 0),
-                        float(item.get("high") or item.get("最高价") or 0),
-                        float(item.get("low") or item.get("最低价") or 0),
-                        float(item.get("close") or item.get("收盘价") or 0),
+                        float(item.get("open") or item.get("开盘价") or item.get("开盘") or 0),
+                        float(item.get("high") or item.get("最高价") or item.get("最高") or 0),
+                        float(item.get("low") or item.get("最低价") or item.get("最低") or 0),
+                        float(item.get("close") or item.get("收盘价") or item.get("收盘") or 0),
                         float(item.get("volume") or item.get("成交量") or 0),
                     )
                 )
@@ -647,6 +656,23 @@ class CnFuturesDataSource(BaseDataSource):
             buckets[key]["volume"],
         ) for key in order]
 
+    def _load_option_daily_frame(self, ak: Any, sina_symbol: str):
+        """Load a listed option's daily series (Sina commodity option history)."""
+        try:
+            frame = ak.option_commodity_hist_sina(symbol=sina_symbol)
+            if frame is not None and not getattr(frame, "empty", True):
+                return frame
+        except Exception as exc:
+            logger.debug("option_commodity_hist_sina failed for %s: %s", sina_symbol, exc)
+        return None
+
+    def _option_underlying_fetch_symbol(self, symbol: str) -> str:
+        from app.markets.cn_options import option_underlying_continuous
+
+        opt = parse_cn_option_symbol(symbol)
+        root = opt["root"] if opt else normalize_cn_symbol(symbol)
+        return option_underlying_continuous(root)
+
     def _get_history_akshare(
         self,
         symbol: str,
@@ -659,18 +685,38 @@ class CnFuturesDataSource(BaseDataSource):
         ak = self._import_akshare()
         tf = self._normalize_tf(timeframe)
         fetch_symbol, mode = resolve_history_symbol(symbol)
-        # Specific option contracts have no public long history — use underlying continuous.
-        if is_cn_futures_option(symbol) and not is_cn_future(symbol):
+        option_contract = is_cn_futures_option(symbol) and not is_cn_future(symbol)
+
+        if option_contract and tf in ("1D", "1d", "1W", "1w"):
+            if mode == "option":
+                frame = self._load_option_daily_frame(ak, fetch_symbol)
+                if frame is not None and not getattr(frame, "empty", True):
+                    rows = self._frame_to_daily_rows(frame)
+                    if rows:
+                        if tf in ("1W", "1w"):
+                            return self._resample(rows, TIMEFRAME_SECONDS["1W"])
+                        return rows
+            fetch_symbol = self._option_underlying_fetch_symbol(symbol)
+            mode = "continuous"
             logger.info(
                 "CN futures options history uses underlying continuous %s for %s",
+                fetch_symbol,
+                normalize_cn_symbol(symbol),
+            )
+        elif option_contract:
+            fetch_symbol = self._option_underlying_fetch_symbol(symbol)
+            mode = "continuous"
+            logger.info(
+                "CN futures options minute history uses underlying continuous %s for %s",
                 fetch_symbol,
                 normalize_cn_symbol(symbol),
             )
 
         if tf in ("1m", "3m", "5m", "15m", "30m", "1H"):
             period = _MINUTE_PERIOD_MAP[tf]
+            minute_symbol = fetch_symbol if option_contract else symbol
             rows = self._load_minute_history(
-                ak, symbol, period, prefer_full=prefer_full or after_time is not None
+                ak, minute_symbol, period, prefer_full=prefer_full or after_time is not None
             )
             if not rows:
                 raise ValueError(
@@ -682,8 +728,9 @@ class CnFuturesDataSource(BaseDataSource):
             return rows
 
         if tf == "4H":
+            minute_symbol = fetch_symbol if option_contract else symbol
             minute_rows = self._load_minute_history(
-                ak, symbol, "60", prefer_full=prefer_full or after_time is not None
+                ak, minute_symbol, "60", prefer_full=prefer_full or after_time is not None
             )
             if not minute_rows:
                 raise ValueError(

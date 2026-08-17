@@ -154,7 +154,7 @@ MARKET_MODULES: Dict[str, MarketModule] = {
     "CNFuturesOptions": MarketModule(
         key="CNFuturesOptions",
         label="China Futures Options",
-        description="Mainland China futures options (commodity + CFFEX index options).",
+        description="Mainland China futures options. Search uses listed CTP contracts (all strikes/months); live orders use CTP/QMT.",
         asset_class="options",
         symbol_hint="m2509-C-2800",
         base_currency="CNY",
@@ -206,7 +206,7 @@ MARKET_MODULES: Dict[str, MarketModule] = {
     "CNIndexOptions": MarketModule(
         key="CNIndexOptions",
         label="CFFEX Index Options",
-        description="CFFEX equity-index options (IO/HO/MO). Alias subset of CNFuturesOptions.",
+        description="CFFEX equity-index options (IO/HO/MO) plus SSE/SZSE ETF options for search.",
         asset_class="options",
         symbol_hint="IO2509-C-4000",
         base_currency="CNY",

@@ -19,7 +19,7 @@ def test_resolve_history_symbol_continuous_and_contract():
     assert resolve_history_symbol("RB0") == ("RB0", "continuous")
     assert resolve_history_symbol("rb2509") == ("RB2509", "contract")
     assert resolve_history_symbol("IF2509") == ("IF2509", "contract")
-    assert resolve_history_symbol("m2509-C-2800") == ("M0", "continuous")
+    assert resolve_history_symbol("m2509-C-2800") == ("m2509C2800", "option")
 
 
 def test_get_history_uses_full_akshare_series(monkeypatch):
