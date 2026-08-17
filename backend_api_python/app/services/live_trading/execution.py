@@ -60,6 +60,15 @@ def _normalize_symbol_for_order(symbol: str, market_type: str = "swap") -> str:
         if ":" in sym:
             return sym.split(":", 1)[-1].strip()
         return sym
+    try:
+        from app.markets.cn_futures import is_cn_derivative
+
+        if is_cn_derivative(sym):
+            if ":" in sym:
+                return sym.split(":", 1)[-1].strip()
+            return sym
+    except Exception:
+        pass
     
     if ':' in sym:
         sym = sym.split(':', 1)[0]
@@ -316,7 +325,17 @@ def place_order_from_signal(
         except ImportError:
             pass
 
-    if CtpClient is not None and isinstance(client, CtpClient):
+    QmtClient = None
+    try:
+        from app.services.cffex_trading import QmtClient as _QmtClient
+
+        QmtClient = _QmtClient
+    except ImportError:
+        QmtClient = None
+
+    if (CtpClient is not None and isinstance(client, CtpClient)) or (
+        QmtClient is not None and isinstance(client, QmtClient)
+    ):
         return _place_ctp_order(
             client=client,
             signal_type=signal_type,

@@ -345,6 +345,8 @@ class TestToDictSnapshot:
             "long_only_brokers",
             "bot_type_markets",
             "live_market_categories",
+            "quick_trade_markets",
+            "quick_trade_exchanges",
         }
 
     def test_market_types_serialize_as_sorted_lists(self):
@@ -379,6 +381,14 @@ class TestToDictSnapshot:
         assert bm["ctp"]["CNFuturesOptions"] == ["options"]
         assert bm["ctp"]["CNIndexFutures"] == ["futures"]
         assert bm["qmt"]["CNIndexOptions"] == ["options"]
+
+    def test_quick_trade_surface_includes_cn_options(self):
+        snapshot = to_dict()
+        assert "CNFuturesOptions" in snapshot["quick_trade_markets"]
+        assert "CNIndexOptions" in snapshot["quick_trade_markets"]
+        assert "ctp" in snapshot["quick_trade_exchanges"]
+        assert "qmt" in snapshot["quick_trade_exchanges"]
+        assert "okx" in snapshot["quick_trade_exchanges"]
 
     def test_matrix_internal_consistency(self):
         # Every long-only broker must be present in BROKER_MARKETS.

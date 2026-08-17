@@ -139,7 +139,7 @@ class BillingOrderRequestSchema(Schema):
 
 class QuickTradeOrderRequestSchema(Schema):
     credential_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    symbol = fields.String(required=True, validate=validate.Length(min=1, max=64))
+    symbol = fields.String(required=True, validate=validate.Length(min=1, max=96))
     side = fields.String(required=True, validate=validate.OneOf(("buy", "sell")))
     order_type = fields.String(
         load_default="market",
@@ -150,7 +150,26 @@ class QuickTradeOrderRequestSchema(Schema):
     leverage = fields.Integer(load_default=1, validate=validate.Range(min=1, max=125))
     market_type = fields.String(
         load_default="",
-        validate=validate.OneOf(("", "spot", "swap", "futures", "future", "perp", "perpetual")),
+        validate=validate.OneOf(
+            (
+                "",
+                "spot",
+                "swap",
+                "futures",
+                "future",
+                "perp",
+                "perpetual",
+                "options",
+                "option",
+            )
+        ),
+    )
+    market = fields.String(load_default="", validate=validate.Length(max=32))
+    offset = fields.String(
+        load_default="open",
+        validate=validate.OneOf(
+            ("", "open", "close", "close_today", "closetoday", "close_yesterday", "closeyesterday")
+        ),
     )
     tp_price = fields.Float(load_default=0, validate=validate.Range(min=0))
     sl_price = fields.Float(load_default=0, validate=validate.Range(min=0))
@@ -161,7 +180,7 @@ class QuickTradeOrderRequestSchema(Schema):
     @pre_load
     def normalize_values(self, data, **kwargs):
         normalized = dict(data or {})
-        for key in ("side", "order_type", "market_type", "margin_mode", "marginMode"):
+        for key in ("side", "order_type", "market_type", "margin_mode", "marginMode", "offset"):
             if key in normalized:
                 normalized[key] = str(normalized[key] or "").strip().lower()
         return normalized
@@ -174,10 +193,12 @@ class QuickTradeOrderRequestSchema(Schema):
 
 class QuickTradeCloseRequestSchema(Schema):
     credential_id = fields.Integer(required=True, validate=validate.Range(min=1))
-    symbol = fields.String(required=True, validate=validate.Length(min=1, max=64))
+    symbol = fields.String(required=True, validate=validate.Length(min=1, max=96))
     market_type = fields.String(
         load_default="swap",
-        validate=validate.OneOf(("spot", "swap", "futures", "future", "perp", "perpetual")),
+        validate=validate.OneOf(
+            ("spot", "swap", "futures", "future", "perp", "perpetual", "options", "option")
+        ),
     )
     size = fields.Float(load_default=0, validate=validate.Range(min=0))
     close_scope = fields.String(load_default="full", validate=validate.Length(max=32))

@@ -34,6 +34,7 @@ _kline = KlineService()
 _ORDER_FIELDS = {
     "market", "symbol", "side", "qty", "order_type", "limit_price",
     "credential_id", "market_type", "leverage", "margin_mode", "tp_price", "sl_price",
+    "offset",
 }
 
 
@@ -221,9 +222,13 @@ def _place_live_order(*, body: dict, user_id: int) -> dict:
     market_type = (body.get("market_type") or body.get("marketType") or "").strip().lower()
     leverage = int(body.get("leverage") or 1)
     margin_mode = (body.get("margin_mode") or body.get("marginMode") or "").strip().lower()
-    if market_type in ("futures", "future", "perp", "perpetual"):
+    offset = str(body.get("offset") or "open").strip().lower() or "open"
+    requested_market_type = market_type
+    if market_type in ("option", "options"):
+        market_type = "options"
+    elif market_type in ("futures", "future", "perp", "perpetual"):
         market_type = "swap"
-    if market_type not in ("spot", "swap"):
+    if market_type not in ("spot", "swap", "options", "futures"):
         market_type = "swap" if leverage > 1 else "spot"
     if market_type == "swap" and not margin_mode:
         margin_mode = "cross"
@@ -232,8 +237,15 @@ def _place_live_order(*, body: dict, user_id: int) -> dict:
     if not credential_id:
         raise ValueError("credential_id is required for live agent trading")
 
+    from app.markets.cn_futures import is_cn_derivative
     from app.routes.quick_trade import _record_quick_trade, _reject_quick_trade_if_desktop_broker
     from app.services.quick_trade.credentials import build_exchange_config, create_exchange_client
+    from app.services.quick_trade.cn_derivatives import (
+        is_cn_quick_trade_exchange,
+        is_cn_quick_trade_market,
+        place_cn_quick_order,
+        resolve_cn_market_type,
+    )
     from app.services.quick_trade.orders import (
         attach_quick_trade_protection,
         enrich_fill,
@@ -255,7 +267,72 @@ def _place_live_order(*, body: dict, user_id: int) -> dict:
         raise ValueError("Invalid credential: missing exchange_id")
     reject = _reject_quick_trade_if_desktop_broker(exchange_id)
     if reject is not None:
-        raise ValueError("Quick Trade currently supports crypto exchange API keys only.")
+        raise ValueError(
+            "Quick Trade currently supports crypto exchange API keys and CTP/QMT China futures accounts."
+        )
+
+    if is_cn_quick_trade_exchange(exchange_id) or is_cn_quick_trade_market(market) or is_cn_derivative(symbol):
+        if not is_cn_quick_trade_exchange(exchange_id):
+            raise ValueError("China futures/options Quick Trade requires a CTP or QMT account.")
+        market_type = resolve_cn_market_type(
+            market_type=requested_market_type or market_type,
+            symbol=symbol,
+            market=market,
+        )
+        client = create_exchange_client(exchange_config, market_type=market_type)
+        result = place_cn_quick_order(
+            client,
+            symbol=symbol,
+            side=side,
+            amount=qty,
+            price=limit_price_f,
+            order_type=order_type,
+            offset=offset,
+            market=market,
+            exchange_config=exchange_config,
+        )
+        exchange_order_id = str(getattr(result, "exchange_order_id", "") or "")
+        filled = float(getattr(result, "filled", 0) or 0)
+        avg_fill = float(getattr(result, "avg_price", 0) or 0)
+        raw = getattr(result, "raw", {}) or {}
+        status = quick_order_status(requested_qty=qty, filled_qty=filled, exchange_status="")
+        trade_id = _record_quick_trade(
+            user_id=user_id,
+            credential_id=credential_id,
+            exchange_id=exchange_id,
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            amount=qty,
+            price=limit_price_f if order_type == "limit" else avg_fill,
+            leverage=leverage,
+            market_type=market_type,
+            tp_price=float(body.get("tp_price") or body.get("tpPrice") or 0),
+            sl_price=float(body.get("sl_price") or body.get("slPrice") or 0),
+            status=status,
+            exchange_order_id=exchange_order_id,
+            filled=filled,
+            avg_price=avg_fill,
+            error_msg="",
+            source="agent_mcp",
+            raw_result=dict(raw) if isinstance(raw, dict) else {"raw": raw},
+            commission=float((raw or {}).get("commission") or 0.0) if isinstance(raw, dict) else 0.0,
+            commission_ccy="CNY",
+        )
+        return {
+            "trade_id": trade_id,
+            "exchange_order_id": exchange_order_id,
+            "market": market,
+            "symbol": symbol,
+            "side": side,
+            "qty": qty,
+            "filled": filled,
+            "avg_price": avg_fill,
+            "status": status,
+            "market_type": market_type,
+            "lots": int(round(qty)),
+            "paper": False,
+        }
 
     client = create_exchange_client(exchange_config, market_type=market_type)
 
@@ -484,7 +561,11 @@ def place_order():
             _finish_live_notional("failed")
             return error(400, str(exc), http=400)
         except Exception as exc:
+            from app.services.live_trading.base import LiveTradingError
+
             _finish_live_notional("failed")
+            if isinstance(exc, LiveTradingError):
+                return error(400, str(exc), http=400)
             logger.error(f"agent_v1 live quick_trade failed: {exc}", exc_info=True)
             return error(500, "live quick_trade failed", details=str(exc), http=500)
         _finish_live_notional("executed")

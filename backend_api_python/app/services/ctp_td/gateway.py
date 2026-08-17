@@ -58,7 +58,11 @@ def load_ctp_tdapi(module_name: Optional[str] = None):
 
 def format_instrument_id(symbol: str, exchange: str) -> str:
     """Apply exchange InstrumentID casing conventions."""
-    from app.markets.cn_futures import normalize_cn_symbol
+    from app.markets.cn_futures import format_ctp_option_instrument_id, normalize_cn_symbol
+
+    option_id = format_ctp_option_instrument_id(symbol, exchange)
+    if option_id:
+        return option_id
 
     instrument = normalize_cn_symbol(symbol)
     ex = (exchange or "").strip().upper()

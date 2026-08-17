@@ -248,7 +248,14 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
     market_scope = exchange_market_scope(exchange_config)
     validate_exchange_environment(exchange_id, environment, market_scope)
     if market_scope != "both" and market_scope != mt:
-        raise LiveTradingError("CREDENTIAL_MARKET_SCOPE_MISMATCH")
+        # One CTP/QMT seat covers listed futures and futures-options.
+        cn_seat_ok = (
+            exchange_id in ("ctp", "qmt")
+            and market_scope in ("futures", "options")
+            and mt in ("futures", "options")
+        )
+        if not cn_seat_ok:
+            raise LiveTradingError("CREDENTIAL_MARKET_SCOPE_MISMATCH")
 
     if exchange_id == "binance":
         if mt == "spot":

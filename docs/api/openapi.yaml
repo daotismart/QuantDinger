@@ -476,7 +476,7 @@ components:
         symbol:
           type: string
           minLength: 1
-          maxLength: 64
+          maxLength: 96
         side:
           type: string
           enum:
@@ -511,6 +511,23 @@ components:
           - future
           - perp
           - perpetual
+          - options
+          - option
+        market:
+          type: string
+          default: ''
+          maxLength: 32
+        offset:
+          type: string
+          default: open
+          enum:
+          - ''
+          - open
+          - close
+          - close_today
+          - closetoday
+          - close_yesterday
+          - closeyesterday
         tp_price:
           type: number
           default: 0.0
@@ -546,7 +563,7 @@ components:
         symbol:
           type: string
           minLength: 1
-          maxLength: 64
+          maxLength: 96
         market_type:
           type: string
           default: swap
@@ -557,6 +574,8 @@ components:
           - future
           - perp
           - perpetual
+          - options
+          - option
         size:
           type: number
           default: 0.0

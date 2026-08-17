@@ -79,6 +79,19 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 
 裸代码（如 `rb2509`）不会推断为美股，必须写市场前缀。
 
+## 闪电交易（Quick Trade）
+
+`POST /api/quick-trade/place-order` 已支持 `CNFutures` / `CNFuturesOptions` /
+`CNIndexFutures` / `CNIndexOptions`，凭证为 `ctp` 或 `qmt`。
+
+- `amount` 为**手数**（整数 ≥ 1），不是 USDT
+- `market_type` 为 `futures` 或 `options`
+- `offset` 为 `open` / `close` / `close_today` / `close_yesterday`
+- 仿真盘市价单会用 CTP tick 或国内数据源最新价作为参考价
+- `GET /api/policy/broker-market` 增加 `quick_trade_markets` / `quick_trade_exchanges`
+
+前端若仍提示「当前市场暂不支持闪电交易」，需把上述四个国内市场加入闪电交易白名单，金额按手数展示（默认 1 手）。加密货币闪电交易行为不变。
+
 ## 可见性
 
 `SHOW_CN_FUTURES=true`，或写入 `ENABLED_MARKETS`。
@@ -87,5 +100,5 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 
 ```bash
 cd backend_api_python
-PYTHONPATH=. pytest tests/test_cffex_ctp_qmt_integration.py tests/test_cn_futures_history.py tests/test_broker_market_policy.py -q
+PYTHONPATH=. pytest tests/test_cffex_ctp_qmt_integration.py tests/test_cn_futures_history.py tests/test_broker_market_policy.py tests/test_cn_options_quick_trade.py -q
 ```

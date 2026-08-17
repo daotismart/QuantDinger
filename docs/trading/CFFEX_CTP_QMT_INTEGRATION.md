@@ -80,6 +80,20 @@ Notes:
 { "exchange_id": "ctp", "market_category": "CNFutures", "market_type": "futures", "symbol": "CNFutures:rb2509" }
 ```
 
+## Quick Trade
+
+`POST /api/quick-trade/place-order` accepts `CNFutures` / `CNFuturesOptions` /
+`CNIndexFutures` / `CNIndexOptions` when the credential is `ctp` or `qmt`.
+
+- `amount` is **lots** (integer ≥ 1), not USDT
+- `market_type` is `futures` or `options`
+- `offset` is `open` / `close` / `close_today` / `close_yesterday`
+- Demo market orders resolve a reference price from CTP ticks or the CN data source
+- `GET /api/policy/broker-market` exposes `quick_trade_markets` and `quick_trade_exchanges`
+
+The bundled web UI must include those four markets in its Quick Trade allowlist
+and show lot size (default 1), not a USDT notional. Crypto Quick Trade is unchanged.
+
 ## Visibility
 
 Set `SHOW_CN_FUTURES=true` or include markets in `ENABLED_MARKETS`.
@@ -88,5 +102,5 @@ Set `SHOW_CN_FUTURES=true` or include markets in `ENABLED_MARKETS`.
 
 ```bash
 cd backend_api_python
-PYTHONPATH=. pytest tests/test_cffex_ctp_qmt_integration.py tests/test_cn_futures_history.py tests/test_broker_market_policy.py -q
+PYTHONPATH=. pytest tests/test_cffex_ctp_qmt_integration.py tests/test_cn_futures_history.py tests/test_broker_market_policy.py tests/test_cn_options_quick_trade.py -q
 ```

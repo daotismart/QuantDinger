@@ -307,6 +307,40 @@ def is_cn_derivative(symbol: str) -> bool:
     return is_cn_future(symbol) or is_cn_futures_option(symbol)
 
 
+def _format_option_strike(strike: Any) -> str:
+    if isinstance(strike, float):
+        if strike == int(strike):
+            return str(int(strike))
+        return f"{strike:.10f}".rstrip("0").rstrip(".")
+    text = str(strike or "").strip()
+    if "." in text:
+        return text.rstrip("0").rstrip(".")
+    return text
+
+
+def format_ctp_option_instrument_id(symbol: str, exchange: Optional[str] = None) -> Optional[str]:
+    """Assemble the native CTP option InstrumentID for the option's exchange."""
+    parsed = parse_cn_option_symbol(symbol)
+    if not parsed:
+        return None
+    option_type = str(parsed.get("option_type") or "").upper()
+    strike = parsed.get("strike")
+    month = str(parsed.get("month") or "").strip()
+    if option_type not in {"C", "P"} or strike is None or not month:
+        return None
+    root = str(parsed.get("root") or "").strip()
+    exch = (exchange or parsed.get("exchange") or "").strip().upper()
+    strike_s = _format_option_strike(strike)
+    if exch in {"DCE", "GFEX"}:
+        return f"{root.lower()}{month}-{option_type}-{strike_s}"
+    if exch == "CFFEX":
+        return f"{root.upper()}{month}-{option_type}-{strike_s}"
+    if exch == "CZCE":
+        return f"{root.upper()}{month}{option_type}{strike_s}"
+    # SHFE / INE compact form, e.g. cu2609C100000
+    return f"{root.lower()}{month}{option_type}{strike_s}"
+
+
 def get_future_product(symbol: str) -> CnFutureProduct:
     parsed = parse_cn_future_symbol(symbol)
     if parsed:

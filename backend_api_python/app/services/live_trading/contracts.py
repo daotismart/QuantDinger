@@ -85,6 +85,8 @@ def normalize_order_side(side: str) -> str:
 
 def normalize_order_market_type(market_type: str) -> str:
     mt = str(market_type or "swap").strip().lower()
+    if mt in ("option", "options"):
+        return "options"
     if mt in ("futures", "future", "perp", "perpetual"):
         return "swap"
     return mt

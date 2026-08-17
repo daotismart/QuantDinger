@@ -333,6 +333,12 @@ def to_dict() -> Dict[str, object]:
     mirrors the same compatibility checks in the UI without having to
     re-encode them in JavaScript.
     """
+    from app.services.quick_trade.cn_derivatives import (
+        CN_QUICK_TRADE_EXCHANGES,
+        CN_QUICK_TRADE_MARKETS,
+    )
+    from app.services.quick_trade.symbols import CRYPTO_EXCHANGES
+
     return {
         "broker_markets": {
             ex: {mc: sorted(mts) for mc, mts in markets.items()}
@@ -343,4 +349,6 @@ def to_dict() -> Dict[str, object]:
             bt: sorted(mks) for bt, mks in BOT_TYPE_MARKETS.items()
         },
         "live_market_categories": sorted(LIVE_MARKET_CATEGORIES),
+        "quick_trade_markets": sorted(set(CN_QUICK_TRADE_MARKETS) | {"Crypto"}),
+        "quick_trade_exchanges": sorted(set(CRYPTO_EXCHANGES) | set(CN_QUICK_TRADE_EXCHANGES)),
     }

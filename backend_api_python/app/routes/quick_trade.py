@@ -47,6 +47,16 @@ from app.services.quick_trade.symbols import (
     is_supported_crypto_exchange,
     symbols_match as quick_trade_symbols_match,
 )
+from app.services.quick_trade.cn_derivatives import (
+    is_cn_quick_trade_exchange,
+    is_cn_quick_trade_market,
+    lots_from_amount,
+    parse_cn_balance,
+    place_cn_quick_order,
+    resolve_cn_market_type,
+    split_cn_display_symbol,
+)
+from app.markets.cn_futures import is_cn_derivative
 from app.services.live_trading.position_row_parse import (
     extract_signed_position_qty,
     infer_position_side_from_row,
@@ -229,15 +239,16 @@ def _resolve_order_notional_usdt(amount_usdt: float, leverage: int, market_type:
 
 
 def _reject_quick_trade_if_desktop_broker(exchange_id: str):
-    """Quick Trade is USDT-centric and only wired to crypto exchange clients."""
-    if not is_supported_crypto_exchange(exchange_id):
-        return jsonify(
-            {
-                "code": 0,
-                "msg": "Quick Trade currently supports crypto exchange API keys only.",
-            }
-        ), 400
-    return None
+    """Quick Trade supports crypto REST keys and CTP/QMT China derivatives."""
+    ex = (exchange_id or "").strip().lower()
+    if is_supported_crypto_exchange(ex) or is_cn_quick_trade_exchange(ex):
+        return None
+    return jsonify(
+        {
+            "code": 0,
+            "msg": "Quick Trade currently supports crypto exchange API keys and CTP/QMT China futures accounts.",
+        }
+    ), 400
 
 
 def _record_quick_trade(
@@ -318,6 +329,104 @@ def _record_quick_trade(
         return None
 
 
+def _respond_cn_quick_trade_order(
+    *,
+    user_id: int,
+    credential_id: int,
+    exchange_id: str,
+    exchange_config: Dict[str, Any],
+    client: Any,
+    symbol: str,
+    side: str,
+    order_type: str,
+    amount: float,
+    price: float,
+    leverage: int,
+    market_type: str,
+    market: str,
+    offset: str,
+    tp_price: float,
+    sl_price: float,
+    source: str,
+):
+    """Place a China futures/options Quick Trade order and persist the row."""
+    try:
+        lots = lots_from_amount(amount)
+        result = place_cn_quick_order(
+            client,
+            symbol=symbol,
+            side=side,
+            amount=amount,
+            price=price,
+            order_type=order_type,
+            offset=offset,
+            market=market,
+            exchange_config=exchange_config,
+        )
+    except ValueError as exc:
+        return jsonify({"code": 0, "msg": str(exc)}), 400
+    except Exception as exc:
+        from app.services.live_trading.base import LiveTradingError
+
+        if isinstance(exc, LiveTradingError):
+            return jsonify({"code": 0, "msg": str(exc)}), 400
+        raise
+
+    exchange_order_id = str(getattr(result, "exchange_order_id", "") or "")
+    filled = float(getattr(result, "filled", 0) or 0)
+    avg_fill = float(getattr(result, "avg_price", 0) or 0)
+    raw = getattr(result, "raw", {}) or {}
+    status = quick_order_status(requested_qty=float(lots), filled_qty=filled, exchange_status="")
+    raw_record = dict(raw) if isinstance(raw, dict) else {"raw": raw}
+    raw_record["_quick_trade"] = {
+        "requested_lots": lots,
+        "amount_semantics": "lots",
+        "offset": offset,
+        "market": market,
+    }
+    trade_id = _record_quick_trade(
+        user_id=user_id,
+        credential_id=credential_id,
+        exchange_id=exchange_id,
+        symbol=symbol,
+        side=side,
+        order_type=order_type,
+        amount=float(lots),
+        price=price if order_type == "limit" else avg_fill,
+        leverage=leverage,
+        market_type=market_type,
+        tp_price=tp_price,
+        sl_price=sl_price,
+        status=status,
+        exchange_order_id=exchange_order_id,
+        filled=filled,
+        avg_price=avg_fill,
+        error_msg="",
+        source=source,
+        raw_result=raw_record,
+        commission=float((raw or {}).get("commission") or 0.0),
+        commission_ccy="CNY",
+        client_order_id="",
+    )
+    return jsonify(
+        {
+            "code": 1,
+            "msg": "Order placed successfully",
+            "data": {
+                "trade_id": trade_id,
+                "exchange_order_id": exchange_order_id,
+                "filled": filled,
+                "avg_price": avg_fill,
+                "status": status,
+                "lots": lots,
+                "notional_amount": None,
+                "currency": "CNY",
+                "protection_status": "not_requested",
+            },
+        }
+    )
+
+
 # ---------- endpoints ----------
 
 @quick_trade_blp.route('/place-order', methods=['POST'])
@@ -355,6 +464,8 @@ def place_order(body):
         tp_price = float(body.get("tp_price") or 0)
         sl_price = float(body.get("sl_price") or 0)
         source = str(body.get("source") or "manual").strip()
+        market = str(body.get("market") or "").strip()
+        offset = str(body.get("offset") or "open").strip().lower() or "open"
         margin_mode = str(body.get("margin_mode") or body.get("marginMode") or "").strip().lower()
         if margin_mode in ("cross", "crossed"):
             margin_mode = "cross"
@@ -375,10 +486,14 @@ def place_order(body):
         if order_type == "limit" and price <= 0:
             return jsonify({"code": 0, "msg": "price required for limit orders"}), 400
 
-        # Preserve an explicit 1x perpetual selection. Infer only when omitted.
-        if market_type in ("futures", "future", "perp", "perpetual"):
+        requested_market_type = market_type
+        if market_type in ("option", "options"):
+            market_type = "options"
+        elif market_type in ("perp", "perpetual"):
             market_type = "swap"
-        if market_type not in ("spot", "swap"):
+        elif market_type in ("futures", "future"):
+            market_type = "futures"
+        elif market_type not in ("spot", "swap"):
             market_type = "swap" if leverage > 1 else "spot"
         if market_type == "swap" and not margin_mode:
             margin_mode = "cross"
@@ -394,11 +509,50 @@ def place_order(body):
         if not exchange_id:
             return jsonify({"code": 0, "msg": "Invalid credential: missing exchange_id"}), 400
 
+        if is_cn_quick_trade_exchange(exchange_id):
+            market_type = resolve_cn_market_type(
+                market_type=requested_market_type or market_type,
+                symbol=symbol,
+                market=market,
+            )
+        elif (
+            is_cn_quick_trade_market(market)
+            or is_cn_derivative(symbol)
+            or market_type == "options"
+        ):
+            return jsonify(
+                {"code": 0, "msg": "China futures/options Quick Trade requires a CTP or QMT account."}
+            ), 400
+        elif market_type in ("futures", "future"):
+            market_type = "swap"
+        elif market_type not in ("spot", "swap"):
+            market_type = "swap" if leverage > 1 else "spot"
+
         qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
         if qt_rej is not None:
             return qt_rej
 
         client = create_exchange_client(exchange_config, market_type=market_type)
+        if is_cn_quick_trade_exchange(exchange_id):
+            return _respond_cn_quick_trade_order(
+                user_id=user_id,
+                credential_id=credential_id,
+                exchange_id=exchange_id,
+                exchange_config=exchange_config,
+                client=client,
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                amount=usdt_amount,
+                price=price,
+                leverage=leverage,
+                market_type=market_type,
+                market=market,
+                offset=offset,
+                tp_price=tp_price,
+                sl_price=sl_price,
+                source=source,
+            )
 
         if market_type == "swap":
             from app.services.live_trading.account_configuration import configure_derivatives_account
@@ -743,7 +897,12 @@ def get_balance():
         user_id = g.user_id
         credential_id = request.args.get("credential_id", type=int)
         market_type = request.args.get("market_type", "swap").strip().lower()
-        if market_type in ("futures", "future", "perp", "perpetual"):
+        requested_market_type = market_type
+        if market_type in ("option", "options"):
+            market_type = "options"
+        elif market_type in ("futures", "future"):
+            market_type = "futures"
+        elif market_type in ("perp", "perpetual"):
             market_type = "swap"
 
         if not credential_id:
@@ -754,6 +913,26 @@ def get_balance():
         qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
         if qt_rej is not None:
             return qt_rej
+
+        if is_cn_quick_trade_exchange(exchange_id):
+            mt = resolve_cn_market_type(market_type=requested_market_type)
+            cfg = build_exchange_config(credential_id, user_id, {"market_type": mt})
+            client = create_exchange_client(cfg, market_type=mt)
+            raw = {}
+            if hasattr(client, "get_account"):
+                raw = client.get_account() or {}
+            parsed = parse_cn_balance(raw)
+            balance_data = {
+                "available": parsed["available"],
+                "total": parsed["total"],
+                "currency": parsed["currency"],
+                "market_type": mt,
+                "swap": empty_balance_dict(),
+                "spot": empty_balance_dict(),
+                "futures": parsed if mt == "futures" else empty_balance_dict(),
+                "options": parsed if mt == "options" else empty_balance_dict(),
+            }
+            return jsonify({"code": 1, "data": balance_data})
 
         def _compute_balance() -> Dict[str, Any]:
             swap_bal = empty_balance_dict()
@@ -1161,6 +1340,12 @@ def get_position():
         credential_id = request.args.get("credential_id", type=int)
         symbol = request.args.get("symbol", "").strip()
         market_type = request.args.get("market_type", "swap").strip().lower()
+        if market_type in ("option", "options"):
+            market_type = "options"
+        elif market_type in ("futures", "future"):
+            market_type = "futures"
+        elif market_type in ("perp", "perpetual"):
+            market_type = "swap"
 
         if not credential_id or not symbol:
             return jsonify({"code": 0, "msg": "Missing credential_id or symbol"}), 400
@@ -1170,6 +1355,16 @@ def get_position():
         qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id_pos)
         if qt_rej is not None:
             return qt_rej
+
+        if is_cn_quick_trade_exchange(exchange_id_pos):
+            market_type = resolve_cn_market_type(market_type=market_type, symbol=symbol)
+            exchange_config["market_type"] = market_type
+        elif is_cn_derivative(symbol) or market_type == "options":
+            return jsonify(
+                {"code": 0, "msg": "China futures/options Quick Trade requires a CTP or QMT account."}
+            ), 400
+        elif market_type in ("futures", "future"):
+            market_type = "swap"
 
         client = create_exchange_client(exchange_config, market_type=market_type)
 
@@ -1290,8 +1485,10 @@ def _parse_positions(raw: Any) -> list:
                 or item.get("contract_code")
                 or ""
             ).strip()
-            display_symbol = sym_raw
-            if sym_raw and "/" not in sym_raw:
+            display_symbol = split_cn_display_symbol(sym_raw)
+            if is_cn_derivative(sym_raw):
+                display_symbol = split_cn_display_symbol(sym_raw)
+            elif display_symbol == sym_raw and sym_raw and "/" not in sym_raw:
                 for sep in ("_", "-"):
                     if sep in sym_raw:
                         parts = sym_raw.split(sep, 1)
@@ -1340,6 +1537,7 @@ def _parse_positions(raw: Any) -> list:
                     or item.get("openPriceAvg")
                     or item.get("avgEntryPrice")
                     or item.get("avgPrice")
+                    or item.get("avg_price")
                     or item.get("avgCost")
                     or item.get("avgPx")
                     or item.get("openAvgPx")
@@ -1455,8 +1653,12 @@ def close_position(body):
         if not symbol:
             return jsonify({"code": 0, "msg": "Missing symbol"}), 400
         
-        if market_type in ("futures", "future", "perp", "perpetual"):
+        if market_type in ("option", "options"):
+            market_type = "options"
+        elif market_type in ("perp", "perpetual"):
             market_type = "swap"
+        elif market_type in ("futures", "future"):
+            market_type = "futures"
         
         # ---- build exchange client ----
         exchange_config = build_exchange_config(credential_id, user_id, {
@@ -1465,6 +1667,16 @@ def close_position(body):
         exchange_id = (exchange_config.get("exchange_id") or "").strip().lower()
         if not exchange_id:
             return jsonify({"code": 0, "msg": "Invalid credential: missing exchange_id"}), 400
+
+        if is_cn_quick_trade_exchange(exchange_id):
+            market_type = resolve_cn_market_type(market_type=market_type, symbol=symbol)
+            exchange_config["market_type"] = market_type
+        elif is_cn_derivative(symbol) or market_type == "options":
+            return jsonify(
+                {"code": 0, "msg": "China futures/options Quick Trade requires a CTP or QMT account."}
+            ), 400
+        elif market_type in ("futures", "future"):
+            market_type = "swap"
 
         qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
         if qt_rej is not None:
@@ -1604,6 +1816,20 @@ def close_position(body):
         timestamp_suffix = str(int(time.time()))[-6:]
         uuid_suffix = uuid.uuid4().hex[:8]
         client_order_id = f"qtc{timestamp_suffix}{uuid_suffix}"  # 'c' for close
+
+        if is_cn_quick_trade_exchange(exchange_id):
+            from app.services.quick_trade.cn_derivatives import resolve_cn_order_price
+
+            pos_price = 0.0
+            try:
+                pos_price = float((matches[0] if matches else {}).get("entry_price") or 0)
+            except Exception:
+                pos_price = 0.0
+            exchange_config["price"] = resolve_cn_order_price(
+                symbol=symbol, price=pos_price
+            )
+            exchange_config["order_type"] = "market"
+            actual_close_size = max(1, int(round(float(actual_close_size or 0))))
         
         result = place_order_from_signal(
             client=client,
