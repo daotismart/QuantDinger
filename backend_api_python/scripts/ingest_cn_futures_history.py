@@ -4,6 +4,7 @@
 Examples:
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --dry-run
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
+  PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1m,5m,15m,30m,1H --stitch-months 12
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --symbols RB0,IF0,AU0
 
 Production (inside backend container):
@@ -34,9 +35,17 @@ def main() -> int:
     parser.add_argument("--exchanges", default=os.getenv("CN_FUTURES_INGEST_EXCHANGES", ""), help="CFFEX,SHFE,DCE,CZCE,INE,GFEX")
     parser.add_argument("--provider", default=os.getenv("CN_FUTURES_INGEST_PROVIDER", "akshare"))
     parser.add_argument("--retries", type=int, default=int(os.getenv("CN_FUTURES_INGEST_RETRIES", "3") or 3))
+    parser.add_argument(
+        "--stitch-months",
+        type=int,
+        default=int(os.getenv("CN_FUTURES_MINUTE_STITCH_MONTHS", "12") or 12),
+        help="Nearby delivery months to stitch for minute history",
+    )
     parser.add_argument("--persist", action="store_true", help="Upsert bars into qd_market_bars")
     parser.add_argument("--dry-run", action="store_true", help="Fetch only; do not write the database")
     parser.add_argument("--no-watch", action="store_true", help="Do not register daily/weekly watchlist rows")
+    parser.add_argument("--watch-intraday", action="store_true", help="Also register 1m/5m/... watchlist rows")
+    parser.add_argument("--no-resume", action="store_true", help="Re-fetch symbols that already have minute bars")
     parser.add_argument("-o", "--output", default="", help="Write JSON summary to this path")
     args, _unknown = parser.parse_known_args()
 
@@ -54,6 +63,9 @@ def main() -> int:
         symbols=_split_csv(args.symbols) or None,
         exchanges=_split_csv(args.exchanges) or None,
         register_watch=not args.no_watch,
+        watch_intraday=bool(args.watch_intraday),
+        stitch_months=max(1, int(args.stitch_months)),
+        resume=not bool(args.no_resume),
     )
     text = json.dumps(summary, ensure_ascii=False, indent=2)
     if args.output:

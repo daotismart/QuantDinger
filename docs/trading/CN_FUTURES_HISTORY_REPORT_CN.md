@@ -72,6 +72,9 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 
 # 全市场主力连续入库（日线 + 由日线重采样的周线）
 PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
+
+# 全市场分钟线：拉 1m 并本地重采样 5m/15m/30m/1H（拼接邻近交割月）
+PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1m,5m,15m,30m,1H --stitch-months 12
 ```
 
 ## 5. 结论

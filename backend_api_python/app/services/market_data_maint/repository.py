@@ -197,6 +197,37 @@ def load_bars(
     return out
 
 
+def count_bars(spec: WatchSpec) -> int:
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT COUNT(*) AS n
+                  FROM qd_market_bars
+                 WHERE market = ?
+                   AND symbol = ?
+                   AND timeframe = ?
+                   AND exchange_id = ?
+                   AND market_type = ?
+                """,
+                (
+                    spec.market,
+                    spec.symbol,
+                    spec.timeframe,
+                    spec.exchange_id or "",
+                    spec.market_type or "",
+                ),
+            )
+            row = cur.fetchone()
+            return int(row["n"] if row is not None else 0)
+        except Exception as exc:
+            logger.debug("count_bars failed: %s", exc)
+            return 0
+        finally:
+            cur.close()
+
+
 def upsert_bars(
     spec: WatchSpec,
     bars: Sequence[Dict[str, Any]],

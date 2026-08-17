@@ -54,7 +54,10 @@ logger = get_logger(__name__)
 
 DEFAULT_TIMEFRAMES = ("1D",)
 DAILY_LOOKBACK_BARS = 10000
-MINUTE_LOOKBACK_BARS = 3000
+MINUTE_LOOKBACK_BARS = 20000
+DAILY_TFS = {"1D", "1W"}
+DERIVE_FROM_1M = ("3m", "5m", "15m", "30m", "1H", "4H")
+RESUME_MIN_BARS = 200
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -74,6 +77,14 @@ def _normalize_timeframes(raw: Iterable[str]) -> List[str]:
         "w": "1W",
         "week": "1W",
         "weekly": "1W",
+        "1min": "1m",
+        "min": "1m",
+        "minute": "1m",
+        "5min": "5m",
+        "15min": "15m",
+        "30min": "30m",
+        "1h": "1H",
+        "4h": "4H",
     }
     for item in raw:
         tf = aliases.get(str(item or "").strip().lower(), str(item or "").strip())
@@ -104,8 +115,20 @@ def select_history_targets(
     return rows
 
 
+def _apply_stitch_months(months: Optional[int]) -> int:
+    value = max(1, int(months if months is not None else os.getenv("CN_FUTURES_MINUTE_STITCH_MONTHS", "12") or 12))
+    os.environ["CN_FUTURES_MINUTE_STITCH_MONTHS"] = str(value)
+    try:
+        import app.data_sources.cn_futures as cn_mod
+
+        cn_mod._MINUTE_STITCH_MONTHS = value
+    except Exception:
+        pass
+    return value
+
+
 def _watch_spec(target: Dict[str, Any], timeframe: str) -> WatchSpec:
-    lookback = DAILY_LOOKBACK_BARS if timeframe.upper() in {"1D", "1W"} else MINUTE_LOOKBACK_BARS
+    lookback = DAILY_LOOKBACK_BARS if timeframe.upper() in DAILY_TFS else MINUTE_LOOKBACK_BARS
     return WatchSpec(
         market=str(target["market"]),
         symbol=str(target["symbol"]),
@@ -158,17 +181,29 @@ def ingest_cn_futures_history(
     symbols: Optional[Sequence[str]] = None,
     exchanges: Optional[Sequence[str]] = None,
     register_watch: bool = True,
+    watch_intraday: bool = False,
     derive_weekly: bool = True,
+    stitch_months: Optional[int] = None,
+    resume: bool = True,
     src: Optional[CnFuturesDataSource] = None,
     sleeper: Callable[[float], None] = time.sleep,
+    on_progress: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """Fetch catalog-wide continuous history and optionally persist it.
 
     ``provider`` is forced for this process so a failed Sina call cannot fall
     back to compliance synthetic bars and pollute production.
+
+    When ``1m`` is requested, higher intraday frames (5m/15m/30m/1H/4H) are
+    resampled locally so the full catalog does not hit Sina once per timeframe.
+    Minute watches are opt-in: registering 69 x 1m targets would overload the
+    historical maintainer.
     """
     tfs = _normalize_timeframes(timeframes)
     os.environ["CN_FUTURES_MARKET_DATA_PROVIDER"] = (provider or "akshare").strip() or "akshare"
+    stitch = _apply_stitch_months(stitch_months)
+    if any(tf in {"1m", "3m", "5m", "15m", "30m", "1H", "4H"} for tf in tfs):
+        os.environ.setdefault("CN_FUTURES_MINUTE_STITCH_PAUSE_SEC", "0.35")
     source = src or CnFuturesDataSource()
     targets = select_history_targets(symbols=symbols, exchanges=exchanges)
     started = time.time()
@@ -176,13 +211,39 @@ def ingest_cn_futures_history(
     errors: List[Dict[str, Any]] = []
     upserted_total = 0
     watch_specs: List[WatchSpec] = []
+    skipped = 0
 
     want_weekly = "1W" in tfs
-    fetch_tfs = [tf for tf in tfs if tf != "1W"]
+    want_1m = "1m" in tfs
+    derived_tfs = [tf for tf in tfs if want_1m and tf in DERIVE_FROM_1M]
+    fetch_tfs = [tf for tf in tfs if tf != "1W" and tf not in derived_tfs]
     if want_weekly and "1D" not in fetch_tfs:
         fetch_tfs.append("1D")
 
-    for target in targets:
+    def _should_watch(timeframe: str) -> bool:
+        if not register_watch:
+            return False
+        if timeframe.upper() in DAILY_TFS:
+            return True
+        return bool(watch_intraday)
+
+    def _persist_bars(target: Dict[str, Any], timeframe: str, bars: List[Dict[str, Any]], flags: List[str]) -> int:
+        nonlocal upserted_total
+        if not persist or not bars:
+            return 0
+        spec = _watch_spec(target, timeframe)
+        written = repository.upsert_bars(
+            spec,
+            bars,
+            source="cn_futures_history",
+            quality_flags=flags,
+        )
+        upserted_total += written
+        if _should_watch(timeframe):
+            watch_specs.append(spec)
+        return written
+
+    for index, target in enumerate(targets, start=1):
         symbol = str(target["symbol"])
         item: Dict[str, Any] = {
             "exchange": target["exchange"],
@@ -192,7 +253,22 @@ def ingest_cn_futures_history(
             "name": target["name"],
             "timeframes": {},
         }
+        if resume and persist and want_1m:
+            existing = repository.count_bars(_watch_spec(target, "1m"))
+            if existing >= RESUME_MIN_BARS:
+                skipped += 1
+                item["skipped"] = True
+                item["timeframes"]["1m"] = {"ok": True, "bars": existing, "skipped": True}
+                for tf in derived_tfs:
+                    item["timeframes"][tf] = {"ok": True, "skipped": True, "derived_from": "1m"}
+                results.append(item)
+                logger.info("skip %s 1m already has %s bars (%s/%s)", symbol, existing, index, len(targets))
+                continue
+
         daily_rows: List[Dict[str, Any]] = []
+        minute_rows: List[Dict[str, Any]] = []
+        logger.info("CN futures ingest %s/%s symbol=%s tfs=%s", index, len(targets), symbol, fetch_tfs)
+        print(f"ingest {index}/{len(targets)} {symbol} fetch={fetch_tfs}", flush=True)
         for tf in fetch_tfs:
             try:
                 rows = _fetch_with_retry(
@@ -219,20 +295,42 @@ def ingest_cn_futures_history(
             }
             if tf == "1D":
                 daily_rows = validated.clean_bars
-            if persist and tf in tfs and validated.clean_bars:
-                spec = _watch_spec(target, tf)
-                written = repository.upsert_bars(
-                    spec,
-                    validated.clean_bars,
-                    source="cn_futures_history",
-                    quality_flags=["validated", "akshare"],
-                )
-                payload["upserted"] = written
-                upserted_total += written
-                if register_watch:
-                    watch_specs.append(spec)
+            if tf == "1m":
+                minute_rows = validated.clean_bars
             if tf in tfs:
+                payload["upserted"] = _persist_bars(
+                    target, tf, validated.clean_bars, ["validated", "akshare"]
+                )
                 item["timeframes"][tf] = payload
+
+        if want_1m and minute_rows:
+            for tf in derived_tfs:
+                seconds = TIMEFRAME_SECONDS.get(tf)
+                if not seconds:
+                    continue
+                resampled = source._resample(minute_rows, seconds)
+                validated = sanitize_bars(resampled)
+                payload = {
+                    "ok": True,
+                    "bars": len(validated.clean_bars),
+                    "rejected": len(validated.rejected_bars),
+                    "derived_from": "1m",
+                    "start_time": validated.clean_bars[0]["time"] if validated.clean_bars else None,
+                    "end_time": validated.clean_bars[-1]["time"] if validated.clean_bars else None,
+                }
+                payload["upserted"] = _persist_bars(
+                    target,
+                    tf,
+                    validated.clean_bars,
+                    ["validated", "akshare", "resampled"],
+                )
+                item["timeframes"][tf] = payload
+        elif want_1m and derived_tfs and "1m" in item["timeframes"] and not item["timeframes"]["1m"].get("ok"):
+            for tf in derived_tfs:
+                item["timeframes"][tf] = {
+                    "ok": False,
+                    "error": "1m source failed",
+                }
 
         if want_weekly and daily_rows:
             weekly = source._resample(daily_rows, TIMEFRAME_SECONDS["1W"])
@@ -245,23 +343,19 @@ def ingest_cn_futures_history(
                 "start_time": validated.clean_bars[0]["time"] if validated.clean_bars else None,
                 "end_time": validated.clean_bars[-1]["time"] if validated.clean_bars else None,
             }
-            if persist and validated.clean_bars:
-                spec = _watch_spec(target, "1W")
-                written = repository.upsert_bars(
-                    spec,
-                    validated.clean_bars,
-                    source="cn_futures_history",
-                    quality_flags=["validated", "akshare", "resampled"],
-                )
-                payload["upserted"] = written
-                upserted_total += written
-                if register_watch:
-                    watch_specs.append(spec)
+            payload["upserted"] = _persist_bars(
+                target,
+                "1W",
+                validated.clean_bars,
+                ["validated", "akshare", "resampled"],
+            )
             item["timeframes"]["1W"] = payload
         results.append(item)
+        if on_progress:
+            on_progress({"index": index, "total": len(targets), "symbol": symbol, "item": item})
 
     watch_written = 0
-    if persist and register_watch and watch_specs:
+    if persist and watch_specs:
         try:
             watch_written = repository.upsert_watch_specs(watch_specs)
         except Exception as exc:  # noqa: BLE001
@@ -286,8 +380,10 @@ def ingest_cn_futures_history(
         "provider": os.environ.get("CN_FUTURES_MARKET_DATA_PROVIDER", provider),
         "persist": bool(persist),
         "timeframes": tfs,
+        "stitch_months": stitch,
         "targets": len(targets),
         "ok_symbols": ok_symbols,
+        "skipped_symbols": skipped,
         "failed_symbols": len({e["symbol"] for e in errors if e.get("symbol") and e["symbol"] != "*"}),
         "upserted_rows": upserted_total,
         "watch_written": watch_written,
@@ -297,10 +393,11 @@ def ingest_cn_futures_history(
         "results": results,
     }
     logger.info(
-        "CN futures history ingest status=%s targets=%s ok=%s upserted=%s elapsed=%.1fs",
+        "CN futures history ingest status=%s targets=%s ok=%s skipped=%s upserted=%s elapsed=%.1fs",
         status,
         len(targets),
         ok_symbols,
+        skipped,
         upserted_total,
         summary["elapsed_sec"],
     )
@@ -311,6 +408,7 @@ def ingest_from_env() -> Dict[str, Any]:
     raw_tf = os.getenv("CN_FUTURES_INGEST_TIMEFRAMES", "1D,1W")
     raw_symbols = os.getenv("CN_FUTURES_INGEST_SYMBOLS", "")
     raw_ex = os.getenv("CN_FUTURES_INGEST_EXCHANGES", "")
+    stitch_raw = os.getenv("CN_FUTURES_MINUTE_STITCH_MONTHS") or os.getenv("CN_FUTURES_INGEST_STITCH_MONTHS")
     return ingest_cn_futures_history(
         timeframes=[p.strip() for p in raw_tf.split(",") if p.strip()],
         persist=_bool_env("CN_FUTURES_INGEST_PERSIST", False),
@@ -319,4 +417,7 @@ def ingest_from_env() -> Dict[str, Any]:
         symbols=[p.strip() for p in raw_symbols.split(",") if p.strip()] or None,
         exchanges=[p.strip() for p in raw_ex.split(",") if p.strip()] or None,
         register_watch=_bool_env("CN_FUTURES_INGEST_REGISTER_WATCH", True),
+        watch_intraday=_bool_env("CN_FUTURES_INGEST_WATCH_INTRADAY", False),
+        stitch_months=int(stitch_raw) if stitch_raw else None,
+        resume=_bool_env("CN_FUTURES_INGEST_RESUME", True),
     )

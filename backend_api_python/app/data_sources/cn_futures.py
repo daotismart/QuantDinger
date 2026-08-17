@@ -48,7 +48,23 @@ _MINUTE_PERIOD_MAP = {
 }
 
 # How many nearby delivery months to stitch when building deeper minute history.
-_MINUTE_STITCH_MONTHS = max(1, int(os.getenv("CN_FUTURES_MINUTE_STITCH_MONTHS", "12") or 12))
+# Read at call time so ingest jobs can override without reimporting the module.
+def _stitch_months() -> int:
+    return max(1, int(os.getenv("CN_FUTURES_MINUTE_STITCH_MONTHS", "12") or 12))
+
+
+def _stitch_pause_sec() -> float:
+    raw = os.getenv("CN_FUTURES_MINUTE_STITCH_PAUSE_SEC")
+    if raw is None or str(raw).strip() == "":
+        return 0.0
+    try:
+        return max(0.0, float(raw))
+    except Exception:
+        return 0.0
+
+
+# Back-compat for callers/tests that patch the module constant.
+_MINUTE_STITCH_MONTHS = _stitch_months()
 
 
 def _provider_name() -> str:
@@ -550,7 +566,8 @@ class CnFuturesDataSource(BaseDataSource):
                     return rows
             return []
 
-        months = _MINUTE_STITCH_MONTHS
+        months = _stitch_months()
+        pause = _stitch_pause_sec()
         candidates = self._candidate_minute_symbols(symbol, months=months)
         chunks: List[List[Dict[str, Any]]] = []
         if primary:
@@ -558,6 +575,8 @@ class CnFuturesDataSource(BaseDataSource):
         for cand in candidates:
             if cand == fetch_symbol:
                 continue
+            if pause:
+                time.sleep(pause)
             rows = self._load_minute_rows(ak, cand, period)
             if rows:
                 chunks.append(rows)
