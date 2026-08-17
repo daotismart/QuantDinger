@@ -139,6 +139,16 @@ def _watch_spec(target: Dict[str, Any], timeframe: str) -> WatchSpec:
     )
 
 
+def _existing_bar_count(spec: WatchSpec) -> int:
+    counter = getattr(repository, "count_bars", None)
+    if callable(counter):
+        try:
+            return int(counter(spec))
+        except Exception:
+            pass
+    return len(repository.load_bars(spec, limit=RESUME_MIN_BARS))
+
+
 def _fetch_with_retry(
     src: CnFuturesDataSource,
     symbol: str,
@@ -254,7 +264,7 @@ def ingest_cn_futures_history(
             "timeframes": {},
         }
         if resume and persist and want_1m:
-            existing = repository.count_bars(_watch_spec(target, "1m"))
+            existing = _existing_bar_count(_watch_spec(target, "1m"))
             if existing >= RESUME_MIN_BARS:
                 skipped += 1
                 item["skipped"] = True
