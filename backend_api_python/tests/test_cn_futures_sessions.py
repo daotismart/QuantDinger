@@ -73,6 +73,7 @@ def test_gateway_status_exposes_session_flag(monkeypatch):
         password="demo",
         app_id="",
         auth_code="",
+        product_info="",
         flow_path="./ctp_md_flow_test/",
         instruments=["rb2609"],
         reconnect_seconds=5,

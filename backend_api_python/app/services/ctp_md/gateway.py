@@ -32,6 +32,7 @@ def load_ctp_mdapi(module_name: Optional[str] = None):
         candidates.append(custom)
     candidates.extend(
         [
+            "openctp_ctp",
             "openctp_ctp.mdapi",
             "openctp_ctp6.6.9_P1.mdapi",
             "vnpy_ctp.api.mdapi",
@@ -287,14 +288,26 @@ class CtpMdGateway:
                 gateway._connected = True
                 gateway._last_error = ""
                 logger.info("CTP MdApi front connected: %s", gateway.settings.front)
-                if gateway.settings.app_id and gateway.settings.auth_code and hasattr(mdapi, "CThostFtdcReqAuthenticateField"):
-                    req = mdapi.CThostFtdcReqAuthenticateField()
-                    req.BrokerID = gateway.settings.broker_id
-                    req.UserID = gateway.settings.user_id
-                    req.AppID = gateway.settings.app_id
-                    req.AuthCode = gateway.settings.auth_code
-                    api.ReqAuthenticate(req, gateway._next_request_id())
-                    return
+                try:
+                    if (
+                        gateway.settings.app_id
+                        and gateway.settings.auth_code
+                        and hasattr(mdapi, "CThostFtdcReqAuthenticateField")
+                        and hasattr(api, "ReqAuthenticate")
+                    ):
+                        req = mdapi.CThostFtdcReqAuthenticateField()
+                        req.BrokerID = gateway.settings.broker_id
+                        req.UserID = gateway.settings.user_id
+                        req.AppID = gateway.settings.app_id
+                        req.AuthCode = gateway.settings.auth_code
+                        if gateway.settings.product_info and hasattr(req, "UserProductInfo"):
+                            req.UserProductInfo = gateway.settings.product_info
+                        api.ReqAuthenticate(req, gateway._next_request_id())
+                        return
+                except AttributeError:
+                    logger.warning(
+                        "CTP MdApi ReqAuthenticate unsupported; falling back to UserLogin"
+                    )
                 gateway._login(mdapi, api)
 
             def OnFrontDisconnected(self, nReason):
@@ -349,6 +362,8 @@ class CtpMdGateway:
         req.BrokerID = self.settings.broker_id
         req.UserID = self.settings.user_id
         req.Password = self.settings.password
+        if self.settings.product_info and hasattr(req, "UserProductInfo"):
+            req.UserProductInfo = self.settings.product_info
         api.ReqUserLogin(req, self._next_request_id())
 
     def _rsp_failed(self, pRspInfo: Any) -> bool:
