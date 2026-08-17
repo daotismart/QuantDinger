@@ -31,6 +31,17 @@ CTP_MD_INSTRUMENTS=rb2505
 
 `CTP_MD_INSTRUMENTS` are automatically added as Futures `1m` watch targets.
 
+To load the **full mainland futures catalog** into `qd_market_bars` (main-continuous
+daily + weekly):
+
+```bash
+cd backend_api_python
+PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
+```
+
+Daily/weekly archives are not deleted by retention; only intraday bars (`1m`…`4H`)
+are purged by `bar_time` age.
+
 ## Processes
 
 | Mode | Owner | Behavior |
