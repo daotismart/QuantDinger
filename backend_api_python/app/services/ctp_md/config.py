@@ -33,6 +33,7 @@ class CtpMdSettings:
     password: str
     app_id: str
     auth_code: str
+    product_info: str
     flow_path: str
     instruments: List[str]
     reconnect_seconds: float
@@ -74,6 +75,11 @@ class MetaCtpMdConfig(type):
         return _config_str("ctp_md", "auth_code", "CTP_MD_AUTH_CODE", "")
 
     @property
+    def PRODUCT_INFO(cls) -> str:
+        # Broker-required UserProductInfo / ProductInfo (e.g. Zhongtai DTSCTP).
+        return _config_str("ctp_md", "product_info", "CTP_MD_PRODUCT_INFO", "")
+
+    @property
     def FLOW_PATH(cls) -> str:
         return _config_str("ctp_md", "flow_path", "CTP_MD_FLOW_PATH", "./ctp_md_flow/")
 
@@ -106,6 +112,7 @@ class CtpMdConfig(metaclass=MetaCtpMdConfig):
             password=str(cls.PASSWORD or ""),
             app_id=str(cls.APP_ID or "").strip(),
             auth_code=str(cls.AUTH_CODE or "").strip(),
+            product_info=str(cls.PRODUCT_INFO or "").strip(),
             flow_path=str(cls.FLOW_PATH or "./ctp_md_flow/").strip() or "./ctp_md_flow/",
             instruments=list(cls.INSTRUMENTS),
             reconnect_seconds=max(1.0, float(cls.RECONNECT_SECONDS or 5.0)),
