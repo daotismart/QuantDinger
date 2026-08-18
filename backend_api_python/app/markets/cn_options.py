@@ -90,7 +90,10 @@ def canonical_option_symbol(parsed: ParsedCnOption) -> str:
 
 def sina_option_symbol(parsed: ParsedCnOption) -> str:
     """AkShare option_commodity_hist_sina expects e.g. m2609C2800."""
-    return f"{parsed.root.lower()}{parsed.month}{parsed.call_put}{parsed.strike}"
+    from app.markets.cn_futures import expand_cn_delivery_month
+
+    month = expand_cn_delivery_month(parsed.month, exchange=parsed.exchange)
+    return f"{parsed.root.lower()}{month}{parsed.call_put}{parsed.strike}"
 
 
 def option_underlying_continuous(root: str) -> str:

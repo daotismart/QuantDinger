@@ -25,6 +25,9 @@ CN_INDEX_OPTIONS_MARKET = "CNIndexOptions"
 
 CN_FUTURES_LIVE_CHANNELS = frozenset({"ctp", "qmt"})
 CN_FUTURES_EXCHANGES = frozenset({"CFFEX", "SHFE", "DCE", "CZCE", "INE", "GFEX"})
+CZCE_EXCHANGES = frozenset({"CZCE", "ZCE"})
+# Main-continuous / weighted / next-main sentinels used by Sina and CTP.
+CONTINUOUS_MONTH_CODES = frozenset({"", "0", "888", "999"})
 
 MISROUTE_MESSAGE = (
     "Mainland China futures/options must use market CNFutures/CNFuturesOptions "
@@ -229,6 +232,10 @@ def normalize_cn_symbol(symbol: str) -> str:
     return raw.replace("=F", "").strip()
 
 
+def is_continuous_month(month: Optional[str]) -> bool:
+    return str(month or "").strip().upper() in CONTINUOUS_MONTH_CODES
+
+
 def expand_cn_delivery_month(
     month: str,
     *,
@@ -239,19 +246,15 @@ def expand_cn_delivery_month(
 
     CTP on Zhengzhou often publishes ``SA701`` / ``TA509`` (last year digit +
     month). Public Sina / akshare minute feeds expect ``SA2701`` / ``TA2509``.
-    Four-digit months and continuous sentinels (``0`` / ``888`` / ``999``) are
-    returned unchanged.
+    Four-digit months and continuous sentinels are returned unchanged.
     """
     raw = str(month or "").strip().upper()
-    if not raw or raw in {"0", "888", "999"}:
-        return raw
-    if len(raw) == 4 and raw.isdigit():
+    if is_continuous_month(raw) or (len(raw) == 4 and raw.isdigit()):
         return raw
     if len(raw) != 3 or not raw.isdigit():
         return raw
-    # Only CZCE (and unknown exchange) use the 3-digit form in practice.
     exch = str(exchange or "").strip().upper()
-    if exch and exch not in {"CZCE", "ZCE"}:
+    if exch and exch not in CZCE_EXCHANGES:
         return raw
 
     year_digit = int(raw[0])
@@ -261,8 +264,6 @@ def expand_cn_delivery_month(
 
     ref = now or datetime.now().astimezone()
     year = (int(ref.year) // 10) * 10 + year_digit
-    # Keep the contract inside a sensible window around "now".
-    # Too far in the future → previous decade; too far in the past → next.
     try:
         from datetime import date as _date
 
@@ -285,10 +286,9 @@ def to_sina_contract_symbol(symbol: str, *, now: Optional[datetime] = None) -> s
         return code
     root = parsed["root"]
     month = parsed.get("month") or ""
-    if not month or month in {"0", "888", "999"}:
+    if is_continuous_month(month):
         return f"{root}0"
-    exchange = CN_FUTURE_PRODUCTS[root].exchange
-    expanded = expand_cn_delivery_month(month, exchange=exchange, now=now)
+    expanded = expand_cn_delivery_month(month, exchange=parsed.get("exchange"), now=now)
     return f"{root}{expanded}"
 
 

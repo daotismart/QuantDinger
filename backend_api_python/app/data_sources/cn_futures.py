@@ -25,10 +25,12 @@ from app.markets.cn_futures import (
     is_cn_derivative,
     is_cn_future,
     is_cn_futures_option,
+    is_continuous_month,
     normalize_cn_symbol,
     parse_cn_future_symbol,
     parse_cn_option_symbol,
     resolve_market_category,
+    to_sina_contract_symbol,
 )
 from app.markets.cn_futures_sessions import md_connection_open
 from app.utils.logger import get_logger
@@ -112,23 +114,18 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
 
     mode:
       - ``continuous``: main-continuous root code like ``RB0`` / ``IF0``
-      - ``contract``: specific delivery month like ``RB2509``
+      - ``contract``: specific delivery month like ``RB2509`` / ``SA2701``
       - ``option``: listed option, Sina compact code like ``m2609C2800``
 
-    CZCE CTP codes such as ``SA701`` are expanded to Sina ``SA2701`` so minute
-    history does not silently fall back to the main-continuous series (which
-    can introduce day/night session price jumps on roll days).
+    Futures codes go through ``to_sina_contract_symbol`` so CZCE CTP ids such
+    as ``SA701`` become Sina ``SA2701`` instead of falling back to ``SA0``.
     """
     code = normalize_cn_symbol(symbol)
     parsed = parse_cn_future_symbol(code)
     if parsed:
-        root = parsed["root"]
-        month = parsed.get("month") or ""
-        if not month or month in ("0", "888", "999"):
-            return f"{root}0", "continuous"
-        from app.markets.cn_futures import to_sina_contract_symbol
-
-        return to_sina_contract_symbol(code), "contract"
+        sina = to_sina_contract_symbol(code)
+        mode = "continuous" if is_continuous_month(parsed.get("month")) else "contract"
+        return sina, mode
     opt = parse_cn_option_symbol(code)
     if opt:
         from app.markets.cn_options import (
@@ -143,9 +140,9 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
         return option_underlying_continuous(opt["root"]), "continuous"
     # Bare continuous forms that slip past the futures parser.
     if code.endswith("0") and len(code) >= 2:
-        maybe_root = code[:-1]
         from app.markets.cn_futures import CN_FUTURE_PRODUCTS
 
+        maybe_root = code[:-1]
         if maybe_root in CN_FUTURE_PRODUCTS:
             return f"{maybe_root}0", "continuous"
     return code, "contract"
@@ -474,16 +471,10 @@ class CnFuturesDataSource(BaseDataSource):
         return rows
 
     def _load_minute_rows(self, ak: Any, fetch_symbol: str, period: str) -> List[Dict[str, Any]]:
-        symbols = [fetch_symbol]
-        lower = str(fetch_symbol).lower()
-        if lower not in {s.lower() for s in symbols}:
-            symbols.append(lower)
-        if lower != fetch_symbol:
-            symbols.append(lower)
         seen = set()
-        for symbol in symbols:
-            key = symbol.lower()
-            if key in seen:
+        for symbol in (fetch_symbol, str(fetch_symbol).lower()):
+            key = str(symbol).lower()
+            if not symbol or key in seen:
                 continue
             seen.add(key)
             try:
@@ -519,8 +510,6 @@ class CnFuturesDataSource(BaseDataSource):
 
     def _candidate_minute_symbols(self, symbol: str, *, months: int) -> List[str]:
         """Build continuous + nearby dated contract codes for minute stitching."""
-        from app.markets.cn_futures import to_sina_contract_symbol
-
         code = normalize_cn_symbol(symbol)
         fetch_symbol, mode = resolve_history_symbol(code)
         parsed = parse_cn_future_symbol(code) or parse_cn_option_symbol(code)
@@ -537,17 +526,9 @@ class CnFuturesDataSource(BaseDataSource):
                 seen.add(key)
                 out.append(key)
 
-        # Prefer the dated Sina contract (CZCE 3-digit expanded to YYMM) before
-        # the main-continuous series so short windows never inherit roll jumps.
+        # Dated Sina code first (CZCE already expanded), then main-continuous.
         if mode == "contract":
             _add(fetch_symbol)
-            raw_month = parsed.get("month") or ""
-            if raw_month and raw_month not in ("0", "888", "999"):
-                raw_code = f"{root}{raw_month}"
-                if raw_code.upper() != fetch_symbol.upper():
-                    _add(raw_code)
-                sina_code = to_sina_contract_symbol(code)
-                _add(sina_code)
         _add(f"{root}0")
 
         now = datetime.now(_CST)
