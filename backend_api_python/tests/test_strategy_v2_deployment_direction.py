@@ -154,3 +154,33 @@ def handle_data(context, data):
 
     assert trading_config["symbol"] == "SPY"
     assert trading_config["market_type"] == "spot"
+
+
+@pytest.mark.parametrize("market", [
+    "CNFutures",
+    "CNFuturesOptions",
+    "CNIndexFutures",
+    "CNIndexOptions",
+])
+@pytest.mark.parametrize("exchange_id", ["ctp", "qmt"])
+def test_validate_execution_account_accepts_cn_derivatives_with_ctp_or_qmt(market, exchange_id):
+    StrategyV2DeploymentService._validate_execution_account(
+        (market,),
+        exchange_id,
+        "live",
+    )
+
+
+@pytest.mark.parametrize("market", [
+    "CNFutures",
+    "CNFuturesOptions",
+    "CNIndexFutures",
+    "CNIndexOptions",
+])
+def test_validate_execution_account_rejects_cn_derivatives_with_wrong_broker(market):
+    with pytest.raises(StrategyV2ContractError, match="strategyV2.cnFuturesCredentialRequired"):
+        StrategyV2DeploymentService._validate_execution_account(
+            (market,),
+            "binance",
+            "live",
+        )

@@ -253,12 +253,21 @@ class StrategyV2DeploymentService:
         if len(market_set) != 1:
             raise StrategyV2ContractError("strategyV2.mixedMarketLiveUnsupported")
         market = next(iter(market_set), "")
+        cn_derivative_markets = {
+            "CNFutures",
+            "CNFuturesOptions",
+            "CNIndexFutures",
+            "CNIndexOptions",
+        }
         if market == "Crypto" and exchange_id not in {"binance", "bitget", "bybit", "okx", "gate", "htx"}:
             raise StrategyV2ContractError("strategyV2.cryptoCredentialRequired")
         if market == "USStock" and exchange_id not in {"alpaca", "ibkr"}:
             raise StrategyV2ContractError("strategyV2.stockCredentialRequired")
+        if market in cn_derivative_markets and exchange_id not in {"ctp", "qmt"}:
+            raise StrategyV2ContractError("strategyV2.cnFuturesCredentialRequired")
         if market not in {"Crypto", "USStock"}:
-            raise StrategyV2ContractError("strategyV2.liveMarketUnsupported")
+            if market not in cn_derivative_markets:
+                raise StrategyV2ContractError("strategyV2.liveMarketUnsupported")
 
     @staticmethod
     def _manifest_symbol(manifest: dict[str, Any]) -> str:
