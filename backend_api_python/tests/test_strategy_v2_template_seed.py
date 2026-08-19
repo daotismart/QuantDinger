@@ -24,9 +24,9 @@ def _seed_entries():
 
 def test_strategy_v2_seed_has_explicit_cta_and_portfolio_catalogs():
     entries = _seed_entries()
-    assert len(entries) == 12
-    assert SEED_PATH.read_text(encoding="utf-8").count('"version":11') == 12
-    assert sum(item["asset_type"] == "script" for item in entries) == 8
+    assert len(entries) == 19
+    assert SEED_PATH.read_text(encoding="utf-8").count('"version":11') == 19
+    assert sum(item["asset_type"] == "script" for item in entries) == 15
     assert sum(item["asset_type"] == "portfolio_strategy" for item in entries) == 4
 
     by_key = {item["key"]: item for item in entries}
@@ -51,7 +51,21 @@ def test_strategy_v2_seed_templates_compile_and_expose_parameters():
 def test_strategy_v2_seed_templates_declare_current_direction_contract():
     for item in _seed_entries():
         manifest = compile_strategy_v2(item["code"]).manifest
-        expected = "both" if item["key"] == "strategy_v2_double_ma" else "long_only"
+        expected = (
+            "both"
+            if item["key"]
+            in {
+                "strategy_v2_double_ma",
+                "strategy_v2_trend_pack",
+                "strategy_v2_breakout_momentum_pack",
+                "strategy_v2_mean_reversion_pack",
+                "strategy_v2_carry_pack",
+                "strategy_v2_relative_value_pack",
+                "strategy_v2_volatility_pack",
+                "strategy_v2_market_microstructure_pack",
+            }
+            else "long_only"
+        )
         assert manifest.direction_mode == expected, item["key"]
 
 
