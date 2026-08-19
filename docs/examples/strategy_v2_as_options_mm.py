@@ -8,10 +8,9 @@ on 5-minute bars. Selling options requires direction_mode=both. This is not a
 tick engine; quotes refresh on completed bars and rest until the next bar open.
 """
 
+import datetime
 import math
 import statistics
-
-import pandas as pd
 
 # @param tick_size float 0.5 Option price tick range=0.1:5:0.1
 # @param quote_lots int 1 Size of each bid/ask quote in lots range=1:20:1
@@ -158,7 +157,10 @@ def handle_data(context, data):
     if quotes is None:
         return
 
-    tag = pd.Timestamp(context.current_dt).strftime("%Y%m%d%H%M")
+    now_dt = _as_naive_datetime(context.current_dt)
+    if now_dt is None:
+        return
+    tag = now_dt.strftime("%Y%m%d%H%M")
     if quotes["bid"] is not None:
         g.bid_oid = order(
             g.option_symbol,
@@ -269,24 +271,66 @@ def _parse_cn_option_spec(symbol):
     return result
 
 
+def _as_naive_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return datetime.datetime(
+            int(value.year),
+            int(value.month),
+            int(value.day),
+            int(value.hour),
+            int(value.minute),
+            int(value.second),
+        )
+    if isinstance(value, datetime.date):
+        return datetime.datetime(int(value.year), int(value.month), int(value.day))
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        hour = int(value.hour) if hasattr(value, "hour") else 0
+        minute = int(value.minute) if hasattr(value, "minute") else 0
+        second = int(value.second) if hasattr(value, "second") else 0
+        try:
+            return datetime.datetime(
+                int(value.year),
+                int(value.month),
+                int(value.day),
+                hour,
+                minute,
+                second,
+            )
+        except Exception:
+            return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(text)
+    except Exception:
+        return None
+    return datetime.datetime(
+        parsed.year,
+        parsed.month,
+        parsed.day,
+        parsed.hour,
+        parsed.minute,
+        parsed.second,
+    )
+
+
 def _years_to_expiry(now, year, month, min_years):
     floor = max(float(min_years), 1e-4)
     if year < 1990 or month < 1 or month > 12:
         return floor
-    now_ts = pd.Timestamp(now)
-    now_naive = pd.Timestamp(
-        year=now_ts.year,
-        month=now_ts.month,
-        day=now_ts.day,
-        hour=now_ts.hour,
-        minute=now_ts.minute,
-        second=now_ts.second,
-    )
+    now_dt = _as_naive_datetime(now)
+    if now_dt is None:
+        return floor
     try:
-        expiry = pd.Timestamp(year=int(year), month=int(month), day=5)
+        expiry = datetime.datetime(int(year), int(month), 5)
     except Exception:
         return floor
-    seconds = (expiry - now_naive).total_seconds()
+    seconds = (expiry - now_dt).total_seconds()
     return max(seconds / (365.0 * 24.0 * 3600.0), floor)
 
 

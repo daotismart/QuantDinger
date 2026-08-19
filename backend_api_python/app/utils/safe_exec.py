@@ -56,6 +56,9 @@ _BUILTINS_WHITELIST: Set[str] = {
 # Modules allowed in user code via `import xxx`
 # operator is excluded: attrgetter/itemgetter enable dunder introspection escapes.
 SAFE_IMPORT_MODULES: Set[str] = {
+    # Compiler flags only. Editors and type checkers often insert
+    # `from __future__ import annotations` at the top of pasted source.
+    '__future__',
     'numpy', 'pandas', 'math', 'json', 'datetime', 'time',
     'collections', 'functools', 'itertools', 'statistics',
     'decimal', 'fractions', 'copy',
@@ -846,6 +849,8 @@ def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
                     return False, f"Import not allowed: '{alias.name}'. Allowed modules: {', '.join(sorted(SAFE_IMPORT_MODULES))}"
 
         elif isinstance(node, ast.ImportFrom):
+            if node.module == '__future__':
+                continue
             if node.module:
                 ok, err = _is_safe_import_name(node.module)
                 if not ok:

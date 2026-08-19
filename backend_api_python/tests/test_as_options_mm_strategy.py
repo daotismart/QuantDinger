@@ -11,6 +11,7 @@ import pandas as pd
 
 from app.services.indicator_params import IndicatorParamsParser
 from app.services.strategy_v2 import StrategyV2BacktestRunner, compile_strategy_v2
+from app.utils.safe_exec import SAFE_IMPORT_MODULES, validate_code_safety
 
 
 AS_MM_PATH = Path(__file__).resolve().parents[2] / "docs" / "examples" / "strategy_v2_as_options_mm.py"
@@ -40,6 +41,26 @@ def test_as_mm_example_file_exists():
     assert "order_type=\"limit\"" in code
     assert "cancel_order" in code
     assert "context.params" not in code.split("def handle_data")[0]
+    assert "from __future__" not in code
+    assert "import pandas" not in code
+    ok, err = validate_code_safety(code)
+    assert ok is True, err
+
+
+def test_as_mm_source_imports_are_sandbox_safe():
+    tree = ast.parse(_load_code())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert alias.name.split(".")[0] in SAFE_IMPORT_MODULES
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            assert node.module.split(".")[0] in SAFE_IMPORT_MODULES
+
+
+def test_as_mm_compiles_when_editor_injects_future_annotations():
+    compiled = compile_strategy_v2("from __future__ import annotations\n\n" + _load_code())
+    assert compiled.manifest.strategy_type == "portfolio"
+    assert compiled.manifest.direction_mode == "both"
 
 
 def test_as_mm_compiles_as_portfolio_both_sides():
