@@ -25,6 +25,7 @@ from .market_data import load_strategy_frame
 from .runtime import StrategyV2BacktestRunner
 from .snapshot import MarketDataSnapshotStore, canonical_frame_bytes
 from .storage import StrategyBacktestRepository
+from .display_names import compose_strategy_display_name, format_universe_symbol
 
 
 class StrategyV2BacktestService:
@@ -562,7 +563,14 @@ def _normalize_field(value: str) -> str:
 
 
 def _manifest_symbol(manifest: StrategyManifest) -> str:
-    if manifest.universe.reference:
-        return f"universe:{manifest.universe.reference}"
-    values = [item.symbol for item in manifest.universe.instruments]
-    return values[0] if len(values) == 1 else f"basket:{len(values)}"
+    return format_universe_symbol(
+        instruments=[
+            {
+                "market": item.market,
+                "symbol": item.symbol,
+                "market_type": item.market_type,
+            }
+            for item in manifest.universe.instruments
+        ],
+        universe_reference=str(manifest.universe.reference or ""),
+    )

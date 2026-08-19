@@ -22,6 +22,7 @@ from app.services.backtest_execution import (
 from app.services.backtest_limits import BacktestRangeLimitError
 from app.services.billing_service import get_billing_service
 from app.services.script_source import get_script_source_service
+from app.services.strategy_v2.display_names import compose_strategy_display_name
 from app.services.strategy_v2 import (
     FactorResearchRepository,
     StrategyBacktestRepository,
@@ -91,6 +92,31 @@ def _prepare_run(payload: dict[str, Any], user_id: int) -> dict[str, Any]:
     start_date = datetime.strptime(start_raw, "%Y-%m-%d")
     end_date = datetime.strptime(end_raw, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
     leverage_enabled = bool(payload.get("leverageEnabled", False))
+    params = dict(payload.get("params") or {})
+    template_metadata: dict[str, Any] = {}
+    template_title = ""
+    if source_id:
+        source = get_script_source_service().get_source(source_id, user_id=user_id) or {}
+        template_key = str(source.get("template_key") or "").strip()
+        template = get_script_source_service().get_template_by_key(template_key) if template_key else None
+        if template:
+            template_title = str(template.get("title") or "")
+            template_metadata = template.get("metadata") if isinstance(template.get("metadata"), dict) else {}
+        strategy_name = compose_strategy_display_name(
+            name=strategy_name,
+            code=str(source.get("code") or code),
+            template_title=template_title,
+            template_key=template_key,
+            params=params,
+            metadata=template_metadata,
+        )
+    else:
+        strategy_name = compose_strategy_display_name(
+            name=strategy_name,
+            code=code,
+            params=params,
+            metadata=template_metadata,
+        )
     return {
         "user_id": user_id,
         "code": code,
@@ -101,7 +127,7 @@ def _prepare_run(payload: dict[str, Any], user_id: int) -> dict[str, Any]:
         "leverage": float(payload.get("leverage") or 1),
         "commission": parse_rate(payload.get("commission"), default=default_commission_if_missing(None)),
         "slippage": parse_rate(payload.get("slippage"), default=default_slippage_if_missing(None)),
-        "params": dict(payload.get("params") or {}),
+        "params": params,
         "strategy_id": strategy_id,
         "source_id": source_id,
         "strategy_name": strategy_name,
