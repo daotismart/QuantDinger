@@ -613,22 +613,23 @@ def rebalance(context, data):
     for symbol in selected:
         order_target_percent(symbol, weight, reason="quality_growth")
 $quality$, '{"params":[{"name":"top_n","type":"integer","default":5,"min":1,"max":10,"step":1,"labelKey":"strategyV2.params.topN"},{"name":"min_roe","type":"number","default":0.1,"min":-1,"max":1,"step":0.01,"labelKey":"strategyV2.params.minRoe"},{"name":"min_growth","type":"number","default":0,"min":-1,"max":5,"step":0.01,"labelKey":"strategyV2.params.minGrowth"},{"name":"max_debt_to_equity","type":"number","default":2,"min":0,"max":10,"step":0.1,"labelKey":"strategyV2.params.maxDebtToEquity"},{"name":"max_weight","type":"percent","default":0.2,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.maxWeight"}]}'::jsonb, '["strategy-v2","portfolio","cross-sectional","fundamental","quality","growth"]'::jsonb, 'radar-chart', 'purple', 140, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_trend_pack', 'script', 'Trend Following Pack', '10 trend-following variants (variant=0~9) unified into one Strategy API V2 script.', $trendpack$"""
+('strategy_v2_trend_pack', 'script', 'Trend Following Pack', 'Futures & options trend-following with 10 variants on 1m bars aggregated to 30m.', $trendpack$"""
 Trend Following Pack
-Trend-following variants selected by context.params['variant'].
-""" 
+Futures & options trend-following variants on 1m bars aggregated to 30m.
+"""
 
 # @param variant int 0 range=0:9:1
 # @param target_pct float 0.95 range=0.05:1:0.05
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(260)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -637,31 +638,49 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(260, "1d", ["high", "low", "close", "volume"], g.symbol)
-    if len(bars) < 210:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_max(arr, period):
+        if len(arr) < period:
+            return []
+        return [max(arr[i - period:i]) for i in range(period, len(arr) + 1)]
+
+    def _rolling_min(arr, period):
+        if len(arr) < period:
+            return []
+        return [min(arr[i - period:i]) for i in range(period, len(arr) + 1)]
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    close = bars["close"].astype(float)
-    high = bars["high"].astype(float)
-    low = bars["low"].astype(float)
-    volume = bars["volume"].astype(float)
+    ma20 = _rolling_mean(c30, 20)
+    ma50 = _rolling_mean(c30, 50)
+    ma100 = _rolling_mean(c30, 100)
 
-    # Shared features
-    ma20 = close.rolling(20).mean()
-    ma50 = close.rolling(50).mean()
-    ma100 = close.rolling(100).mean()
-    ema20 = close.ewm(span=20, adjust=False).mean()
-    ema60 = close.ewm(span=60, adjust=False).mean()
-    roc126 = close.pct_change(126)
-    ret1 = close.pct_change(1)
-    vwap20 = (close * volume).rolling(20).sum() / volume.rolling(20).sum()
-    donch_high55 = high.rolling(55).max()
-    donch_low20 = low.rolling(20).min()
-    adx14 = indicator("ADX", g.symbol, timeperiod=14)
-    if len(adx14) < 2:
-        return
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
@@ -669,100 +688,104 @@ def handle_data(context, data):
     desired = 0.0
     reason = ""
 
-    # variant 0..9 mapping (top-level idea; exact rules are simplified for production stability)
     if variant == 0:
-        # Single MA regime
-        desired = target_pct if close.iloc[-1] > ma50.iloc[-1] else (-target_pct if allow_short else 0.0)
+        desired = target_pct if c30[-1] > ma50[-1] else (-target_pct if allow_short else 0.0)
         reason = "trend_single_ma"
     elif variant == 1:
-        # EMA slope
-        slope = ema20.iloc[-1] - ema20.iloc[-2]
-        desired = target_pct if slope > 0 else (-target_pct if allow_short else 0.0)
+        ema20 = _rolling_mean(c30, 20)
+        if len(ema20) >= 2:
+            slope = ema20[-1] - ema20[-2]
+            desired = target_pct if slope > 0 else (-target_pct if allow_short else 0.0)
         reason = "trend_ema_slope"
     elif variant == 2:
-        # EMA fast/slow
-        desired = target_pct if ema20.iloc[-1] > ema60.iloc[-1] else (-target_pct if allow_short else 0.0)
+        ema20 = _rolling_mean(c30, 20)
+        ema60 = _rolling_mean(c30, 60)
+        if ema20 and ema60:
+            desired = target_pct if ema20[-1] > ema60[-1] else (-target_pct if allow_short else 0.0)
         reason = "trend_ema_cross"
     elif variant == 3:
-        # Time-series momentum
-        roc = roc126.iloc[-1]
-        desired = target_pct if roc > 0 else (-target_pct if allow_short else 0.0)
+        if len(c30) > 126:
+            roc = (c30[-1] / c30[-126]) - 1.0
+            desired = target_pct if roc > 0 else (-target_pct if allow_short else 0.0)
         reason = "trend_roc_126"
     elif variant == 4:
-        # Donchian channel trend (breakout + exit on channel failure)
-        near_high = close.iloc[-1] > donch_high55.iloc[-2]
-        near_low = close.iloc[-1] < donch_low20.iloc[-2]
-        if near_high:
-            desired = target_pct
-            reason = "trend_donchian_high"
-        elif near_low:
-            desired = -target_pct if allow_short else 0.0
-            reason = "trend_donchian_low"
+        donch_h55 = _rolling_max(h30, 55)
+        donch_l20 = _rolling_min(l30, 20)
+        if donch_h55 and donch_l20 and len(donch_h55) >= 2 and len(donch_l20) >= 2:
+            if c30[-1] > donch_h55[-2]:
+                desired = target_pct
+                reason = "trend_donchian_high"
+            elif c30[-1] < donch_l20[-2]:
+                desired = -target_pct if allow_short else 0.0
+                reason = "trend_donchian_low"
+            else:
+                desired = 0.0
+                reason = "trend_donchian_flat"
         else:
-            desired = 0.0
             reason = "trend_donchian_flat"
     elif variant == 5:
-        # Relative-strength proxy: 63d return vs mean daily return
-        if len(close) < 63:
-            return
-        ret63 = (close.iloc[-1] / close.iloc[-63]) - 1.0
-        mean_ret21 = ret1.tail(21).mean()
-        desired = target_pct if ret63 > mean_ret21 else (-target_pct if allow_short else 0.0)
+        if len(c30) >= 63:
+            ret63 = (c30[-1] / c30[-63]) - 1.0
+            recent = [c30[i] / c30[i - 1] - 1.0 for i in range(max(1, len(c30) - 21), len(c30))]
+            mean_ret21 = sum(recent) / len(recent) if recent else 0.0
+            desired = target_pct if ret63 > mean_ret21 else (-target_pct if allow_short else 0.0)
         reason = "trend_rs_proxy"
     elif variant == 6:
-        # ADX-weighted regime
-        adx_v = float(adx14.iloc[-1] or 0.0)
-        trend_dir = close.iloc[-1] - ma50.iloc[-1]
-        if adx_v > 25:
+        if ma50:
+            trend_dir = c30[-1] - ma50[-1]
             desired = target_pct if trend_dir > 0 else (-target_pct if allow_short else 0.0)
-            reason = "trend_adx_regime"
-        else:
-            desired = 0.0
-            reason = "trend_adx_weak"
+        reason = "trend_adx_regime"
     elif variant == 7:
-        # VWAP/cost-line regime
-        vwap = float(vwap20.iloc[-1] or 0.0)
-        desired = target_pct if close.iloc[-1] > vwap else (-target_pct if allow_short else 0.0)
+        vwap_vals = []
+        for i in range(20, len(c30) + 1):
+            cv = sum(c30[i - 20:i][j] * v30[i - 20:i][j] for j in range(20))
+            sv = sum(v30[i - 20:i])
+            vwap_vals.append(cv / sv if sv else c30[i - 1])
+        if vwap_vals:
+            desired = target_pct if c30[-1] > vwap_vals[-1] else (-target_pct if allow_short else 0.0)
         reason = "trend_vwap"
     elif variant == 8:
-        # Multi-period MA fusion
-        if ma20.iloc[-1] > ma50.iloc[-1] and close.iloc[-1] > ma20.iloc[-1]:
-            desired = target_pct
-            reason = "trend_fusion_long"
-        elif ma20.iloc[-1] < ma50.iloc[-1] and close.iloc[-1] < ma20.iloc[-1]:
-            desired = -target_pct if allow_short else 0.0
-            reason = "trend_fusion_short"
+        if ma20 and ma50:
+            if ma20[-1] > ma50[-1] and c30[-1] > ma20[-1]:
+                desired = target_pct
+                reason = "trend_fusion_long"
+            elif ma20[-1] < ma50[-1] and c30[-1] < ma20[-1]:
+                desired = -target_pct if allow_short else 0.0
+                reason = "trend_fusion_short"
+            else:
+                desired = 0.0
+                reason = "trend_fusion_flat"
         else:
-            desired = 0.0
             reason = "trend_fusion_flat"
     else:
-        # variant 9: trend + pullback confirmation (simplified)
-        trend_up = close.iloc[-1] > ma100.iloc[-1]
-        bounce_up = close.iloc[-1] > close.iloc[-2]
-        trend_down = close.iloc[-1] < ma100.iloc[-1]
-        bounce_down = close.iloc[-1] < close.iloc[-2]
-        if trend_up and bounce_up:
-            desired = target_pct
-            reason = "trend_pullback_long"
-        elif trend_down and bounce_down and allow_short:
-            desired = -target_pct
-            reason = "trend_pullback_short"
+        if ma100:
+            trend_up = c30[-1] > ma100[-1]
+            bounce_up = c30[-1] > c30[-2]
+            trend_down = c30[-1] < ma100[-1]
+            bounce_down = c30[-1] < c30[-2]
+            if trend_up and bounce_up:
+                desired = target_pct
+                reason = "trend_pullback_long"
+            elif trend_down and bounce_down and allow_short:
+                desired = -target_pct
+                reason = "trend_pullback_short"
+            else:
+                desired = 0.0
+                reason = "trend_pullback_flat"
         else:
-            desired = 0.0
             reason = "trend_pullback_flat"
 
-    # Execute
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$trendpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","trend-following","pack","us-stock"]'::jsonb, 'line-chart', 'blue', 200, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_breakout_momentum_pack', 'script', 'Breakout & Momentum Pack', '10 breakout/momentum variants (variant=0~9) unified into one Strategy API V2 script.', $breakoutpack$"""
+$trendpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","trend-following","pack","cn-futures","options"]'::jsonb, 'line-chart', 'blue', 200, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
+('strategy_v2_breakout_momentum_pack', 'script', 'Breakout & Momentum Pack', 'Futures & options breakout/momentum with 10 variants on 1m bars aggregated to 30m.', $breakoutpack$"""
 Breakout & Momentum Pack
-Breakout & momentum variants selected by context.params['variant'].
+Futures & options breakout/momentum variants on 1m bars aggregated to 30m.
 """
 
 # @param variant int 0 range=0:9:1
@@ -770,12 +793,13 @@ Breakout & momentum variants selected by context.params['variant'].
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(260)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -784,53 +808,81 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(260, "1d", ["high", "low", "open", "close", "volume"], g.symbol)
-    if len(bars) < 220:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_max(arr, period):
+        if len(arr) < period:
+            return []
+        return [max(arr[i - period:i]) for i in range(period, len(arr) + 1)]
+
+    def _rolling_min(arr, period):
+        if len(arr) < period:
+            return []
+        return [min(arr[i - period:i]) for i in range(period, len(arr) + 1)]
+
+    def _rolling_std(arr, period):
+        if len(arr) < period:
+            return []
+        result = []
+        for i in range(period, len(arr) + 1):
+            window = arr[i - period:i]
+            m = sum(window) / period
+            var = sum((x - m) ** 2 for x in window) / period
+            result.append(var ** 0.5)
+        return result
+
+    def _rsi(arr, period):
+        if len(arr) < period + 1:
+            return []
+        deltas = [arr[i] - arr[i - 1] for i in range(1, len(arr))]
+        result = []
+        for i in range(period, len(deltas) + 1):
+            window = deltas[i - period:i]
+            gains = [d if d > 0 else 0 for d in window]
+            losses = [-d if d < 0 else 0 for d in window]
+            ag = sum(gains) / period
+            al = sum(losses) / period
+            if al == 0:
+                result.append(100.0)
+            else:
+                result.append(100.0 - 100.0 / (1.0 + ag / al))
+        return result
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    close = bars["close"].astype(float)
-    high = bars["high"].astype(float)
-    low = bars["low"].astype(float)
-    open_ = bars["open"].astype(float)
-    volume = bars["volume"].astype(float)
+    rsi14 = _rsi(c30, 14)
+    high20 = _rolling_max(h30, 20)
+    low20 = _rolling_min(l30, 20)
+    high55 = _rolling_max(h30, 55)
+    bb_mid = _rolling_mean(c30, 20)
+    bb_std = _rolling_std(c30, 20)
+    avg_vol20 = _rolling_mean(v30, 20)
 
-    # Shared features
-    ret1 = close.pct_change(1)
-    avg_vol20 = volume.rolling(20).mean()
-
-    # RSI (self-implemented to keep outputs stable)
-    def _rsi(series, period):
-        delta = series.diff()
-        gain = delta.clip(lower=0)
-        loss = (-delta).clip(lower=0)
-        avg_gain = gain.rolling(period).mean()
-        avg_loss = loss.rolling(period).mean()
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    rsi14 = _rsi(close, 14)
-    # MACD(12,26,9) histogram
-    ema12 = close.ewm(span=12, adjust=False).mean()
-    ema26 = close.ewm(span=26, adjust=False).mean()
-    macd_line = ema12 - ema26
-    signal_line = macd_line.ewm(span=9, adjust=False).mean()
-    macd_hist = macd_line - signal_line
-
-    # Bollinger(20,2)
-    bb_mid = close.rolling(20).mean()
-    bb_std = close.rolling(20).std()
-    bb_upper = bb_mid + 2.0 * bb_std
-    bb_lower = bb_mid - 2.0 * bb_std
-
-    # Donchian-ish ranges
-    high20 = high.rolling(20).max()
-    low20 = low.rolling(20).min()
-    high55 = high.rolling(55).max()
-    low55 = low.rolling(55).min()
-    high252 = high.rolling(252).max()
-    low252 = low.rolling(252).min()
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
@@ -839,127 +891,142 @@ def handle_data(context, data):
     reason = ""
 
     if variant == 0:
-        # N-day high/low breakout
-        desired = target_pct if close.iloc[-1] > high55.iloc[-2] else (-target_pct if close.iloc[-1] < low20.iloc[-2] and allow_short else 0.0)
+        if high55 and len(high55) >= 2 and low20 and len(low20) >= 2:
+            desired = target_pct if c30[-1] > high55[-2] else (-target_pct if c30[-1] < low20[-2] and allow_short else 0.0)
         reason = "breakout_high55"
     elif variant == 1:
-        # RSI breakout
-        rsi_v = float(rsi14.iloc[-1] or 0.0)
-        if rsi_v > 65:
-            desired = target_pct
-            reason = "breakout_rsi_long"
-        elif rsi_v < 35 and allow_short:
-            desired = -target_pct
-            reason = "breakout_rsi_short"
+        if rsi14:
+            rsi_v = rsi14[-1]
+            if rsi_v > 65:
+                desired = target_pct
+                reason = "breakout_rsi_long"
+            elif rsi_v < 35 and allow_short:
+                desired = -target_pct
+                reason = "breakout_rsi_short"
+            else:
+                reason = "breakout_rsi_flat"
         else:
-            desired = 0.0
             reason = "breakout_rsi_flat"
     elif variant == 2:
-        # MACD momentum
-        hist_v = float(macd_hist.iloc[-1] or 0.0)
-        desired = target_pct if hist_v > 0 else (-target_pct if allow_short else 0.0)
+        ema12 = _rolling_mean(c30, 12)
+        ema26 = _rolling_mean(c30, 26)
+        if ema12 and ema26:
+            ml = len(min(ema12, ema26, key=len))
+            macd = [ema12[len(ema12) - ml + i] - ema26[len(ema26) - ml + i] for i in range(ml)]
+            sig = _rolling_mean(macd, 9)
+            if sig:
+                hist_v = macd[-1] - sig[-1]
+                desired = target_pct if hist_v > 0 else (-target_pct if allow_short else 0.0)
         reason = "breakout_macd_hist"
     elif variant == 3:
-        # Bollinger band expansion
-        c = close.iloc[-1]
-        if c > bb_upper.iloc[-1]:
-            desired = target_pct
-            reason = "breakout_bb_upper"
-        elif c < bb_lower.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "breakout_bb_lower"
+        if bb_mid and bb_std:
+            bb_upper = bb_mid[-1] + 2.0 * bb_std[-1]
+            bb_lower = bb_mid[-1] - 2.0 * bb_std[-1]
+            if c30[-1] > bb_upper:
+                desired = target_pct
+                reason = "breakout_bb_upper"
+            elif c30[-1] < bb_lower and allow_short:
+                desired = -target_pct
+                reason = "breakout_bb_lower"
+            else:
+                reason = "breakout_bb_flat"
         else:
-            desired = 0.0
             reason = "breakout_bb_flat"
     elif variant == 4:
-        # Recent high breakout + simple confirmation
-        recent_high = high20.iloc[-2]
-        recent_low = low20.iloc[-2]
-        if close.iloc[-1] > recent_high and close.iloc[-2] <= recent_high:
-            desired = target_pct
-            reason = "breakout_confirm_high"
-        elif close.iloc[-1] < recent_low and close.iloc[-2] >= recent_low and allow_short:
-            desired = -target_pct
-            reason = "breakout_confirm_low"
+        if high20 and low20 and len(high20) >= 2 and len(low20) >= 2:
+            if c30[-1] > high20[-2] and c30[-2] <= high20[-2]:
+                desired = target_pct
+                reason = "breakout_confirm_high"
+            elif c30[-1] < low20[-2] and c30[-2] >= low20[-2] and allow_short:
+                desired = -target_pct
+                reason = "breakout_confirm_low"
+            else:
+                reason = "breakout_confirm_flat"
         else:
-            desired = 0.0
             reason = "breakout_confirm_flat"
     elif variant == 5:
-        # Volume breakout with direction
-        vol_now = volume.iloc[-1]
-        vol_base = avg_vol20.iloc[-1] if avg_vol20.iloc[-1] else 0.0
-        vol_ratio = vol_now / vol_base if vol_base else 0.0
-        if vol_ratio >= 1.5 and close.iloc[-1] > close.iloc[-2]:
-            desired = target_pct
-            reason = "breakout_volume_long"
-        elif vol_ratio >= 1.5 and close.iloc[-1] < close.iloc[-2] and allow_short:
-            desired = -target_pct
-            reason = "breakout_volume_short"
+        if avg_vol20 and avg_vol20[-1] > 0:
+            vol_ratio = v30[-1] / avg_vol20[-1]
+            if vol_ratio >= 1.5 and c30[-1] > c30[-2]:
+                desired = target_pct
+                reason = "breakout_volume_long"
+            elif vol_ratio >= 1.5 and c30[-1] < c30[-2] and allow_short:
+                desired = -target_pct
+                reason = "breakout_volume_short"
+            else:
+                reason = "breakout_volume_flat"
         else:
-            desired = 0.0
             reason = "breakout_volume_flat"
     elif variant == 6:
-        # 52-week extremes
-        if close.iloc[-1] >= high252.iloc[-1] * 0.999:
-            desired = target_pct
-            reason = "breakout_52w_high"
-        elif close.iloc[-1] <= low252.iloc[-1] * 1.001 and allow_short:
-            desired = -target_pct
-            reason = "breakout_52w_low"
+        if len(c30) > 252:
+            high252 = max(h30[-252:])
+            low252 = min(l30[-252:])
+            rng = high252 - low252
+            if rng > 0:
+                pos = (c30[-1] - low252) / rng
+                if pos > 0.8:
+                    desired = target_pct
+                    reason = "breakout_range_high"
+                elif pos < 0.2 and allow_short:
+                    desired = -target_pct
+                    reason = "breakout_range_low"
+                else:
+                    reason = "breakout_range_flat"
+            else:
+                reason = "breakout_range_flat"
         else:
-            desired = 0.0
-            reason = "breakout_52w_flat"
+            reason = "breakout_range_flat"
     elif variant == 7:
-        # Gap/event-like breakout proxy
-        prev_close = close.iloc[-2]
-        gap_pct = (open_.iloc[-1] - prev_close) / prev_close if prev_close else 0.0
-        if gap_pct >= 0.02 and close.iloc[-1] > open_.iloc[-1]:
-            desired = target_pct
-            reason = "breakout_gap_long"
-        elif gap_pct <= -0.02 and close.iloc[-1] < open_.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "breakout_gap_short"
+        if rsi14 and len(rsi14) >= 2:
+            if rsi14[-1] > 50 and rsi14[-2] <= 50:
+                desired = target_pct
+                reason = "breakout_rsi_cross_long"
+            elif rsi14[-1] < 50 and rsi14[-2] >= 50 and allow_short:
+                desired = -target_pct
+                reason = "breakout_rsi_cross_short"
+            else:
+                reason = "breakout_rsi_cross_flat"
         else:
-            desired = 0.0
-            reason = "breakout_gap_flat"
+            reason = "breakout_rsi_cross_flat"
     elif variant == 8:
-        # Term-structure momentum proxy: short/long MA spread
-        ma20 = close.rolling(20).mean()
-        ma60 = close.rolling(60).mean()
-        if ma20.iloc[-1] > ma60.iloc[-1]:
-            desired = target_pct
-            reason = "breakout_term_mom_long"
-        elif ma20.iloc[-1] < ma60.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "breakout_term_mom_short"
+        if len(c30) >= 10:
+            ret5 = (c30[-1] / c30[-5]) - 1.0
+            ret10 = (c30[-1] / c30[-10]) - 1.0
+            if ret5 > 0 and ret10 > 0:
+                desired = target_pct
+                reason = "breakout_dual_mom_long"
+            elif ret5 < 0 and ret10 < 0 and allow_short:
+                desired = -target_pct
+                reason = "breakout_dual_mom_short"
+            else:
+                reason = "breakout_dual_mom_flat"
         else:
-            desired = 0.0
-            reason = "breakout_term_mom_flat"
+            reason = "breakout_dual_mom_flat"
     else:
-        # variant 9: volatility breakout proxy
-        vol20 = ret1.rolling(20).std() * (252 ** 0.5)
-        vol_base = vol20.rolling(60).mean().iloc[-1]
-        if vol20.iloc[-1] > 1.2 * vol_base and ret1.iloc[-1] > 0:
-            desired = target_pct
-            reason = "breakout_vol_long"
-        elif vol20.iloc[-1] > 1.2 * vol_base and ret1.iloc[-1] < 0 and allow_short:
-            desired = -target_pct
-            reason = "breakout_vol_short"
+        if high20 and low20:
+            mid = (high20[-1] + low20[-1]) / 2.0
+            if c30[-1] > mid:
+                desired = target_pct
+                reason = "breakout_channel_long"
+            elif c30[-1] < mid and allow_short:
+                desired = -target_pct
+                reason = "breakout_channel_short"
+            else:
+                reason = "breakout_channel_flat"
         else:
-            desired = 0.0
-            reason = "breakout_vol_flat"
+            reason = "breakout_channel_flat"
 
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$breakoutpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","breakout","momentum","pack","us-stock"]'::jsonb, 'flag', 'cyan', 210, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_mean_reversion_pack', 'script', 'Mean Reversion Pack', '10 mean-reversion variants (variant=0~9) unified into one Strategy API V2 script.', $meanrevpack$"""
+$breakoutpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","breakout","momentum","pack","cn-futures","options"]'::jsonb, 'rocket', 'orange', 210, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
+('strategy_v2_mean_reversion_pack', 'script', 'Mean Reversion Pack', 'Futures & options mean-reversion with 10 variants on 1m bars aggregated to 30m.', $meanrevpack$"""
 Mean Reversion Pack
-Mean-reversion variants selected by context.params['variant'].
+Futures & options mean-reversion variants on 1m bars aggregated to 30m.
 """
 
 # @param variant int 0 range=0:9:1
@@ -967,12 +1034,13 @@ Mean-reversion variants selected by context.params['variant'].
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(140)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -981,197 +1049,226 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(140, "1d", ["high", "low", "close", "volume"], g.symbol)
-    if len(bars) < 110:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_std(arr, period):
+        if len(arr) < period:
+            return []
+        result = []
+        for i in range(period, len(arr) + 1):
+            window = arr[i - period:i]
+            m = sum(window) / period
+            var = sum((x - m) ** 2 for x in window) / period
+            result.append(var ** 0.5)
+        return result
+
+    def _rsi(arr, period):
+        if len(arr) < period + 1:
+            return []
+        deltas = [arr[i] - arr[i - 1] for i in range(1, len(arr))]
+        result = []
+        for i in range(period, len(deltas) + 1):
+            window = deltas[i - period:i]
+            gains = [d if d > 0 else 0 for d in window]
+            losses = [-d if d < 0 else 0 for d in window]
+            ag = sum(gains) / period
+            al = sum(losses) / period
+            if al == 0:
+                result.append(100.0)
+            else:
+                result.append(100.0 - 100.0 / (1.0 + ag / al))
+        return result
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    close = bars["close"].astype(float)
-    high = bars["high"].astype(float)
-    low = bars["low"].astype(float)
-    volume = bars["volume"].astype(float)
+    ma20 = _rolling_mean(c30, 20)
+    bb_std = _rolling_std(c30, 20)
+    rsi14 = _rsi(c30, 14)
 
-    # RSI (self-implemented)
-    def _rsi(series, period):
-        delta = series.diff()
-        gain = delta.clip(lower=0)
-        loss = (-delta).clip(lower=0)
-        avg_gain = gain.rolling(period).mean()
-        avg_loss = loss.rolling(period).mean()
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    rsi14 = _rsi(close, 14)
-
-    # Bollinger(20,2)
-    bb_mid = close.rolling(20).mean()
-    bb_std = close.rolling(20).std()
-    bb_upper = bb_mid + 2.0 * bb_std
-    bb_lower = bb_mid - 2.0 * bb_std
-
-    # VWAP proxy
-    vwap20 = (close * volume).rolling(20).sum() / volume.rolling(20).sum()
-
-    # Z-score on price vs MA
-    ma60 = close.rolling(60).mean()
-    std60 = close.rolling(60).std()
-    z60 = (close - ma60) / std60
-
-    # Keltner-ish band (ATR proxy from high-low range)
-    ema20 = close.ewm(span=20, adjust=False).mean()
-    atr_proxy = (high - low).rolling(14).mean()
-    kel_upper = ema20 + 1.5 * atr_proxy
-    kel_lower = ema20 - 1.5 * atr_proxy
-
-    # Range stats
-    range30_high = high.rolling(30).max()
-    range30_low = low.rolling(30).min()
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
 
     desired = 0.0
     reason = ""
-    c = close.iloc[-1]
 
     if variant == 0:
-        # RSI extremes reversion
-        r = float(rsi14.iloc[-1] or 0.0)
-        if r <= 30:
-            desired = target_pct
-            reason = "meanrev_rsi_oversold"
-        elif r >= 70 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_rsi_overbought"
+        if ma20 and bb_std and bb_std[-1] > 0:
+            zscore = (c30[-1] - ma20[-1]) / bb_std[-1]
+            if zscore < -2.0:
+                desired = target_pct
+                reason = "mr_bb_long"
+            elif zscore > 2.0 and allow_short:
+                desired = -target_pct
+                reason = "mr_bb_short"
+            else:
+                reason = "mr_bb_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_rsi_flat"
+            reason = "mr_bb_flat"
     elif variant == 1:
-        # Bollinger touch reversion
-        if c < bb_lower.iloc[-1]:
-            desired = target_pct
-            reason = "meanrev_bb_lower"
-        elif c > bb_upper.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "meanrev_bb_upper"
+        if rsi14:
+            rsi_v = rsi14[-1]
+            if rsi_v < 30:
+                desired = target_pct
+                reason = "mr_rsi_oversold"
+            elif rsi_v > 70 and allow_short:
+                desired = -target_pct
+                reason = "mr_rsi_overbought"
+            else:
+                reason = "mr_rsi_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_bb_flat"
+            reason = "mr_rsi_flat"
     elif variant == 2:
-        # Z-score reversion
-        z = float(z60.iloc[-1] or 0.0)
-        if z <= -1.5:
-            desired = target_pct
-            reason = "meanrev_z_low"
-        elif z >= 1.5 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_z_high"
+        ma50 = _rolling_mean(c30, 50)
+        if ma50:
+            dev = (c30[-1] - ma50[-1]) / ma50[-1] if ma50[-1] != 0 else 0
+            if dev < -0.03:
+                desired = target_pct
+                reason = "mr_ma50_long"
+            elif dev > 0.03 and allow_short:
+                desired = -target_pct
+                reason = "mr_ma50_short"
+            else:
+                reason = "mr_ma50_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_z_flat"
+            reason = "mr_ma50_flat"
     elif variant == 3:
-        # Keltner reversion proxy
-        if c < kel_lower.iloc[-1]:
-            desired = target_pct
-            reason = "meanrev_keltner_lower"
-        elif c > kel_upper.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "meanrev_keltner_upper"
+        if len(c30) >= 5:
+            ret3 = (c30[-1] / c30[-3]) - 1.0
+            if ret3 < -0.02:
+                desired = target_pct
+                reason = "mr_ret3_long"
+            elif ret3 > 0.02 and allow_short:
+                desired = -target_pct
+                reason = "mr_ret3_short"
+            else:
+                reason = "mr_ret3_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_keltner_flat"
+            reason = "mr_ret3_flat"
     elif variant == 4:
-        # VWAP deviation reversion
-        v = float(vwap20.iloc[-1] or 0.0)
-        dev = (c - v) / v if v else 0.0
-        if dev <= -0.01:
-            desired = target_pct
-            reason = "meanrev_vwap_below"
-        elif dev >= 0.01 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_vwap_above"
+        if ma20 and bb_std and bb_std[-1] > 0 and rsi14:
+            zscore = (c30[-1] - ma20[-1]) / bb_std[-1]
+            rsi_v = rsi14[-1]
+            if zscore < -1.5 and rsi_v < 35:
+                desired = target_pct
+                reason = "mr_combo_long"
+            elif zscore > 1.5 and rsi_v > 65 and allow_short:
+                desired = -target_pct
+                reason = "mr_combo_short"
+            else:
+                reason = "mr_combo_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_vwap_flat"
+            reason = "mr_combo_flat"
     elif variant == 5:
-        # Range trading
-        if c <= range30_low.iloc[-1] * 1.001:
-            desired = target_pct
-            reason = "meanrev_range_low"
-        elif c >= range30_high.iloc[-1] * 0.999 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_range_high"
+        if len(h30) >= 20 and len(l30) >= 20:
+            h_max = max(h30[-20:])
+            l_min = min(l30[-20:])
+            rng = h_max - l_min
+            if rng > 0:
+                pos = (c30[-1] - l_min) / rng
+                if pos < 0.2:
+                    desired = target_pct
+                    reason = "mr_range_long"
+                elif pos > 0.8 and allow_short:
+                    desired = -target_pct
+                    reason = "mr_range_short"
+                else:
+                    reason = "mr_range_flat"
+            else:
+                reason = "mr_range_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_range_flat"
+            reason = "mr_range_flat"
     elif variant == 6:
-        # Residual EWMA mean reversion proxy
-        ewma20 = close.ewm(span=20, adjust=False).mean()
-        resid = close - ewma20
-        resid_std = resid.rolling(20).std()
-        z = (resid / resid_std).iloc[-1]
-        if z <= -1.0:
-            desired = target_pct
-            reason = "meanrev_resid_low"
-        elif z >= 1.0 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_resid_high"
+        if len(c30) >= 2 and ma20:
+            gap = c30[-1] - c30[-2]
+            diff_ma = c30[-1] - ma20[-1]
+            if gap < 0 and diff_ma < 0:
+                desired = target_pct
+                reason = "mr_gap_long"
+            elif gap > 0 and diff_ma > 0 and allow_short:
+                desired = -target_pct
+                reason = "mr_gap_short"
+            else:
+                reason = "mr_gap_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_resid_flat"
+            reason = "mr_gap_flat"
     elif variant == 7:
-        # Volatility-adjusted reversion
-        ret1 = close.pct_change(1)
-        vol20 = ret1.rolling(20).std()
-        ma20 = close.rolling(20).mean()
-        dev = (c - ma20.iloc[-1]) / ma20.iloc[-1] if ma20.iloc[-1] else 0.0
-        if vol20.iloc[-1] < vol20.rolling(60).mean().iloc[-1] and dev <= -0.02:
-            desired = target_pct
-            reason = "meanrev_vol_adj_long"
-        elif vol20.iloc[-1] < vol20.rolling(60).mean().iloc[-1] and dev >= 0.02 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_vol_adj_short"
+        if rsi14 and len(rsi14) >= 5:
+            rsi_ma5 = sum(rsi14[-5:]) / 5.0
+            if rsi14[-1] < 30 and rsi_ma5 < 40:
+                desired = target_pct
+                reason = "mr_rsi_smooth_long"
+            elif rsi14[-1] > 70 and rsi_ma5 > 60 and allow_short:
+                desired = -target_pct
+                reason = "mr_rsi_smooth_short"
+            else:
+                reason = "mr_rsi_smooth_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_vol_adj_flat"
+            reason = "mr_rsi_smooth_flat"
     elif variant == 8:
-        # Relative price reversion proxy
-        ratio = c / ma60.iloc[-1] if ma60.iloc[-1] else 1.0
-        if ratio <= 0.95:
-            desired = target_pct
-            reason = "meanrev_ratio_low"
-        elif ratio >= 1.05 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_ratio_high"
+        if len(c30) >= 10 and ma20 and bb_std and bb_std[-1] > 0:
+            zscore = (c30[-1] - ma20[-1]) / bb_std[-1]
+            ret5 = (c30[-1] / c30[-5]) - 1.0
+            if zscore < -1.0 and ret5 < -0.01:
+                desired = target_pct
+                reason = "mr_zscore_mom_long"
+            elif zscore > 1.0 and ret5 > 0.01 and allow_short:
+                desired = -target_pct
+                reason = "mr_zscore_mom_short"
+            else:
+                reason = "mr_zscore_mom_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_ratio_flat"
+            reason = "mr_zscore_mom_flat"
     else:
-        # variant 9: short-term 5-day mean reversion
-        ma5 = close.rolling(5).mean()
-        dev = (c - ma5.iloc[-1]) / ma5.iloc[-1] if ma5.iloc[-1] else 0.0
-        if dev <= -0.01:
-            desired = target_pct
-            reason = "meanrev_short_long"
-        elif dev >= 0.01 and allow_short:
-            desired = -target_pct
-            reason = "meanrev_short_short"
+        ma10 = _rolling_mean(c30, 10)
+        if ma10 and ma20:
+            if c30[-1] < ma10[-1] and c30[-1] < ma20[-1]:
+                desired = target_pct
+                reason = "mr_double_ma_long"
+            elif c30[-1] > ma10[-1] and c30[-1] > ma20[-1] and allow_short:
+                desired = -target_pct
+                reason = "mr_double_ma_short"
+            else:
+                reason = "mr_double_ma_flat"
         else:
-            desired = 0.0
-            reason = "meanrev_short_flat"
+            reason = "mr_double_ma_flat"
 
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$meanrevpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","mean-reversion","pack","us-stock"]'::jsonb, 'wave', 'green', 220, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_carry_pack', 'script', 'Carry Proxy Pack', '10 carry/value-risk variants (variant=0~9) unified into one Strategy API V2 script.', $carrypack$"""
-Carry Proxy Pack
-Carry proxy variants selected by context.params['variant'].
+$meanrevpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","mean-reversion","pack","cn-futures","options"]'::jsonb, 'waves', 'green', 220, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
+('strategy_v2_carry_pack', 'script', 'Carry & Roll Yield Pack', 'Futures & options carry/roll-yield with 10 variants on 1m bars aggregated to 30m.', $carrypack$"""
+Carry & Roll Yield Pack
+Futures & options carry/roll-yield variants on 1m bars aggregated to 30m.
 """
 
 # @param variant int 0 range=0:9:1
@@ -1179,12 +1276,13 @@ Carry proxy variants selected by context.params['variant'].
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(120)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -1193,143 +1291,199 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(120, "1d", ["close", "volume"], g.symbol)
-    if len(bars) < 95:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_std(arr, period):
+        if len(arr) < period:
+            return []
+        result = []
+        for i in range(period, len(arr) + 1):
+            window = arr[i - period:i]
+            m = sum(window) / period
+            var = sum((x - m) ** 2 for x in window) / period
+            result.append(var ** 0.5)
+        return result
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    close = bars["close"].astype(float)
-    volume = bars["volume"].astype(float)
+    ma20 = _rolling_mean(c30, 20)
+    ma50 = _rolling_mean(c30, 50)
 
-    ret1 = close.pct_change(1)
-    mean_ret60 = ret1.rolling(60).mean()
-    mean_ret20 = ret1.rolling(20).mean()
-    vol20 = ret1.rolling(20).std() * (252 ** 0.5)
-    vol20_base = vol20.rolling(60).mean()
-
-    ma20 = close.rolling(20).mean()
-    ma60 = close.rolling(60).mean()
-
-    # RSI for tail-hedging proxy
-    def _rsi(series, period):
-        delta = series.diff()
-        gain = delta.clip(lower=0)
-        loss = (-delta).clip(lower=0)
-        avg_gain = gain.rolling(period).mean()
-        avg_loss = loss.rolling(period).mean()
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    rsi14 = _rsi(close, 14)
-
-    # Volume-weighted return mean proxy
-    vw_ret = (ret1 * volume).rolling(20).sum() / volume.rolling(20).sum()
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
 
     desired = 0.0
     reason = ""
-    carry = mean_ret60.iloc[-1]
+
+    basis = (c30[-1] - o30[-1]) / o30[-1] if o30[-1] != 0 else 0.0
+    basis_ma = 0.0
+    if len(c30) >= 20 and len(o30) >= 20:
+        basis_arr = [(c30[i] - o30[i]) / o30[i] if o30[i] != 0 else 0.0 for i in range(len(c30))]
+        basis_ma_arr = _rolling_mean(basis_arr, 20)
+        if basis_ma_arr:
+            basis_ma = basis_ma_arr[-1]
 
     if variant == 0:
-        # Basic carry (time-average return)
-        desired = target_pct if carry > 0 else (-target_pct if allow_short else 0.0)
-        reason = "carry_basic"
+        desired = target_pct if basis > 0 else (-target_pct if allow_short else 0.0)
+        reason = "carry_basis_sign"
     elif variant == 1:
-        # Carry with trend risk filter
-        regime_ok = close.iloc[-1] > ma60.iloc[-1]
-        desired = target_pct if (carry > 0 and regime_ok) else 0.0
-        if carry < 0 and close.iloc[-1] < ma60.iloc[-1] and allow_short:
-            desired = -target_pct
-        reason = "carry_trend_filter"
+        desired = target_pct if basis > basis_ma else (-target_pct if allow_short else 0.0)
+        reason = "carry_basis_vs_ma"
     elif variant == 2:
-        # Roll-yield proxy: short mean > long mean
-        if mean_ret20.iloc[-1] > mean_ret60.iloc[-1]:
-            desired = target_pct
-            reason = "carry_roll_long"
-        elif mean_ret20.iloc[-1] < mean_ret60.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "carry_roll_short"
+        if ma20 and ma50:
+            trend_up = ma20[-1] > ma50[-1]
+            if basis > 0 and trend_up:
+                desired = target_pct
+                reason = "carry_trend_long"
+            elif basis < 0 and not trend_up and allow_short:
+                desired = -target_pct
+                reason = "carry_trend_short"
+            else:
+                reason = "carry_trend_flat"
         else:
-            desired = 0.0
-            reason = "carry_roll_flat"
+            reason = "carry_trend_flat"
     elif variant == 3:
-        # Value/carry hybrid proxy: use debt-like risk as price volatility proxy
-        risk_ok = vol20.iloc[-1] < vol20_base.iloc[-1] * 1.05
-        desired = target_pct if (carry > 0 and risk_ok) else (-target_pct if carry < 0 and allow_short and risk_ok else 0.0)
-        reason = "carry_value_risk"
+        if len(c30) >= 5:
+            ret5 = (c30[-1] / c30[-5]) - 1.0
+            if basis > 0 and ret5 > 0:
+                desired = target_pct
+                reason = "carry_mom_long"
+            elif basis < 0 and ret5 < 0 and allow_short:
+                desired = -target_pct
+                reason = "carry_mom_short"
+            else:
+                reason = "carry_mom_flat"
+        else:
+            reason = "carry_mom_flat"
     elif variant == 4:
-        # Dividend/financing proxy: volume-weighted carry
-        carry_vw = vw_ret.iloc[-1]
-        desired = target_pct if carry_vw > 0 else (-target_pct if allow_short else 0.0)
-        reason = "carry_volume_weighted"
+        vol_std = _rolling_std(c30, 20)
+        if vol_std and vol_std[-1] > 0:
+            carry_sharpe = basis / vol_std[-1]
+            if carry_sharpe > 0.5:
+                desired = target_pct
+                reason = "carry_sharpe_long"
+            elif carry_sharpe < -0.5 and allow_short:
+                desired = -target_pct
+                reason = "carry_sharpe_short"
+            else:
+                reason = "carry_sharpe_flat"
+        else:
+            reason = "carry_sharpe_flat"
     elif variant == 5:
-        # Volatility carry: prefer low vol regimes
-        if vol20.iloc[-1] < vol20_base.iloc[-1]:
-            desired = target_pct if carry > 0 else (-target_pct if carry < 0 and allow_short else 0.0)
-            reason = "carry_low_vol"
+        if len(c30) >= 60:
+            basis_60 = [(c30[i] - o30[i]) / o30[i] if o30[i] != 0 else 0.0 for i in range(len(c30))]
+            recent = basis_60[-20:]
+            older = basis_60[-60:-40]
+            recent_avg = sum(recent) / len(recent) if recent else 0
+            older_avg = sum(older) / len(older) if older else 0
+            if recent_avg > older_avg:
+                desired = target_pct
+                reason = "carry_improving"
+            elif recent_avg < older_avg and allow_short:
+                desired = -target_pct
+                reason = "carry_deteriorating"
+            else:
+                reason = "carry_stable"
         else:
-            desired = 0.0
-            reason = "carry_high_vol_exit"
+            reason = "carry_stable"
     elif variant == 6:
-        # Trend-adjusted carry
-        if close.iloc[-1] > ma20.iloc[-1] and carry > 0:
-            desired = target_pct
-            reason = "carry_trend_adj_long"
-        elif close.iloc[-1] < ma20.iloc[-1] and carry < 0 and allow_short:
-            desired = -target_pct
-            reason = "carry_trend_adj_short"
+        avg_vol = _rolling_mean(v30, 20)
+        if avg_vol and avg_vol[-1] > 0:
+            vol_ratio = v30[-1] / avg_vol[-1]
+            if basis > 0 and vol_ratio > 1.2:
+                desired = target_pct
+                reason = "carry_vol_confirm_long"
+            elif basis < 0 and vol_ratio > 1.2 and allow_short:
+                desired = -target_pct
+                reason = "carry_vol_confirm_short"
+            else:
+                reason = "carry_vol_flat"
         else:
-            desired = 0.0
-            reason = "carry_trend_adj_flat"
+            reason = "carry_vol_flat"
     elif variant == 7:
-        # Mean/variance carry proxy: speed of returns (EWMA vs SMA)
-        ew = ret1.ewm(span=20, adjust=False).mean().iloc[-1]
-        sm = mean_ret20.iloc[-1]
-        if ew > sm:
-            desired = target_pct
-            reason = "carry_mom_speed_long"
-        elif ew < sm and allow_short:
-            desired = -target_pct
-            reason = "carry_mom_speed_short"
+        if len(c30) >= 10:
+            basis_arr = [(c30[i] - o30[i]) / o30[i] if o30[i] != 0 else 0.0 for i in range(len(c30))]
+            basis_std = _rolling_std(basis_arr, 10)
+            if basis_std and basis_std[-1] > 0:
+                z = (basis - sum(basis_arr[-10:]) / 10) / basis_std[-1]
+                if z > 1.0:
+                    desired = target_pct
+                    reason = "carry_zscore_long"
+                elif z < -1.0 and allow_short:
+                    desired = -target_pct
+                    reason = "carry_zscore_short"
+                else:
+                    reason = "carry_zscore_flat"
+            else:
+                reason = "carry_zscore_flat"
         else:
-            desired = 0.0
-            reason = "carry_mom_speed_flat"
+            reason = "carry_zscore_flat"
     elif variant == 8:
-        # Cross-sectional proxy cannot; use RSI & carry interaction
-        r = float(rsi14.iloc[-1] or 50.0)
-        if carry > 0 and r < 60:
-            desired = target_pct
-            reason = "carry_tail_safe_long"
-        elif carry < 0 and r > 40 and allow_short:
-            desired = -target_pct
-            reason = "carry_tail_safe_short"
+        if ma20:
+            ma_slope = ma20[-1] - ma20[-2] if len(ma20) >= 2 else 0
+            if basis > 0 and ma_slope > 0:
+                desired = target_pct
+                reason = "carry_slope_long"
+            elif basis < 0 and ma_slope < 0 and allow_short:
+                desired = -target_pct
+                reason = "carry_slope_short"
+            else:
+                reason = "carry_slope_flat"
         else:
-            desired = 0.0
-            reason = "carry_tail_safe_flat"
+            reason = "carry_slope_flat"
     else:
-        # variant 9: tail-hedged carry: RSI near middle only
-        r = float(rsi14.iloc[-1] or 50.0)
-        if 40 <= r <= 60:
-            desired = target_pct if carry > 0 else (-target_pct if carry < 0 and allow_short else 0.0)
-            reason = "carry_tail_hedged"
+        if len(c30) >= 20:
+            rets = [c30[i] / c30[i - 1] - 1.0 for i in range(max(1, len(c30) - 20), len(c30))]
+            pos_days = sum(1 for r in rets if r > 0)
+            win_rate = pos_days / len(rets) if rets else 0.5
+            if basis > 0 and win_rate > 0.55:
+                desired = target_pct
+                reason = "carry_winrate_long"
+            elif basis < 0 and win_rate < 0.45 and allow_short:
+                desired = -target_pct
+                reason = "carry_winrate_short"
+            else:
+                reason = "carry_winrate_flat"
         else:
-            desired = 0.0
-            reason = "carry_tail_hedged_exit"
+            reason = "carry_winrate_flat"
 
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$carrypack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","carry","pack","us-stock"]'::jsonb, 'bar-chart', 'teal', 230, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_relative_value_pack', 'script', 'Relative Value Pack', '10 relative-value/stat-arb proxy variants (variant=0~9) unified into one Strategy API V2 script.', $relvalpack$"""
+$carrypack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","carry","roll-yield","pack","cn-futures","options"]'::jsonb, 'coins', 'yellow', 230, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
+('strategy_v2_relative_value_pack', 'script', 'Relative Value Pack', 'Futures & options relative-value with 10 variants on 1m bars aggregated to 30m.', $relvalpack$"""
 Relative Value Pack
-Relative-value/stat-arb style proxies selected by context.params['variant'].
+Futures & options relative-value variants on 1m bars aggregated to 30m.
 """
 
 # @param variant int 0 range=0:9:1
@@ -1337,12 +1491,13 @@ Relative-value/stat-arb style proxies selected by context.params['variant'].
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(140)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -1351,172 +1506,213 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(140, "1d", ["high", "low", "close", "volume"], g.symbol)
-    if len(bars) < 110:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_std(arr, period):
+        if len(arr) < period:
+            return []
+        result = []
+        for i in range(period, len(arr) + 1):
+            window = arr[i - period:i]
+            m = sum(window) / period
+            var = sum((x - m) ** 2 for x in window) / period
+            result.append(var ** 0.5)
+        return result
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    close = bars["close"].astype(float)
-    high = bars["high"].astype(float)
-    low = bars["low"].astype(float)
-    volume = bars["volume"].astype(float)
+    ma20 = _rolling_mean(c30, 20)
+    ma50 = _rolling_mean(c30, 50)
+    std20 = _rolling_std(c30, 20)
 
-    ma20 = close.rolling(20).mean()
-    ma50 = close.rolling(50).mean()
-    ma60 = close.rolling(60).mean()
-    std60 = close.rolling(60).std()
-    z60 = (close - ma60) / std60
+    hl_ratio = [(h30[i] - l30[i]) / c30[i] if c30[i] != 0 else 0 for i in range(len(c30))]
+    hl_ma = _rolling_mean(hl_ratio, 20)
 
-    # VWAP proxy
-    vwap20 = (close * volume).rolling(20).sum() / volume.rolling(20).sum()
-
-    # Spread proxies (price-vs-trend)
-    spread1 = close - ma60
-    spread1_std = spread1.rolling(60).std()
-    zspread = spread1 / spread1_std
-
-    # Range proxy
-    range20 = (high - low).rolling(20).mean()
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
 
     desired = 0.0
     reason = ""
-    c = close.iloc[-1]
 
     if variant == 0:
-        # Mean-revert on z-score
-        z = float(z60.iloc[-1] or 0.0)
-        if z >= 1.5 and allow_short:
-            desired = -target_pct
-        elif z <= -1.5:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_zscore"
+        if ma20 and ma50:
+            spread = ma20[-1] - ma50[-1]
+            desired = target_pct if spread > 0 else (-target_pct if allow_short else 0.0)
+        reason = "rv_ma_spread"
     elif variant == 1:
-        # Ratio deviation reversion
-        base = float(ma60.iloc[-1] or 0.0)
-        ratio = c / base if base else 1.0
-        if ratio >= 1.03 and allow_short:
-            desired = -target_pct
-        elif ratio <= 0.97:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_ratio"
-    elif variant == 2:
-        # Spread between MA20 and MA50
-        spread = ma20.iloc[-1] - ma50.iloc[-1]
-        spread_z = spread / (abs(range20.iloc[-1] or 1.0))
-        if spread_z > 0.01 and allow_short:
-            desired = -target_pct
-        elif spread_z < -0.01:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_ma_spread"
-    elif variant == 3:
-        # Price vs VWAP deviation
-        v = float(vwap20.iloc[-1] or 0.0)
-        dev = (c - v) / v if v else 0.0
-        if dev > 0.01 and allow_short:
-            desired = -target_pct
-        elif dev < -0.01:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_vwap_dev"
-    elif variant == 4:
-        # Return extreme reversion proxy
-        ret20 = c / close.iloc[-20] - 1.0 if len(close) >= 20 else 0.0
-        if ret20 > 0.08 and allow_short:
-            desired = -target_pct
-        elif ret20 < -0.08:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_ret_extreme"
-    elif variant == 5:
-        # Spread z-score on detrended series
-        z = float(zspread.iloc[-1] or 0.0)
-        if z > 1.2 and allow_short:
-            desired = -target_pct
-        elif z < -1.2:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_spread_z"
-    elif variant == 6:
-        # Momentum reversal: opposite of ROC sign when stretched
-        roc = close.pct_change(20).iloc[-1]
-        if roc > 0.05 and allow_short:
-            desired = -target_pct
-        elif roc < -0.05:
-            desired = target_pct
-        else:
-            desired = 0.0
-        reason = "relval_mom_reversal"
-    elif variant == 7:
-        # Volatility-conditioned reversion proxy
-        ret1 = close.pct_change(1)
-        vol20 = ret1.rolling(20).std() * (252 ** 0.5)
-        vol_ok = vol20.iloc[-1] < vol20.rolling(60).mean().iloc[-1]
-        if vol_ok:
-            dev = (c - ma20.iloc[-1]) / ma20.iloc[-1] if ma20.iloc[-1] else 0.0
-            if dev > 0.02 and allow_short:
-                desired = -target_pct
-            elif dev < -0.02:
+        if ma20 and std20 and std20[-1] > 0:
+            zscore = (c30[-1] - ma20[-1]) / std20[-1]
+            if zscore < -1.5:
                 desired = target_pct
+                reason = "rv_zscore_long"
+            elif zscore > 1.5 and allow_short:
+                desired = -target_pct
+                reason = "rv_zscore_short"
             else:
-                desired = 0.0
+                reason = "rv_zscore_flat"
         else:
-            desired = 0.0
-        reason = "relval_vol_cond"
+            reason = "rv_zscore_flat"
+    elif variant == 2:
+        if hl_ma and len(hl_ma) >= 2:
+            if hl_ratio[-1] < hl_ma[-1] and c30[-1] > c30[-2]:
+                desired = target_pct
+                reason = "rv_vol_compress_long"
+            elif hl_ratio[-1] < hl_ma[-1] and c30[-1] < c30[-2] and allow_short:
+                desired = -target_pct
+                reason = "rv_vol_compress_short"
+            else:
+                reason = "rv_vol_compress_flat"
+        else:
+            reason = "rv_vol_compress_flat"
+    elif variant == 3:
+        if len(c30) >= 60:
+            ret20 = (c30[-1] / c30[-20]) - 1.0
+            ret60 = (c30[-1] / c30[-60]) - 1.0
+            if ret20 > ret60:
+                desired = target_pct
+                reason = "rv_momentum_accel"
+            elif ret20 < ret60 and allow_short:
+                desired = -target_pct
+                reason = "rv_momentum_decel"
+            else:
+                reason = "rv_momentum_flat"
+        else:
+            reason = "rv_momentum_flat"
+    elif variant == 4:
+        avg_vol = _rolling_mean(v30, 20)
+        if avg_vol and len(avg_vol) >= 2:
+            vol_trend = avg_vol[-1] - avg_vol[-2]
+            price_trend = c30[-1] - c30[-2]
+            if vol_trend > 0 and price_trend > 0:
+                desired = target_pct
+                reason = "rv_vol_price_long"
+            elif vol_trend > 0 and price_trend < 0 and allow_short:
+                desired = -target_pct
+                reason = "rv_vol_price_short"
+            else:
+                reason = "rv_vol_price_flat"
+        else:
+            reason = "rv_vol_price_flat"
+    elif variant == 5:
+        if len(c30) >= 40:
+            ret10 = [(c30[i] / c30[i - 10]) - 1.0 for i in range(10, len(c30))]
+            ret_std = _rolling_std(ret10, 20)
+            if ret_std and ret_std[-1] > 0:
+                norm_ret = ret10[-1] / ret_std[-1]
+                if norm_ret > 1.0:
+                    desired = target_pct
+                    reason = "rv_norm_ret_long"
+                elif norm_ret < -1.0 and allow_short:
+                    desired = -target_pct
+                    reason = "rv_norm_ret_short"
+                else:
+                    reason = "rv_norm_ret_flat"
+            else:
+                reason = "rv_norm_ret_flat"
+        else:
+            reason = "rv_norm_ret_flat"
+    elif variant == 6:
+        if len(c30) >= 20:
+            rets = [c30[i] / c30[i - 1] - 1.0 for i in range(max(1, len(c30) - 20), len(c30))]
+            up = [r for r in rets if r > 0]
+            down = [r for r in rets if r < 0]
+            avg_up = sum(up) / len(up) if up else 0
+            avg_down = abs(sum(down) / len(down)) if down else 0
+            ratio = avg_up / avg_down if avg_down > 0 else 2.0
+            if ratio > 1.2:
+                desired = target_pct
+                reason = "rv_updown_long"
+            elif ratio < 0.8 and allow_short:
+                desired = -target_pct
+                reason = "rv_updown_short"
+            else:
+                reason = "rv_updown_flat"
+        else:
+            reason = "rv_updown_flat"
+    elif variant == 7:
+        if ma20 and len(ma20) >= 10:
+            ma_rets = [(ma20[i] / ma20[i - 1]) - 1.0 for i in range(max(1, len(ma20) - 10), len(ma20))]
+            ma_accel = ma_rets[-1] - ma_rets[0] if len(ma_rets) >= 2 else 0
+            if ma_accel > 0:
+                desired = target_pct
+                reason = "rv_ma_accel_long"
+            elif ma_accel < 0 and allow_short:
+                desired = -target_pct
+                reason = "rv_ma_accel_short"
+            else:
+                reason = "rv_ma_accel_flat"
+        else:
+            reason = "rv_ma_accel_flat"
     elif variant == 8:
-        # Value proxy with range: revert when price deviates but range is stable
-        dev = (c - ma60.iloc[-1]) / ma60.iloc[-1] if ma60.iloc[-1] else 0.0
-        stable = range20.iloc[-1] < range20.rolling(60).mean().iloc[-1]
-        if stable and dev > 0.015 and allow_short:
-            desired = -target_pct
-        elif stable and dev < -0.015:
-            desired = target_pct
+        if len(c30) >= 5 and std20:
+            recent_move = abs(c30[-1] - c30[-5])
+            expected = std20[-1] * (5 ** 0.5) if std20[-1] > 0 else 1
+            if recent_move < expected * 0.5:
+                if c30[-1] > c30[-5]:
+                    desired = target_pct
+                    reason = "rv_quiet_up"
+                elif allow_short:
+                    desired = -target_pct
+                    reason = "rv_quiet_down"
+                else:
+                    reason = "rv_quiet_flat"
+            else:
+                reason = "rv_quiet_flat"
         else:
-            desired = 0.0
-        reason = "relval_range_stable"
+            reason = "rv_quiet_flat"
     else:
-        # variant 9: RSI-proxy reversion (self-implemented)
-        def _rsi(series, period):
-            delta = series.diff()
-            gain = delta.clip(lower=0)
-            loss = (-delta).clip(lower=0)
-            avg_gain = gain.rolling(period).mean()
-            avg_loss = loss.rolling(period).mean()
-            rs = avg_gain / avg_loss
-            return 100.0 - (100.0 / (1.0 + rs))
-        rsi14 = _rsi(close, 14).iloc[-1]
-        r = float(rsi14 or 50.0)
-        if r < 40:
-            desired = target_pct
-        elif r > 60 and allow_short:
-            desired = -target_pct
+        if len(c30) >= 40:
+            half = len(c30) // 2
+            first_half_std = _rolling_std(c30[:half], min(20, half))
+            second_half_std = _rolling_std(c30[half:], min(20, len(c30) - half))
+            if first_half_std and second_half_std:
+                if second_half_std[-1] < first_half_std[-1]:
+                    desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                    reason = "rv_vol_regime"
+                else:
+                    reason = "rv_vol_regime_flat"
+            else:
+                reason = "rv_vol_regime_flat"
         else:
-            desired = 0.0
-        reason = "relval_rsi_proxy"
+            reason = "rv_vol_regime_flat"
 
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$relvalpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","relative-value","pack","us-stock"]'::jsonb, 'scatter', 'orange', 240, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_volatility_pack', 'script', 'Volatility / Risk Premia Pack', '10 volatility regime variants (variant=0~9) unified into one Strategy API V2 script.', $volpack$"""
-Volatility / Risk Premia Pack
-Volatility-regime style variants selected by context.params['variant'].
+$relvalpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","relative-value","pack","cn-futures","options"]'::jsonb, 'scale', 'teal', 240, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
+('strategy_v2_volatility_pack', 'script', 'Volatility Pack', 'Futures & options volatility with 10 variants on 1m bars aggregated to 30m.', $volpack$"""
+Volatility Pack
+Futures & options volatility variants on 1m bars aggregated to 30m.
 """
 
 # @param variant int 0 range=0:9:1
@@ -1524,12 +1720,13 @@ Volatility-regime style variants selected by context.params['variant'].
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(140)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -1538,28 +1735,53 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(140, "1d", ["high", "low", "close", "volume"], g.symbol)
-    if len(bars) < 110:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_std(arr, period):
+        if len(arr) < period:
+            return []
+        result = []
+        for i in range(period, len(arr) + 1):
+            window = arr[i - period:i]
+            m = sum(window) / period
+            var = sum((x - m) ** 2 for x in window) / period
+            result.append(var ** 0.5)
+        return result
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    close = bars["close"].astype(float)
-    high = bars["high"].astype(float)
-    low = bars["low"].astype(float)
+    rets = [c30[i] / c30[i - 1] - 1.0 for i in range(1, len(c30))]
+    vol20 = _rolling_std(rets, 20)
+    vol60 = _rolling_std(rets, 60)
+    ma20 = _rolling_mean(c30, 20)
+    atr = [(h30[i] - l30[i]) / c30[i] if c30[i] != 0 else 0 for i in range(len(c30))]
+    atr20 = _rolling_mean(atr, 20)
 
-    ret1 = close.pct_change(1)
-    vol20 = ret1.rolling(20).std() * (252 ** 0.5)
-    vol60 = ret1.rolling(60).std() * (252 ** 0.5)
-    vol_base = vol20.rolling(60).mean()
-
-    # Volatility width proxy (Bollinger band width)
-    ma20 = close.rolling(20).mean()
-    std20 = close.rolling(20).std()
-    bb_width = (ma20 + 2.0 * std20) - (ma20 - 2.0 * std20)
-
-    roc20 = close.pct_change(20).iloc[-1]
-    c = close.iloc[-1]
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
@@ -1568,128 +1790,150 @@ def handle_data(context, data):
     reason = ""
 
     if variant == 0:
-        # Sell-vol proxy: long when vol is low and trend positive
-        if vol20.iloc[-1] < vol_base.iloc[-1] and roc20 > 0:
-            desired = target_pct
-        elif vol20.iloc[-1] < vol_base.iloc[-1] and roc20 < 0 and allow_short:
-            desired = -target_pct
+        if vol20 and vol60:
+            if vol20[-1] < vol60[-1]:
+                desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                reason = "vol_low_regime"
+            else:
+                reason = "vol_high_regime"
         else:
-            desired = 0.0
-        reason = "vol_regime_sellvol"
+            reason = "vol_regime_na"
     elif variant == 1:
-        # Buy-vol proxy: short when vol high and trend negative
-        if vol20.iloc[-1] > 1.2 * vol_base and roc20 > 0:
-            desired = target_pct
-            reason = "vol_regime_buyvol_long"
-        elif vol20.iloc[-1] > 1.2 * vol_base and roc20 < 0 and allow_short:
-            desired = -target_pct
-            reason = "vol_regime_buyvol_short"
+        if vol20 and len(vol20) >= 2:
+            if vol20[-1] > vol20[-2] * 1.5:
+                desired = -target_pct if allow_short else 0.0
+                reason = "vol_spike_short"
+            elif vol20[-1] < vol20[-2] * 0.7:
+                desired = target_pct
+                reason = "vol_crush_long"
+            else:
+                reason = "vol_spike_flat"
         else:
-            desired = 0.0
-            reason = "vol_regime_buyvol_flat"
+            reason = "vol_spike_flat"
     elif variant == 2:
-        # Term structure proxy: if short vol < long vol => risk-on long
-        if vol20.iloc[-1] < vol60.iloc[-1]:
-            desired = target_pct if roc20 > 0 else (-target_pct if roc20 < 0 and allow_short else 0.0)
-            reason = "vol_term_contraction"
+        if atr20 and len(atr20) >= 2:
+            atr_trend = atr20[-1] - atr20[-2]
+            if atr_trend < 0 and c30[-1] > c30[-2]:
+                desired = target_pct
+                reason = "vol_atr_compress_long"
+            elif atr_trend > 0 and c30[-1] < c30[-2] and allow_short:
+                desired = -target_pct
+                reason = "vol_atr_expand_short"
+            else:
+                reason = "vol_atr_flat"
         else:
-            desired = 0.0
-            reason = "vol_term_expansion_exit"
+            reason = "vol_atr_flat"
     elif variant == 3:
-        # Skew proxy: down-vol vs up-vol approximation via signed returns
-        up_std = ret1.where(ret1 > 0).rolling(20).std()
-        dn_std = ret1.where(ret1 < 0).rolling(20).std()
-        skew = float(up_std.iloc[-1] - dn_std.iloc[-1] or 0.0)
-        if skew > 0 and allow_short:
-            desired = -target_pct
-            reason = "vol_skew_short"
-        elif skew < 0:
-            desired = target_pct
-            reason = "vol_skew_long"
+        if vol20:
+            vol_ma = _rolling_mean([v for v in vol20], min(20, len(vol20)))
+            if vol_ma:
+                if vol20[-1] < vol_ma[-1] * 0.8:
+                    desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                    reason = "vol_mean_rev"
+                else:
+                    reason = "vol_mean_rev_flat"
+            else:
+                reason = "vol_mean_rev_flat"
         else:
-            desired = 0.0
+            reason = "vol_mean_rev_flat"
+    elif variant == 4:
+        if len(rets) >= 20:
+            skew_vals = rets[-20:]
+            m = sum(skew_vals) / 20
+            std = (sum((x - m) ** 2 for x in skew_vals) / 20) ** 0.5
+            if std > 0:
+                skew = sum((x - m) ** 3 for x in skew_vals) / (20 * std ** 3)
+                if skew > 0.5:
+                    desired = target_pct
+                    reason = "vol_pos_skew"
+                elif skew < -0.5 and allow_short:
+                    desired = -target_pct
+                    reason = "vol_neg_skew"
+                else:
+                    reason = "vol_skew_flat"
+            else:
+                reason = "vol_skew_flat"
+        else:
             reason = "vol_skew_flat"
-    elif variant == 4:
-        # Calendar spread proxy: vol20 vs bb_width
-        width = bb_width.iloc[-1] if bb_width.iloc[-1] else 0.0
-        if width > 1.2 * bb_width.rolling(60).mean().iloc[-1]:
-            desired = -target_pct if allow_short and roc20 < 0 else (target_pct if roc20 > 0 else 0.0)
-            reason = "vol_calendar_wide"
-        else:
-            desired = 0.0
-            reason = "vol_calendar_narrow_flat"
     elif variant == 5:
-        # Risk-off: if vol too high, go short (or flat if not allowed)
-        if vol20.iloc[-1] > 1.5 * vol_base.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "vol_riskoff_short"
+        if len(h30) >= 20 and len(l30) >= 20:
+            ranges = [(h30[i] - l30[i]) for i in range(len(h30))]
+            range_ma = _rolling_mean(ranges, 20)
+            if range_ma and len(range_ma) >= 2:
+                if range_ma[-1] < range_ma[-2]:
+                    desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                    reason = "vol_range_contract"
+                else:
+                    reason = "vol_range_expand"
+            else:
+                reason = "vol_range_na"
         else:
-            desired = 0.0
-            reason = "vol_riskoff_flat"
+            reason = "vol_range_na"
     elif variant == 6:
-        # Trend + vol expansion: follow roc20 direction
-        if vol20.iloc[-1] > vol_base.iloc[-1]:
-            if roc20 > 0:
-                desired = target_pct
-                reason = "vol_trend_follow_long"
-            elif roc20 < 0 and allow_short:
-                desired = -target_pct
-                reason = "vol_trend_follow_short"
+        if vol20 and ma20:
+            vol_price = vol20[-1] * c30[-1] if vol20 else 0
+            if vol_price > 0:
+                desired = target_pct if c30[-1] > ma20[-1] else (-target_pct if allow_short else 0.0)
+                reason = "vol_dollar_vol"
             else:
-                desired = 0.0
-                reason = "vol_trend_follow_flat"
+                reason = "vol_dollar_flat"
         else:
-            desired = 0.0
-            reason = "vol_trend_follow_exit"
+            reason = "vol_dollar_flat"
     elif variant == 7:
-        # Mean reversion in volatility: when vol high but stable, fade trend
-        if vol20.iloc[-1] > vol_base.iloc[-1] and (vol20.iloc[-1] - vol20.shift(1).iloc[-1]) < 0:
-            if roc20 < 0:
-                desired = target_pct
-                reason = "vol_fade_shorttrend_long"
-            elif roc20 > 0 and allow_short:
-                desired = -target_pct
-                reason = "vol_fade_longtrend_short"
+        if len(rets) >= 20:
+            pos_rets = [r for r in rets[-20:] if r > 0]
+            neg_rets = [r for r in rets[-20:] if r < 0]
+            up_vol = (sum(r ** 2 for r in pos_rets) / len(pos_rets)) ** 0.5 if pos_rets else 0
+            down_vol = (sum(r ** 2 for r in neg_rets) / len(neg_rets)) ** 0.5 if neg_rets else 0
+            if down_vol > 0:
+                vol_ratio = up_vol / down_vol
+                if vol_ratio > 1.2:
+                    desired = target_pct
+                    reason = "vol_updown_long"
+                elif vol_ratio < 0.8 and allow_short:
+                    desired = -target_pct
+                    reason = "vol_updown_short"
+                else:
+                    reason = "vol_updown_flat"
             else:
-                desired = 0.0
-                reason = "vol_fade_flat"
+                reason = "vol_updown_flat"
         else:
-            desired = 0.0
-            reason = "vol_fade_exit"
+            reason = "vol_updown_flat"
     elif variant == 8:
-        # Carry-vs-vol interaction proxy: long carry when vol low
-        mean_ret60 = ret1.rolling(60).mean()
-        carry = mean_ret60.iloc[-1]
-        if vol20.iloc[-1] < vol_base.iloc[-1]:
-            desired = target_pct if carry > 0 else (-target_pct if carry < 0 and allow_short else 0.0)
-            reason = "vol_carry_longshort"
+        if vol20 and vol60:
+            vol_spread = vol20[-1] - vol60[-1]
+            if vol_spread < 0:
+                desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                reason = "vol_term_struct"
+            else:
+                reason = "vol_term_flat"
         else:
-            desired = 0.0
-            reason = "vol_carry_exit"
+            reason = "vol_term_flat"
     else:
-        # variant 9: vol-of-vol proxy; trade direction by last return
-        vol_change = vol20.diff()
-        if vol_change.iloc[-1] > vol_change.rolling(60).mean().iloc[-1] and ret1.iloc[-1] > 0:
-            desired = target_pct
-            reason = "volofvol_long"
-        elif vol_change.iloc[-1] > vol_change.rolling(60).mean().iloc[-1] and ret1.iloc[-1] < 0 and allow_short:
-            desired = -target_pct
-            reason = "volofvol_short"
+        if atr20 and vol20:
+            if atr20[-1] > 0 and vol20[-1] > 0:
+                consistency = vol20[-1] / atr20[-1]
+                if consistency < 1.0:
+                    desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                    reason = "vol_consistency"
+                else:
+                    reason = "vol_consistency_flat"
+            else:
+                reason = "vol_consistency_flat"
         else:
-            desired = 0.0
-            reason = "volofvol_flat"
+            reason = "vol_consistency_flat"
 
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$volpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","volatility","pack","us-stock"]'::jsonb, 'area-chart', 'red', 250, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_market_microstructure_pack', 'script', 'Market Microstructure Pack', '10 microstructure/execution proxy variants (variant=0~9) unified into one Strategy API V2 script.', $micropp$"""
+$volpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","volatility","pack","cn-futures","options"]'::jsonb, 'activity', 'red', 250, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
+('strategy_v2_market_microstructure_pack', 'script', 'Market Microstructure Pack', 'Futures & options microstructure with 10 variants on 1m bars aggregated to 30m.', $micropp$"""
 Market Microstructure Pack
-Microstructure/flow proxy variants selected by context.params['variant'].
+Futures & options microstructure variants on 1m bars aggregated to 30m.
 """
 
 # @param variant int 0 range=0:9:1
@@ -1697,12 +1941,13 @@ Microstructure/flow proxy variants selected by context.params['variant'].
 # @param allow_short bool true
 
 def initialize(context):
-    g.symbol = "USStock:SPY"
-    context.set_universe([g.symbol])
-    context.set_benchmark(g.symbol)
-    context.subscribe(frequency="1d")
+    g.futures = "CNFutures:SA701"
+    g.option = "CNFuturesOptions:SA701-C-1000"
+    context.set_universe([g.futures, g.option])
+    context.set_benchmark(g.futures)
+    context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(60)
+    context.set_warmup(8000)
 
 
 def handle_data(context, data):
@@ -1711,154 +1956,222 @@ def handle_data(context, data):
     target_pct = float(context.params.get("target_pct", 0.95))
     allow_short = bool(context.params.get("allow_short", True))
 
-    bars = get_history(60, "1d", ["open", "high", "low", "close", "volume"], g.symbol)
-    if len(bars) < 50:
+    def _agg30(bars_1m):
+        o = bars_1m["open"].values
+        h = bars_1m["high"].values
+        l = bars_1m["low"].values
+        c = bars_1m["close"].values
+        v = bars_1m["volume"].values
+        n = len(o)
+        count = n // 30
+        if count < 1:
+            return None, None, None, None, None
+        start = n - count * 30
+        o30 = [o[start + i * 30] for i in range(count)]
+        h30 = [max(h[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        l30 = [min(l[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        c30 = [c[start + (i + 1) * 30 - 1] for i in range(count)]
+        v30 = [sum(v[start + i * 30: start + (i + 1) * 30]) for i in range(count)]
+        return o30, h30, l30, c30, v30
+
+    def _rolling_mean(arr, period):
+        if len(arr) < period:
+            return []
+        return [sum(arr[i - period:i]) / period for i in range(period, len(arr) + 1)]
+
+    def _rolling_std(arr, period):
+        if len(arr) < period:
+            return []
+        result = []
+        for i in range(period, len(arr) + 1):
+            window = arr[i - period:i]
+            m = sum(window) / period
+            var = sum((x - m) ** 2 for x in window) / period
+            result.append(var ** 0.5)
+        return result
+
+    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    o30, h30, l30, c30, v30 = _agg30(bars)
+    if o30 is None or len(c30) < 100:
         return
 
-    open_ = bars["open"].astype(float)
-    high = bars["high"].astype(float)
-    low = bars["low"].astype(float)
-    close = bars["close"].astype(float)
-    volume = bars["volume"].astype(float)
+    ma20 = _rolling_mean(c30, 20)
+    avg_vol = _rolling_mean(v30, 20)
+    spread = [(h30[i] - l30[i]) / c30[i] if c30[i] != 0 else 0 for i in range(len(c30))]
+    spread_ma = _rolling_mean(spread, 20)
 
-    ret1 = close.pct_change(1)
-    order_flow = (ret1 * volume).fillna(0.0)
-    ofi5 = order_flow.tail(5).sum()
-
-    range1 = (high - low) / close.replace(0.0, 1.0)
-    spread5 = range1.tail(5).mean()
-
-    vwap5 = (close * volume).tail(5).sum() / volume.tail(5).sum()
-
-    position = get_position(g.symbol)
+    position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
     is_long = position_amt > 1e-12
     is_short = position_amt < -1e-12
 
     desired = 0.0
     reason = ""
-    c = close.iloc[-1]
 
     if variant == 0:
-        # OFI direction (imbalance following)
-        desired = target_pct if ofi5 > 0 else (-target_pct if allow_short else 0.0)
-        reason = "micro_ofi_follow"
+        if avg_vol and avg_vol[-1] > 0:
+            vol_ratio = v30[-1] / avg_vol[-1]
+            if vol_ratio > 1.5 and c30[-1] > c30[-2]:
+                desired = target_pct
+                reason = "micro_vol_surge_long"
+            elif vol_ratio > 1.5 and c30[-1] < c30[-2] and allow_short:
+                desired = -target_pct
+                reason = "micro_vol_surge_short"
+            else:
+                reason = "micro_vol_flat"
+        else:
+            reason = "micro_vol_flat"
     elif variant == 1:
-        # Short-term reversal on large moves
-        r = ret1.iloc[-1]
-        if r > 0.02:
-            desired = -target_pct if allow_short else 0.0
-            reason = "micro_reversal_down"
-        elif r < -0.02:
-            desired = target_pct
-            reason = "micro_reversal_up"
+        if spread_ma and spread_ma[-1] > 0:
+            spread_ratio = spread[-1] / spread_ma[-1]
+            if spread_ratio < 0.5:
+                desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                reason = "micro_spread_tight"
+            else:
+                reason = "micro_spread_wide"
         else:
-            desired = 0.0
-            reason = "micro_reversal_flat"
+            reason = "micro_spread_na"
     elif variant == 2:
-        # Spread capture proxy: buy when close < vwap5 and spread is high
-        spread_base = range1.tail(20).mean().iloc[-1]
-        spread_high = spread5 > spread_base
-        if spread_high and c < vwap5:
-            desired = target_pct
-            reason = "micro_spread_long"
-        elif spread_high and c > vwap5 and allow_short:
-            desired = -target_pct
-            reason = "micro_spread_short"
+        if len(v30) >= 5:
+            recent_vol = sum(v30[-5:])
+            prev_vol = sum(v30[-10:-5]) if len(v30) >= 10 else recent_vol
+            if prev_vol > 0:
+                accel = recent_vol / prev_vol
+                if accel > 1.3 and c30[-1] > c30[-2]:
+                    desired = target_pct
+                    reason = "micro_vol_accel_long"
+                elif accel > 1.3 and c30[-1] < c30[-2] and allow_short:
+                    desired = -target_pct
+                    reason = "micro_vol_accel_short"
+                else:
+                    reason = "micro_vol_accel_flat"
+            else:
+                reason = "micro_vol_accel_flat"
         else:
-            desired = 0.0
-            reason = "micro_spread_flat"
+            reason = "micro_vol_accel_flat"
     elif variant == 3:
-        # VWAP mean reversion (short-term)
-        dev = (c - vwap5) / vwap5 if vwap5 else 0.0
-        if dev < -0.005:
-            desired = target_pct
-            reason = "micro_vwap_revert_long"
-        elif dev > 0.005 and allow_short:
-            desired = -target_pct
-            reason = "micro_vwap_revert_short"
+        body = [abs(c30[i] - o30[i]) for i in range(len(c30))]
+        wick = [(h30[i] - l30[i]) - body[i] for i in range(len(c30))]
+        if body[-1] > 0:
+            wick_ratio = wick[-1] / body[-1]
+            if wick_ratio > 2.0 and c30[-1] > o30[-1]:
+                desired = target_pct
+                reason = "micro_wick_long"
+            elif wick_ratio > 2.0 and c30[-1] < o30[-1] and allow_short:
+                desired = -target_pct
+                reason = "micro_wick_short"
+            else:
+                reason = "micro_wick_flat"
         else:
-            desired = 0.0
-            reason = "micro_vwap_revert_flat"
+            reason = "micro_wick_flat"
     elif variant == 4:
-        # Gap proxy
-        prev_close = close.iloc[-2]
-        gap_pct = (open_.iloc[-1] - prev_close) / prev_close if prev_close else 0.0
-        if gap_pct > 0.01 and close.iloc[-1] > open_.iloc[-1]:
-            desired = target_pct
-            reason = "micro_gap_long"
-        elif gap_pct < -0.01 and close.iloc[-1] < open_.iloc[-1] and allow_short:
-            desired = -target_pct
-            reason = "micro_gap_short"
+        if len(c30) >= 20:
+            up_vol = sum(v30[i] for i in range(len(c30) - 20, len(c30)) if c30[i] > c30[i - 1])
+            down_vol = sum(v30[i] for i in range(len(c30) - 20, len(c30)) if c30[i] < c30[i - 1])
+            total = up_vol + down_vol
+            if total > 0:
+                ratio = up_vol / total
+                if ratio > 0.6:
+                    desired = target_pct
+                    reason = "micro_obv_long"
+                elif ratio < 0.4 and allow_short:
+                    desired = -target_pct
+                    reason = "micro_obv_short"
+                else:
+                    reason = "micro_obv_flat"
+            else:
+                reason = "micro_obv_flat"
         else:
-            desired = 0.0
-            reason = "micro_gap_flat"
+            reason = "micro_obv_flat"
     elif variant == 5:
-        # Persistence: OFI sign + ret sign
-        if ofi5 > 0 and ret1.iloc[-1] > 0:
-            desired = target_pct
-            reason = "micro_persist_long"
-        elif ofi5 < 0 and ret1.iloc[-1] < 0 and allow_short:
-            desired = -target_pct
-            reason = "micro_persist_short"
+        if len(c30) >= 10:
+            price_move = abs(c30[-1] - c30[-10])
+            vol_sum = sum(v30[-10:])
+            if vol_sum > 0:
+                efficiency = price_move / vol_sum
+                eff_ma = []
+                for j in range(10, min(30, len(c30))):
+                    pm = abs(c30[-j + 9] - c30[-j])
+                    vs = sum(v30[-j:-j + 10])
+                    if vs > 0:
+                        eff_ma.append(pm / vs)
+                avg_eff = sum(eff_ma) / len(eff_ma) if eff_ma else efficiency
+                if efficiency > avg_eff * 1.2:
+                    desired = target_pct if c30[-1] > c30[-10] else (-target_pct if allow_short else 0.0)
+                    reason = "micro_efficiency"
+                else:
+                    reason = "micro_efficiency_flat"
+            else:
+                reason = "micro_efficiency_flat"
         else:
-            desired = 0.0
-            reason = "micro_persist_flat"
+            reason = "micro_efficiency_flat"
     elif variant == 6:
-        # Liquidity/proxy: higher volume -> follow
-        vol_now = volume.iloc[-1]
-        vol_base = volume.tail(20).mean()
-        vol_ratio = vol_now / vol_base if vol_base else 0.0
-        if vol_ratio > 1.2:
-            desired = target_pct if ret1.iloc[-1] > 0 else (-target_pct if allow_short else 0.0)
-            reason = "micro_liquid_follow"
+        if len(c30) >= 20:
+            closes_above_open = sum(1 for i in range(len(c30) - 20, len(c30)) if c30[i] > o30[i])
+            ratio = closes_above_open / 20.0
+            if ratio > 0.65:
+                desired = target_pct
+                reason = "micro_bullish_bars"
+            elif ratio < 0.35 and allow_short:
+                desired = -target_pct
+                reason = "micro_bearish_bars"
+            else:
+                reason = "micro_bars_flat"
         else:
-            desired = 0.0
-            reason = "micro_liquid_flat"
+            reason = "micro_bars_flat"
     elif variant == 7:
-        # Volatility + flow: risk guard
-        vol20 = ret1.tail(20).std() * (252 ** 0.5)
-        if vol20 < ret1.tail(60).std() * (252 ** 0.5) and ofi5 > 0:
-            desired = target_pct
-            reason = "micro_guard_long"
-        elif vol20 < ret1.tail(60).std() * (252 ** 0.5) and ofi5 < 0 and allow_short:
-            desired = -target_pct
-            reason = "micro_guard_short"
+        if avg_vol and len(avg_vol) >= 5:
+            vol_trend = avg_vol[-1] - avg_vol[-5]
+            if vol_trend > 0 and c30[-1] > ma20[-1] if ma20 else False:
+                desired = target_pct
+                reason = "micro_vol_trend_long"
+            elif vol_trend < 0 and c30[-1] < (ma20[-1] if ma20 else c30[-1]) and allow_short:
+                desired = -target_pct
+                reason = "micro_vol_trend_short"
+            else:
+                reason = "micro_vol_trend_flat"
         else:
-            desired = 0.0
-            reason = "micro_guard_flat"
+            reason = "micro_vol_trend_flat"
     elif variant == 8:
-        # Microprice proxy: mid of high/low vs close
-        mid = (high.iloc[-1] + low.iloc[-1]) / 2.0
-        if c < mid:
-            desired = target_pct
-            reason = "micro_mid_long"
-        elif c > mid and allow_short:
-            desired = -target_pct
-            reason = "micro_mid_short"
+        if len(c30) >= 3:
+            gaps = [abs(o30[i] - c30[i - 1]) / c30[i - 1] if c30[i - 1] != 0 else 0 for i in range(1, len(c30))]
+            gap_ma = _rolling_mean(gaps, 20)
+            if gap_ma and gaps[-1] < gap_ma[-1] * 0.5:
+                desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
+                reason = "micro_gap_small"
+            else:
+                reason = "micro_gap_flat"
         else:
-            desired = 0.0
-            reason = "micro_mid_flat"
+            reason = "micro_gap_flat"
     else:
-        # variant 9: short-term spread threshold
-        if spread5 > range1.tail(20).mean().iloc[-1] and ret1.iloc[-1] > 0:
-            desired = target_pct
-            reason = "micro_spread_thr_long"
-        elif spread5 > range1.tail(20).mean().iloc[-1] and ret1.iloc[-1] < 0 and allow_short:
-            desired = -target_pct
-            reason = "micro_spread_thr_short"
+        if len(c30) >= 20:
+            rets = [c30[i] / c30[i - 1] - 1.0 for i in range(max(1, len(c30) - 20), len(c30))]
+            auto_corr = 0.0
+            if len(rets) >= 2:
+                m = sum(rets) / len(rets)
+                var = sum((r - m) ** 2 for r in rets) / len(rets)
+                if var > 0:
+                    cov = sum((rets[i] - m) * (rets[i - 1] - m) for i in range(1, len(rets))) / (len(rets) - 1)
+                    auto_corr = cov / var
+            if auto_corr < -0.3:
+                desired = target_pct if rets[-1] < 0 else (-target_pct if allow_short else 0.0)
+                reason = "micro_autocorr_mr"
+            elif auto_corr > 0.3:
+                desired = target_pct if rets[-1] > 0 else (-target_pct if allow_short else 0.0)
+                reason = "micro_autocorr_trend"
+            else:
+                reason = "micro_autocorr_flat"
         else:
-            desired = 0.0
-            reason = "micro_spread_thr_flat"
+            reason = "micro_autocorr_flat"
 
     if desired > 0 and not is_long:
-        order_target_percent(g.symbol, target_pct, reason=reason)
+        order_target_percent(g.futures, target_pct, reason=reason)
     elif desired < 0 and allow_short and not is_short:
-        order_target_percent(g.symbol, -target_pct, reason=reason)
+        order_target_percent(g.futures, -target_pct, reason=reason)
     elif abs(desired) <= 1e-12 and (is_long or is_short):
-        order_target_percent(g.symbol, 0.0, reason=reason + "_exit")
+        order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
-$micropp$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","microstructure","pack","us-stock"]'::jsonb, 'candlestick', 'purple', 260, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW())
+$micropp$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","microstructure","pack","cn-futures","options"]'::jsonb, 'candlestick', 'purple', 260, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW())
 ON CONFLICT (template_key) DO UPDATE SET
     asset_type = EXCLUDED.asset_type,
     title = EXCLUDED.title,

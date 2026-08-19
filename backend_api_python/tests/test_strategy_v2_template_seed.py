@@ -22,16 +22,29 @@ def _seed_entries():
     return [match.groupdict() for match in ENTRY_PATTERN.finditer(sql)]
 
 
+_PACK_KEYS = {
+    "strategy_v2_trend_pack",
+    "strategy_v2_breakout_momentum_pack",
+    "strategy_v2_mean_reversion_pack",
+    "strategy_v2_carry_pack",
+    "strategy_v2_relative_value_pack",
+    "strategy_v2_volatility_pack",
+    "strategy_v2_market_microstructure_pack",
+}
+
+
 def test_strategy_v2_seed_has_explicit_cta_and_portfolio_catalogs():
     entries = _seed_entries()
     assert len(entries) == 19
     assert SEED_PATH.read_text(encoding="utf-8").count('"version":11') == 19
-    assert sum(item["asset_type"] == "script" for item in entries) == 15
-    assert sum(item["asset_type"] == "portfolio_strategy" for item in entries) == 4
+    assert sum(item["asset_type"] == "script" for item in entries) == 8
+    assert sum(item["asset_type"] == "portfolio_strategy" for item in entries) == 11
 
     by_key = {item["key"]: item for item in entries}
     assert by_key["strategy_v2_supertrend"]["asset_type"] == "script"
     assert by_key["strategy_v2_market_cap_barbell"]["asset_type"] == "portfolio_strategy"
+    for key in _PACK_KEYS:
+        assert by_key[key]["asset_type"] == "portfolio_strategy"
 
 
 def test_strategy_v2_seed_templates_compile_and_expose_parameters():
@@ -108,7 +121,10 @@ def test_macd_kdj_default_exposure_is_safe_without_user_enabled_leverage():
 
 
 def test_portfolio_templates_use_fixed_ten_symbol_universe():
-    portfolios = [item for item in _seed_entries() if item["asset_type"] == "portfolio_strategy"]
+    portfolios = [
+        item for item in _seed_entries()
+        if item["asset_type"] == "portfolio_strategy" and item["key"] not in _PACK_KEYS
+    ]
     for item in portfolios:
         manifest = compile_strategy_v2(item["code"]).manifest
         assert manifest.universe.kind == "static"
@@ -117,12 +133,25 @@ def test_portfolio_templates_use_fixed_ten_symbol_universe():
         assert "get_universe_stocks()" not in item["code"]
 
 
-def _template_frame(rank: int, periods: int = 320) -> pd.DataFrame:
-    index = pd.date_range("2025-01-01", periods=periods, freq="D")
+def test_pack_templates_use_futures_and_options_universe():
+    packs = [item for item in _seed_entries() if item["key"] in _PACK_KEYS]
+    assert len(packs) == 7
+    for item in packs:
+        manifest = compile_strategy_v2(item["code"]).manifest
+        assert manifest.universe.kind == "static"
+        assert len(manifest.universe.instruments) == 2
+        markets = {inst.market for inst in manifest.universe.instruments}
+        assert "CNFutures" in markets
+        assert "CNFuturesOptions" in markets
+        assert manifest.primary_frequency == "1m"
+
+
+def _template_frame(rank: int, periods: int = 320, freq: str = "D") -> pd.DataFrame:
+    index = pd.date_range("2025-01-01", periods=periods, freq=freq)
     prices = []
     for offset in range(periods):
-        trend = 80.0 + rank * 7.0 + offset * (0.08 + rank * 0.006)
-        cycle = ((offset % 30) - 15) * (0.08 + rank * 0.003)
+        trend = 80.0 + rank * 7.0 + offset * (0.08 + rank * 0.006) / (1 if freq == "D" else 400)
+        cycle = ((offset % 30) - 15) * (0.08 + rank * 0.003) / (1 if freq == "D" else 400)
         prices.append(max(5.0, trend + cycle))
     return pd.DataFrame(
         {
@@ -143,8 +172,11 @@ def _template_frame(rank: int, periods: int = 320) -> pd.DataFrame:
 def test_every_seed_template_completes_a_synthetic_v2_backtest():
     for item in _seed_entries():
         program = compile_strategy_v2(item["code"])
+        is_pack = item["key"] in _PACK_KEYS
+        bar_freq = "min" if is_pack else "D"
+        bar_count = 9000 if is_pack else 320
         frames = {
-            instrument.key: _template_frame(index)
+            instrument.key: _template_frame(index, periods=bar_count, freq=bar_freq)
             for index, instrument in enumerate(program.manifest.universe.instruments)
         }
         frames.setdefault("USStock:SPY", _template_frame(11))
