@@ -613,7 +613,7 @@ def rebalance(context, data):
     for symbol in selected:
         order_target_percent(symbol, weight, reason="quality_growth")
 $quality$, '{"params":[{"name":"top_n","type":"integer","default":5,"min":1,"max":10,"step":1,"labelKey":"strategyV2.params.topN"},{"name":"min_roe","type":"number","default":0.1,"min":-1,"max":1,"step":0.01,"labelKey":"strategyV2.params.minRoe"},{"name":"min_growth","type":"number","default":0,"min":-1,"max":5,"step":0.01,"labelKey":"strategyV2.params.minGrowth"},{"name":"max_debt_to_equity","type":"number","default":2,"min":0,"max":10,"step":0.1,"labelKey":"strategyV2.params.maxDebtToEquity"},{"name":"max_weight","type":"percent","default":0.2,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.maxWeight"}]}'::jsonb, '["strategy-v2","portfolio","cross-sectional","fundamental","quality","growth"]'::jsonb, 'radar-chart', 'purple', 140, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_trend_pack', 'script', 'Trend Following Pack', 'Futures & options trend-following with 10 variants on 1m bars aggregated to 30m.', $trendpack$"""
+('strategy_v2_trend_pack', 'portfolio_strategy', 'Trend Following Pack', 'Futures & options trend-following with 10 variants on 1m bars aggregated to 30m.', $trendpack$"""
 Trend Following Pack
 Futures & options trend-following variants on 1m bars aggregated to 30m.
 """
@@ -783,7 +783,7 @@ def handle_data(context, data):
         order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
 $trendpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","trend-following","pack","cn-futures","options"]'::jsonb, 'line-chart', 'blue', 200, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_breakout_momentum_pack', 'script', 'Breakout & Momentum Pack', 'Futures & options breakout/momentum with 10 variants on 1m bars aggregated to 30m.', $breakoutpack$"""
+('strategy_v2_breakout_momentum_pack', 'portfolio_strategy', 'Breakout & Momentum Pack', 'Futures & options breakout/momentum with 10 variants on 1m bars aggregated to 30m.', $breakoutpack$"""
 Breakout & Momentum Pack
 Futures & options breakout/momentum variants on 1m bars aggregated to 30m.
 """
@@ -1024,7 +1024,7 @@ def handle_data(context, data):
         order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
 $breakoutpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","breakout","momentum","pack","cn-futures","options"]'::jsonb, 'rocket', 'orange', 210, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_mean_reversion_pack', 'script', 'Mean Reversion Pack', 'Futures & options mean-reversion with 10 variants on 1m bars aggregated to 30m.', $meanrevpack$"""
+('strategy_v2_mean_reversion_pack', 'portfolio_strategy', 'Mean Reversion Pack', 'Futures & options mean-reversion with 10 variants on 1m bars aggregated to 30m.', $meanrevpack$"""
 Mean Reversion Pack
 Futures & options mean-reversion variants on 1m bars aggregated to 30m.
 """
@@ -1266,7 +1266,7 @@ def handle_data(context, data):
         order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
 $meanrevpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","mean-reversion","pack","cn-futures","options"]'::jsonb, 'waves', 'green', 220, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_carry_pack', 'script', 'Carry & Roll Yield Pack', 'Futures & options carry/roll-yield with 10 variants on 1m bars aggregated to 30m.', $carrypack$"""
+('strategy_v2_carry_pack', 'portfolio_strategy', 'Carry & Roll Yield Pack', 'Futures & options carry/roll-yield with 10 variants on 1m bars aggregated to 30m.', $carrypack$"""
 Carry & Roll Yield Pack
 Futures & options carry/roll-yield variants on 1m bars aggregated to 30m.
 """
@@ -1481,7 +1481,7 @@ def handle_data(context, data):
         order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
 $carrypack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","carry","roll-yield","pack","cn-futures","options"]'::jsonb, 'coins', 'yellow', 230, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_relative_value_pack', 'script', 'Relative Value Pack', 'Futures & options relative-value with 10 variants on 1m bars aggregated to 30m.', $relvalpack$"""
+('strategy_v2_relative_value_pack', 'portfolio_strategy', 'Relative Value Pack', 'Futures & options relative-value with 10 variants on 1m bars aggregated to 30m.', $relvalpack$"""
 Relative Value Pack
 Futures & options relative-value variants on 1m bars aggregated to 30m.
 """
@@ -1710,7 +1710,7 @@ def handle_data(context, data):
         order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
 $relvalpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","relative-value","pack","cn-futures","options"]'::jsonb, 'scale', 'teal', 240, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_volatility_pack', 'script', 'Volatility Pack', 'Futures & options volatility with 10 variants on 1m bars aggregated to 30m.', $volpack$"""
+('strategy_v2_volatility_pack', 'portfolio_strategy', 'Volatility Pack', 'Futures & options volatility with 10 variants on 1m bars aggregated to 30m.', $volpack$"""
 Volatility Pack
 Futures & options volatility variants on 1m bars aggregated to 30m.
 """
@@ -1931,7 +1931,7 @@ def handle_data(context, data):
         order_target_percent(g.futures, 0.0, reason=reason + "_exit")
 
 $volpack$, '{"params":[{"name":"variant","type":"integer","default":0,"min":0,"max":9,"step":1,"labelKey":"strategyV2.params.variant"},{"name":"target_pct","type":"percent","default":0.95,"min":0.05,"max":1,"step":0.05,"labelKey":"strategyV2.params.targetPosition"},{"name":"allow_short","type":"boolean","default":true,"labelKey":"strategyV2.params.allowShort"}]}'::jsonb, '["strategy-v2","cta","volatility","pack","cn-futures","options"]'::jsonb, 'activity', 'red', 250, TRUE, '{"source":"system_seed","version":11,"apiVersion":2}'::jsonb, NOW()),
-('strategy_v2_market_microstructure_pack', 'script', 'Market Microstructure Pack', 'Futures & options microstructure with 10 variants on 1m bars aggregated to 30m.', $micropp$"""
+('strategy_v2_market_microstructure_pack', 'portfolio_strategy', 'Market Microstructure Pack', 'Futures & options microstructure with 10 variants on 1m bars aggregated to 30m.', $micropp$"""
 Market Microstructure Pack
 Futures & options microstructure variants on 1m bars aggregated to 30m.
 """
