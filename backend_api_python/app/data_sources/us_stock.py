@@ -67,6 +67,14 @@ class USStockDataSource(BaseDataSource):
         "Origin": "https://www.nasdaq.com",
         "Referer": "https://www.nasdaq.com/market-activity/stocks",
     }
+
+    # Nasdaq quote/historical endpoints require assetclass=etf for broad ETFs.
+    _KNOWN_US_ETFS = frozenset({
+        "SPY", "QQQ", "IWM", "DIA", "VOO", "VTI", "IVV", "SPLG", "RSP",
+        "XLK", "XLF", "XLE", "XLV", "XLY", "XLP", "XLI", "XLB", "XLU", "XLRE",
+        "ARKK", "SMH", "SOXX", "GLD", "SLV", "USO", "TLT", "HYG", "LQD", "AGG",
+        "EEM", "EFA", "VEA", "VWO", "IEMG",
+    })
     
     def __init__(self):
         self.finnhub_client = None
@@ -95,6 +103,13 @@ class USStockDataSource(BaseDataSource):
     @staticmethod
     def _nasdaq_symbol(symbol: str) -> str:
         return (symbol or "").strip().upper().replace("$", "^")
+
+    @classmethod
+    def _nasdaq_asset_classes(cls, symbol: str) -> tuple[str, ...]:
+        sym = (symbol or "").strip().upper()
+        if sym in cls._KNOWN_US_ETFS:
+            return ("etf", "stocks")
+        return ("stocks", "etf")
     
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
@@ -300,37 +315,43 @@ class USStockDataSource(BaseDataSource):
             return default
 
     def _fetch_nasdaq_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
-        try:
-            nasdaq_symbol = self._nasdaq_symbol(symbol)
-            resp = requests.get(
-                f"https://api.nasdaq.com/api/quote/{nasdaq_symbol}/info",
-                params={"assetclass": "stocks"},
-                timeout=10,
-                headers=self.NASDAQ_HEADERS,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            primary = (((payload.get("data") or {}).get("primaryData")) or {})
-            if not primary:
-                return None
+        nasdaq_symbol = self._nasdaq_symbol(symbol)
+        for assetclass in self._nasdaq_asset_classes(symbol):
+            try:
+                resp = requests.get(
+                    f"https://api.nasdaq.com/api/quote/{nasdaq_symbol}/info",
+                    params={"assetclass": assetclass},
+                    timeout=10,
+                    headers=self.NASDAQ_HEADERS,
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+                primary = (((payload.get("data") or {}).get("primaryData")) or {})
+                if not primary:
+                    continue
 
-            last_price = self._parse_nasdaq_number(primary.get("lastSalePrice"))
-            if last_price <= 0:
-                return None
-            change = self._parse_nasdaq_number(primary.get("netChange"))
-            change_pct = self._parse_nasdaq_number(primary.get("percentageChange"))
-            return {
-                "last": last_price,
-                "change": round(change, 4),
-                "changePercent": round(change_pct, 2),
-                "high": last_price,
-                "low": last_price,
-                "open": last_price,
-                "previousClose": round(last_price - change, 4) if change else 0,
-            }
-        except Exception as e:
-            logger.debug(f"Nasdaq quote failed for {symbol}: {e}")
-            return None
+                last_price = self._parse_nasdaq_number(primary.get("lastSalePrice"))
+                if last_price <= 0:
+                    continue
+                change = self._parse_nasdaq_number(primary.get("netChange"))
+                change_pct = self._parse_nasdaq_number(primary.get("percentageChange"))
+                return {
+                    "last": last_price,
+                    "change": round(change, 4),
+                    "changePercent": round(change_pct, 2),
+                    "high": last_price,
+                    "low": last_price,
+                    "open": last_price,
+                    "previousClose": round(last_price - change, 4) if change else 0,
+                }
+            except Exception as e:
+                logger.debug(
+                    "Nasdaq quote failed for %s assetclass=%s: %s",
+                    symbol,
+                    assetclass,
+                    e,
+                )
+        return None
 
     def _fetch_nasdaq_intraday_chart(
         self,
@@ -338,51 +359,57 @@ class USStockDataSource(BaseDataSource):
         timeframe: str,
         limit: int,
     ) -> List[Dict[str, Any]]:
-        try:
-            resp = requests.get(
-                f"https://api.nasdaq.com/api/quote/{self._nasdaq_symbol(symbol)}/chart",
-                params={"assetclass": "stocks"},
-                timeout=10,
-                headers=self.NASDAQ_HEADERS,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            points = (((payload.get("data") or {}).get("chart")) or [])
-            bars: List[Dict[str, Any]] = []
-            for point in points:
-                ts_ms = point.get("x")
-                price = point.get("y")
-                if price is None:
-                    price = (point.get("z") or {}).get("value")
-                price_f = self._parse_nasdaq_number(price)
-                if not ts_ms or price_f <= 0:
-                    continue
-                ts = int(int(ts_ms) / 1000)
-                bars.append(self.format_kline(
-                    timestamp=ts,
-                    open_price=price_f,
-                    high=price_f,
-                    low=price_f,
-                    close=price_f,
-                    volume=0,
-                ))
+        for assetclass in self._nasdaq_asset_classes(symbol):
+            try:
+                resp = requests.get(
+                    f"https://api.nasdaq.com/api/quote/{self._nasdaq_symbol(symbol)}/chart",
+                    params={"assetclass": assetclass},
+                    timeout=10,
+                    headers=self.NASDAQ_HEADERS,
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+                points = (((payload.get("data") or {}).get("chart")) or [])
+                bars: List[Dict[str, Any]] = []
+                for point in points:
+                    ts_ms = point.get("x")
+                    price = point.get("y")
+                    if price is None:
+                        price = (point.get("z") or {}).get("value")
+                    price_f = self._parse_nasdaq_number(price)
+                    if not ts_ms or price_f <= 0:
+                        continue
+                    ts = int(int(ts_ms) / 1000)
+                    bars.append(self.format_kline(
+                        timestamp=ts,
+                        open_price=price_f,
+                        high=price_f,
+                        low=price_f,
+                        close=price_f,
+                        volume=0,
+                    ))
 
-            if not bars:
-                return []
-            merge_n = {
-                "3m": 3,
-                "5m": 5,
-                "15m": 15,
-                "30m": 30,
-                "1H": 60,
-                "4H": 240,
-            }.get(timeframe, 1)
-            if merge_n > 1:
-                bars = self._merge_every_n_sorted_bars(bars, merge_n)
-            return bars[-limit:] if limit and len(bars) > limit else bars
-        except Exception as e:
-            logger.debug(f"Nasdaq intraday chart failed for {symbol}: {e}")
-            return []
+                if not bars:
+                    continue
+                merge_n = {
+                    "3m": 3,
+                    "5m": 5,
+                    "15m": 15,
+                    "30m": 30,
+                    "1H": 60,
+                    "4H": 240,
+                }.get(timeframe, 1)
+                if merge_n > 1:
+                    bars = self._merge_every_n_sorted_bars(bars, merge_n)
+                return bars[-limit:] if limit and len(bars) > limit else bars
+            except Exception as e:
+                logger.debug(
+                    "Nasdaq intraday chart failed for %s assetclass=%s: %s",
+                    symbol,
+                    assetclass,
+                    e,
+                )
+        return []
 
     def _fetch_nasdaq_historical(
         self,
@@ -391,47 +418,55 @@ class USStockDataSource(BaseDataSource):
         end_date: datetime,
         limit: int,
     ) -> List[Dict[str, Any]]:
-        try:
-            resp = requests.get(
-                f"https://api.nasdaq.com/api/quote/{self._nasdaq_symbol(symbol)}/historical",
-                params={
-                    "assetclass": "stocks",
-                    "fromdate": start_date.strftime("%Y-%m-%d"),
-                    "todate": end_date.strftime("%Y-%m-%d"),
-                    "limit": max(int(limit or 100), 100),
-                },
-                timeout=12,
-                headers=self.NASDAQ_HEADERS,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            rows = ((((payload.get("data") or {}).get("tradesTable")) or {}).get("rows")) or []
-            bars: List[Dict[str, Any]] = []
-            for row in rows:
-                try:
-                    dt = datetime.strptime(str(row.get("date")), "%m/%d/%Y")
-                    open_price = self._parse_nasdaq_number(row.get("open"))
-                    high = self._parse_nasdaq_number(row.get("high"))
-                    low = self._parse_nasdaq_number(row.get("low"))
-                    close = self._parse_nasdaq_number(row.get("close"))
-                    if min(open_price, high, low, close) <= 0:
+        for assetclass in self._nasdaq_asset_classes(symbol):
+            try:
+                resp = requests.get(
+                    f"https://api.nasdaq.com/api/quote/{self._nasdaq_symbol(symbol)}/historical",
+                    params={
+                        "assetclass": assetclass,
+                        "fromdate": start_date.strftime("%Y-%m-%d"),
+                        "todate": end_date.strftime("%Y-%m-%d"),
+                        "limit": max(int(limit or 100), 100),
+                    },
+                    timeout=12,
+                    headers=self.NASDAQ_HEADERS,
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+                rows = ((((payload.get("data") or {}).get("tradesTable")) or {}).get("rows")) or []
+                bars: List[Dict[str, Any]] = []
+                for row in rows:
+                    try:
+                        dt = datetime.strptime(str(row.get("date")), "%m/%d/%Y")
+                        open_price = self._parse_nasdaq_number(row.get("open"))
+                        high = self._parse_nasdaq_number(row.get("high"))
+                        low = self._parse_nasdaq_number(row.get("low"))
+                        close = self._parse_nasdaq_number(row.get("close"))
+                        if min(open_price, high, low, close) <= 0:
+                            continue
+                        bars.append(self.format_kline(
+                            timestamp=int(dt.timestamp()),
+                            open_price=open_price,
+                            high=high,
+                            low=low,
+                            close=close,
+                            volume=self._parse_nasdaq_number(row.get("volume")),
+                        ))
+                    except Exception:
                         continue
-                    bars.append(self.format_kline(
-                        timestamp=int(dt.timestamp()),
-                        open_price=open_price,
-                        high=high,
-                        low=low,
-                        close=close,
-                        volume=self._parse_nasdaq_number(row.get("volume")),
-                    ))
-                except Exception:
-                    continue
 
-            bars.sort(key=lambda x: x["time"])
-            return bars[-limit:] if limit and len(bars) > limit else bars
-        except Exception as e:
-            logger.debug(f"Nasdaq historical failed for {symbol}: {e}")
-            return []
+                if not bars:
+                    continue
+                bars.sort(key=lambda x: x["time"])
+                return bars[-limit:] if limit and len(bars) > limit else bars
+            except Exception as e:
+                logger.debug(
+                    "Nasdaq historical failed for %s assetclass=%s: %s",
+                    symbol,
+                    assetclass,
+                    e,
+                )
+        return []
 
     def _fetch_yahoo_chart_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         try:
