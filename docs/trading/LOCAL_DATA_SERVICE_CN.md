@@ -45,7 +45,9 @@ UI 管理员可在 **数据服务 → 数据服务** 页切换运行时配置（
 
 ## 前端
 
-QuantDinger-Vue 管理员菜单 **数据服务**（`/data-service`），含三个 Tab：数据采集、数据治理、数据服务。
+前端源码仓库：**https://github.com/daotismart/QuantDinger-Vue**
+
+管理员菜单 **数据服务**（`/data-service`），含三个 Tab：数据采集、数据治理、数据服务。
 
 ## 注意事项
 
