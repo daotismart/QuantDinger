@@ -160,6 +160,32 @@ def test_governance_charts_symbol_and_timeframe_coverage():
     assert missing == {"AG2608"}
 
 
+def test_governance_charts_drops_epoch_timeline_rows():
+    inventory = [
+        {
+            "market": "Futures",
+            "symbol": "BAD",
+            "timeframe": "1w",
+            "exchange_id": "SHFE",
+            "bar_count": 3,
+            "min_time": 604800,
+            "max_time": 1_700_000_000,
+        },
+        {
+            "market": "Futures",
+            "symbol": "OK",
+            "timeframe": "1m",
+            "exchange_id": "SHFE",
+            "bar_count": 10,
+            "min_time": 1_700_000_000,
+            "max_time": 1_700_086_400,
+        },
+    ]
+    out = build_governance_charts(watch_rows=[], inventory_rows=inventory)
+    assert [row["symbol"] for row in out["timeline"]] == ["OK"]
+    assert out["timelineTotal"] == 1
+
+
 def test_governance_charts_without_watchlist_leaves_coverage_null():
     inventory = [
         {
@@ -168,8 +194,8 @@ def test_governance_charts_without_watchlist_leaves_coverage_null():
             "timeframe": "1h",
             "exchange_id": "BINANCE",
             "bar_count": 12,
-            "min_time": 10,
-            "max_time": 20,
+            "min_time": 1_700_000_000,
+            "max_time": 1_700_003_600,
         }
     ]
     out = build_governance_charts(watch_rows=[], inventory_rows=inventory)

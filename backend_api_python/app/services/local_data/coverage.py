@@ -48,6 +48,19 @@ def _tf_rank(tf: str) -> int:
         return 1000
 
 
+def _sane_ts(value: Any) -> Optional[int]:
+    try:
+        ts = int(value)
+    except (TypeError, ValueError):
+        return None
+    if ts > 10_000_000_000:
+        ts //= 1000
+    # Ignore epoch-near / far-future timestamps that collapse the time axis.
+    if ts < 946_684_800 or ts > 4_102_444_800:
+        return None
+    return ts
+
+
 def _pct(num: int, den: int) -> Optional[float]:
     if den <= 0:
         return None
@@ -174,9 +187,9 @@ def build_governance_charts(
 
     timeline_all: List[Dict[str, Any]] = []
     for row in with_data:
-        min_t = row.get("min_time")
-        max_t = row.get("max_time")
-        if min_t is None or max_t is None:
+        min_t = _sane_ts(row.get("min_time"))
+        max_t = _sane_ts(row.get("max_time"))
+        if min_t is None or max_t is None or max_t < min_t:
             continue
         symbol = _blank(row.get("symbol"), "?")
         tf = _blank(row.get("timeframe"), "?")
