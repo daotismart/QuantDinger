@@ -25,6 +25,9 @@
 backend.env
 backend_api_python/.env
 .codex-review/
+ops/production.local.md
+.deploy-credentials.txt
+**/.deploy-credentials.txt
 
 # ========================
 # IDE & OS

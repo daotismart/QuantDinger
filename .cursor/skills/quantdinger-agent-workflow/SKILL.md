@@ -24,6 +24,7 @@ Use this skill whenever you change code or docs under this repository as a **cod
 3. **`docs/agent/AGENT_QUICKSTART.md`** - Operator/integrator walkthrough; mirrors the implemented `/api/agent/v1` surface.
 4. **`docs/agent/agent-openapi.json`** - Machine-readable contract; update it whenever you add or change an `/api/agent/v1/...` route.
 5. **`docs/agent/README.md`** - Index of agent-facing docs.
+6. **`docs/agent/PRODUCTION_HOST.md`** - When working against the daotismart production host: deploy path, compose overlays, ports, and health checks (**no secrets**).
 
 ## Implemented surface (truth)
 
