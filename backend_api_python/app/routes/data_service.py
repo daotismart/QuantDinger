@@ -7,6 +7,7 @@ from flask import jsonify, request
 from app.openapi.blueprint import HumanBlueprint as Blueprint
 from app.services.local_data.service import (
     collection_watchlist,
+    governance_charts,
     governance_gaps,
     governance_inventory,
     governance_quality,
@@ -130,6 +131,23 @@ def get_governance_quality():
         return jsonify({"success": True, "data": governance_quality(limit=limit)})
     except Exception as exc:
         logger.error("governance quality failed: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@data_service_blp.route("/governance/charts", methods=["GET"])
+@login_required
+def get_governance_charts():
+    try:
+        symbol_limit = int(request.args.get("symbolLimit") or request.args.get("symbol_limit") or 40)
+        timeline_limit = int(request.args.get("timelineLimit") or request.args.get("timeline_limit") or 120)
+        return jsonify(
+            {
+                "success": True,
+                "data": governance_charts(symbol_limit=symbol_limit, timeline_limit=timeline_limit),
+            }
+        )
+    except Exception as exc:
+        logger.error("governance charts failed: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500
 
 

@@ -12,6 +12,7 @@ from app.data_sources.local_bar import (
     try_local_kline,
 )
 from app.services.local_data.config import LocalDataSettings, save_local_read_overrides
+from app.services.local_data.coverage import build_governance_charts
 from app.services.local_data import repository as ds_repo
 from app.services.market_data_maint import repository
 from app.services.market_data_maint.config import WatchSpec, parse_watch_csv
@@ -114,6 +115,22 @@ def governance_gaps(*, limit: int = 50) -> List[Dict[str, Any]]:
 
 def governance_quality(*, limit: int = 100) -> List[Dict[str, Any]]:
     return repository.quality_flag_summary(limit=limit)
+
+
+def governance_charts(
+    *,
+    symbol_limit: int = 40,
+    timeline_limit: int = 120,
+    inventory_limit: int = 10000,
+) -> Dict[str, Any]:
+    watch = repository.list_watch_rows(include_disabled=False)
+    inventory = repository.bar_inventory_summary(limit=inventory_limit)
+    return build_governance_charts(
+        watch_rows=watch,
+        inventory_rows=inventory,
+        symbol_limit=symbol_limit,
+        timeline_limit=timeline_limit,
+    )
 
 
 def service_config() -> Dict[str, Any]:

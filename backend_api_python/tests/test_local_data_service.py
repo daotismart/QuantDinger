@@ -8,6 +8,7 @@ from app.data_sources.local_bar import (
     query_local_kline,
 )
 from app.services.local_data.config import LocalDataSettings
+from app.services.local_data.coverage import build_governance_charts
 
 
 def test_merge_kline_results_prefers_newer_duplicate_timestamps():
@@ -78,3 +79,101 @@ def test_factory_upstream_only_skips_local(monkeypatch):
     rows = DataSourceFactory.get_kline("Futures", "rb2505", "1m", 5, upstream_only=True)
     assert len(rows) == 1
     assert called["local"] is False
+
+
+def test_governance_charts_symbol_and_timeframe_coverage():
+    watch = [
+        {
+            "market": "Futures",
+            "symbol": "rb2609",
+            "timeframe": "1m",
+            "exchange_id": "SHFE",
+            "lookback_bars": 100,
+            "enabled": True,
+            "bar_count": 80,
+        },
+        {
+            "market": "Futures",
+            "symbol": "rb2609",
+            "timeframe": "5m",
+            "exchange_id": "SHFE",
+            "lookback_bars": 100,
+            "enabled": True,
+            "bar_count": 0,
+        },
+        {
+            "market": "Futures",
+            "symbol": "ag2608",
+            "timeframe": "1m",
+            "exchange_id": "SHFE",
+            "lookback_bars": 100,
+            "enabled": True,
+            "bar_count": 0,
+        },
+        {
+            "market": "Futures",
+            "symbol": "cu2609",
+            "timeframe": "1m",
+            "exchange_id": "SHFE",
+            "lookback_bars": 100,
+            "enabled": False,
+            "bar_count": 0,
+        },
+    ]
+    inventory = [
+        {
+            "market": "Futures",
+            "symbol": "rb2609",
+            "timeframe": "1m",
+            "exchange_id": "SHFE",
+            "bar_count": 80,
+            "min_time": 1_700_000_000,
+            "max_time": 1_700_086_400,
+        },
+        {
+            "market": "Futures",
+            "symbol": "IF2609",
+            "timeframe": "1m",
+            "exchange_id": "CFFEX",
+            "bar_count": 20,
+            "min_time": 1_700_010_000,
+            "max_time": 1_700_050_000,
+        },
+    ]
+    out = build_governance_charts(
+        watch_rows=watch,
+        inventory_rows=inventory,
+        symbol_limit=10,
+        timeline_limit=10,
+    )
+    assert out["coverage"]["watchSymbols"] == 2
+    assert out["coverage"]["symbolCoveragePct"] == 50.0
+    assert out["coverage"]["watchSeries"] == 3
+    assert out["coverage"]["timeframeCoveragePct"] == 33.3
+    assert out["coverage"]["avgDepthPct"] == 26.7
+    assert out["byMarket"][0]["name"] == "Futures"
+    assert out["byMarket"][0]["barCount"] == 100
+    assert {item["name"] for item in out["byExchange"]} == {"SHFE", "CFFEX"}
+    assert out["timeline"][0]["symbol"] == "rb2609"
+    assert out["timelineTotal"] == 2
+    missing = {item["symbol"] for item in out["coverage"]["missingSymbols"]}
+    assert missing == {"AG2608"}
+
+
+def test_governance_charts_without_watchlist_leaves_coverage_null():
+    inventory = [
+        {
+            "market": "Crypto",
+            "symbol": "BTCUSDT",
+            "timeframe": "1h",
+            "exchange_id": "BINANCE",
+            "bar_count": 12,
+            "min_time": 10,
+            "max_time": 20,
+        }
+    ]
+    out = build_governance_charts(watch_rows=[], inventory_rows=inventory)
+    assert out["coverage"]["symbolCoveragePct"] is None
+    assert out["coverage"]["timeframeCoveragePct"] is None
+    assert out["coverage"]["symbolsWithData"] == 1
+    assert out["bySymbol"][0]["symbol"] == "BTCUSDT"

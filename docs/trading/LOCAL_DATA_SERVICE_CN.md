@@ -37,6 +37,7 @@ UI 管理员可在 **数据服务 → 数据服务** 页切换运行时配置（
 | 采集 | `POST /collection/retention/run` | 触发保留清理 |
 | 采集 | `GET /collection/runs` | 维护任务审计 |
 | 治理 | `GET /governance/inventory` | 按 symbol 统计 bar 数 |
+| 治理 | `GET /governance/charts` | 市场/交易所/标的分布、覆盖完整度、历史起止时间 |
 | 治理 | `GET /governance/gaps` | 缺口检测 |
 | 治理 | `GET /governance/quality` | quality_flags 汇总 |
 | 服务 | `GET/POST /service/config` | 本地读取运行时配置 |
