@@ -142,6 +142,9 @@ def _apply_init_sql(logger, *, strict: bool = False):
         fundamentals_sql = _resolve_us_stock_fundamentals_sql_path()
         if fundamentals_sql.exists():
             sql_parts.append(fundamentals_sql.read_text(encoding='utf-8'))
+        advanced_sql = Path(__file__).resolve().parent.parent.parent / 'migrations' / 'strategy_v2_advanced_packs_50.sql'
+        if advanced_sql.exists():
+            sql_parts.append(advanced_sql.read_text(encoding='utf-8'))
         sql_text = "\n\n".join(sql_parts)
         with get_db_connection() as conn:
             cur = conn.cursor()
