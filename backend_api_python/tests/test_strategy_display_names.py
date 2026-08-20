@@ -25,7 +25,7 @@ def test_format_universe_symbol_for_cn_pack():
             {"market": "CNFuturesOptions", "symbol": "SA701-C-1000"},
         ]
     )
-    assert label == "CNFutures:SA701 + CNFuturesOptions:SA701-C-1000"
+    assert label == "SA701 + SA701-C-1000"
 
 
 def test_compose_strategy_display_name_replaces_auto_name():

@@ -35,36 +35,42 @@ def format_universe_symbol(
     instruments: list[Mapping[str, Any]] | None = None,
     fallback_symbol: str = "",
     universe_reference: str = "",
+    max_length: int = 50,
 ) -> str:
     if universe_reference:
-        return f"universe:{universe_reference}"
+        label = f"universe:{universe_reference}"
+        return label[:max_length] if max_length > 0 else label
     items = [item for item in (instruments or []) if isinstance(item, Mapping)]
     if not items:
-        return str(fallback_symbol or "").strip()
+        raw = str(fallback_symbol or "").strip()
+        if raw.startswith("basket:"):
+            try:
+                count = int(raw.split(":", 1)[1])
+                raw = f"{count}-symbol basket"
+            except (TypeError, ValueError):
+                pass
+        return raw[:max_length] if max_length > 0 else raw
     if len(items) == 1:
         symbol = str(items[0].get("symbol") or "").strip()
         market = str(items[0].get("market") or "").strip()
-        if market and symbol:
-            return f"{market}:{symbol}"
-        return symbol or str(fallback_symbol or "").strip()
-    labels: list[str] = []
-    for item in items:
-        symbol = str(item.get("symbol") or "").strip()
-        market = str(item.get("market") or "").strip()
-        if market and symbol:
-            labels.append(f"{market}:{symbol}")
-        elif symbol:
-            labels.append(symbol)
-    if labels:
-        return " + ".join(labels)
-    raw = str(fallback_symbol or "").strip()
-    if raw.startswith("basket:"):
-        try:
-            count = int(raw.split(":", 1)[1])
-            return f"{count}-symbol basket"
-        except (TypeError, ValueError):
-            return raw
-    return raw
+        label = f"{market}:{symbol}" if market and symbol else symbol or str(fallback_symbol or "").strip()
+        return label[:max_length] if max_length > 0 else label
+    short_symbols = [str(item.get("symbol") or "").strip() for item in items if str(item.get("symbol") or "").strip()]
+    if short_symbols:
+        label = " + ".join(short_symbols)
+    else:
+        labels: list[str] = []
+        for item in items:
+            symbol = str(item.get("symbol") or "").strip()
+            market = str(item.get("market") or "").strip()
+            if market and symbol:
+                labels.append(f"{market}:{symbol}")
+            elif symbol:
+                labels.append(symbol)
+        label = " + ".join(labels)
+    if max_length > 0 and len(label) > max_length:
+        return label[: max(1, max_length - 1)].rstrip() + "…"
+    return label
 
 
 def variant_label_from_metadata(metadata: Mapping[str, Any] | None, variant: Any) -> str:
