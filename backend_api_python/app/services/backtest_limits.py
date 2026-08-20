@@ -66,6 +66,10 @@ _MARKET_LIMITS: Dict[str, Dict[str, BacktestRangePolicy]] = {
         "3m": BacktestRangePolicy(90, "90 days", "CN futures options local bar depth"),
         "5m": BacktestRangePolicy(180, "6 months", "CN futures options local bar depth"),
     },
+    "CNStock": {
+        "1D": BacktestRangePolicy(3650, "10 years", "CN stock daily local/provider depth"),
+        "1W": BacktestRangePolicy(3650, "10 years", "CN stock weekly local/provider depth"),
+    },
     # yfinance intraday endpoints are much narrower than daily/weekly history.
     # Keep the cap below the upstream hard edge so indicator warmup does not
     # push an apparently valid user window into an upstream 400.
