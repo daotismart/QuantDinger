@@ -114,7 +114,16 @@ def run_market_data_historical_maint(self):
         return {"skipped": True, "reason": "historical_disabled"}
     from app.services.market_data_maint import run_historical_cycle
 
-    return run_historical_cycle(trigger="celery-beat")
+    # Long historical cycles can monopolize a concurrency=1 worker. Emit
+    # heartbeats between symbols so container health checks stay green.
+    def _heartbeat(_index=None, _total=None, _spec=None):
+        try:
+            record_worker_heartbeat()
+        except Exception:
+            pass
+
+    _heartbeat()
+    return run_historical_cycle(trigger="celery-beat", on_progress=_heartbeat)
 
 
 @celery_app.task(

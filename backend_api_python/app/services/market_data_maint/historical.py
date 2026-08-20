@@ -114,6 +114,7 @@ def run_historical_maintenance(
     *,
     settings: Optional[MarketDataMaintSettings] = None,
     trigger: str = "manual",
+    on_progress=None,
 ) -> Dict[str, Any]:
     settings = settings or MarketDataMaintSettings.load()
     if not settings.enabled or not settings.historical_enabled:
@@ -121,7 +122,12 @@ def run_historical_maintenance(
     run_id = repository.claim_run(run_kind="historical", trigger_type=trigger)
     results = []
     errors = []
-    for spec in specs:
+    for index, spec in enumerate(specs):
+        if callable(on_progress):
+            try:
+                on_progress(index, len(specs), spec)
+            except Exception:
+                logger.debug("historical on_progress callback failed", exc_info=True)
         try:
             results.append(maintain_symbol(spec, settings=settings))
         except Exception as exc:
