@@ -107,7 +107,10 @@ def backtest_warmup_calendar_days(timeframe: str, warmup_bars: int) -> int:
     normalized = normalize_backtest_timeframe(timeframe).lower()
     if normalized.endswith("m") and normalized[:-1].isdigit():
         minutes = max(1, int(normalized[:-1]))
-        return max(1, math.ceil(bars * minutes * 1.5 / 1440.0))
+        # Exchange sessions cover far fewer than 1440 minutes/day (e.g. CN futures).
+        # Without this factor, 1m warmups under-fetch and strategies never arm.
+        session_factor = 4.0
+        return max(1, math.ceil(bars * minutes * 1.5 * session_factor / 1440.0))
     if normalized.endswith("h") and normalized[:-1].isdigit():
         hours = max(1, int(normalized[:-1]))
         return max(1, math.ceil(bars * hours * 1.5 / 24.0))
