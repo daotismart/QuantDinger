@@ -5,7 +5,7 @@ from __future__ import annotations
 from flask import jsonify, request
 
 from app.openapi.blueprint import HumanBlueprint as Blueprint
-from app.services.local_data import (
+from app.services.local_data.service import (
     collection_watchlist,
     governance_gaps,
     governance_inventory,

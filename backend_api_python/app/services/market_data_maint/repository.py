@@ -202,6 +202,37 @@ def query_kline_bars(
     return out
 
 
+def resolve_bar_scope(
+    market: str,
+    symbol: str,
+    timeframe: str,
+) -> tuple[str, str]:
+    """Pick the most recently updated (exchange_id, market_type) for a series."""
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT exchange_id, market_type, COUNT(*) AS n, MAX(bar_time) AS max_time
+                  FROM qd_market_bars
+                 WHERE market = ? AND symbol = ? AND timeframe = ?
+                 GROUP BY exchange_id, market_type
+                 ORDER BY max_time DESC NULLS LAST, n DESC
+                 LIMIT 1
+                """,
+                (market, symbol, timeframe),
+            )
+            row = cur.fetchone()
+            if not row:
+                return "", ""
+            return str(row["exchange_id"] or ""), str(row["market_type"] or "")
+        except Exception as exc:
+            logger.debug("resolve_bar_scope failed: %s", exc)
+            return "", ""
+        finally:
+            cur.close()
+
+
 def total_bar_count() -> int:
     with get_db_connection() as db:
         cur = db.cursor()

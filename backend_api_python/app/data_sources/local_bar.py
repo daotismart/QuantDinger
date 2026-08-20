@@ -88,7 +88,25 @@ def query_local_kline(
             exchange_id="",
             market_type="",
         )
-        return [_strip_bar(row) for row in fallback]
+        if fallback:
+            return [_strip_bar(row) for row in fallback]
+    resolved_ex, resolved_mt = repository.resolve_bar_scope(
+        str(market or ""),
+        str(symbol or ""),
+        str(timeframe or "1m"),
+    )
+    if (resolved_ex or resolved_mt) and (resolved_ex, resolved_mt) != (ex, mt):
+        scoped = repository.query_kline_bars(
+            market=str(market or ""),
+            symbol=str(symbol or ""),
+            timeframe=str(timeframe or "1m"),
+            limit=max(1, int(limit or 1)),
+            before_time=before_time,
+            after_time=after_time,
+            exchange_id=resolved_ex,
+            market_type=resolved_mt,
+        )
+        return [_strip_bar(row) for row in scoped]
     return []
 
 
