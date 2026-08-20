@@ -23,11 +23,38 @@ from datetime import datetime
 from typing import Any
 
 from app.services.script_source import get_script_source_service
-from app.services.strategy_display_names import compose_strategy_display_name
 from app.services.strategy_v2 import StrategyV2BacktestService
 
 USER_ID = 1
 DEFAULT_TIMEOUT_SEC = 300
+
+
+def compose_strategy_display_name(
+    *,
+    name: str = "",
+    template_title: str = "",
+    template_key: str = "",
+    params: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    """Local label helper so the runner can run from a writable hotfix path."""
+    base = str(name or template_title or "").strip()
+    if not base and template_key:
+        base = template_key.removeprefix("strategy_v2_").replace("_", " ").strip().title()
+    if not base:
+        base = "Strategy"
+    if not params or params.get("variant") is None:
+        return base
+    try:
+        index = int(params["variant"])
+    except (TypeError, ValueError):
+        return f"{base} · {params['variant']}"
+    labels = (metadata or {}).get("variant_labels")
+    if isinstance(labels, list) and 0 <= index < len(labels) and str(labels[index] or "").strip():
+        variant_text = str(labels[index]).strip()
+    else:
+        variant_text = f"Variant {index + 1}"
+    return f"{base} · {variant_text}"
 
 
 def _parse_dt(raw: str) -> datetime:
