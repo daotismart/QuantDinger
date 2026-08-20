@@ -103,3 +103,24 @@ Do not reclaim those ports when redeploying QuantDinger.
 3. Change code on a feature branch locally; ship via image rebuild or controlled hotfix under `ops/hotfixes/` + `docker-compose.hotfix.yml`.
 4. Never commit host `.env`, `.deploy-credentials.txt`, or CTP credentials into git.
 5. After deploy, re-check `/api/health` and `/api/health/ready`, and note `celery-worker` health if it was previously unhealthy.
+
+## Frontend hotfix warning
+
+Do **not** bind-mount individual hashed Vite chunks from `ops/hotfixes/*.js` onto
+`quantdinger-frontend` unless the entire dependent chunk graph is mounted too.
+
+A previous mount of `QuickTradePanel-B0Dq_CAe.js` reused the current filename but
+imported missing older chunks (`market-CGhPjXGb`, `broker-DL9eAdB-`, `index-CNkhJNEQ`),
+which hung the SPA (including Indicator) with dynamic-import 404s.
+
+Current mitigation on the host:
+
+- no stale JS chunk mounts;
+- nginx `/assets/` served with `Cache-Control: no-cache` temporarily;
+- QuickTradePanel chunk renamed to `QuickTradePanel-B0Dq_CAeR2.js` inside the image
+  so browsers drop the poisoned cache entry.
+
+Indicator page route: `#/indicator-ide` (legacy `#/indicator-analysis` redirects there).
+
+Crypto OHLCV from this host currently times out without `PROXY_URL` (Binance/OKX
+unreachable). USStock / CNFutures kline still work.
