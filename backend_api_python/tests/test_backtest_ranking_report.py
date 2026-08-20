@@ -19,6 +19,28 @@ def test_normalize_return_percent_vs_ratio():
     mod = _load_builder()
     assert abs(mod._normalize_return(7.49) - 0.0749) < 1e-9
     assert abs(mod._normalize_return(0.0749) - 0.0749) < 1e-9
+    assert abs(mod._normalize_return(-0.74) + 0.74) < 1e-9
+
+
+def test_score_uses_final_equity_when_present():
+    mod = _load_builder()
+    row = mod._score_row(
+        {
+            "id": 1,
+            "strategy_name": "[UNIFIED-20260820] Quality Growth Multi-Factor",
+            "total_return": -0.74,  # ambiguous raw metric
+            "initial_capital": 100000,
+            "final_equity": 99257.32,
+            "sharpe": 0.1,
+            "max_drawdown": -12.32,
+            "profit_factor": 1.0,
+            "total_trades": 13,
+            "win_rate": 53.85,
+        }
+    )
+    assert row["strategy_name"] == "Quality Growth Multi-Factor"
+    assert abs(row["total_return"] - ((99257.32 / 100000) - 1.0)) < 1e-9
+    assert abs(row["win_rate"] - 0.5385) < 1e-4
 
 
 def test_score_penalizes_zero_trades_and_outliers():

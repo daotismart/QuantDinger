@@ -67,14 +67,21 @@ def _as_float(value: Any, default: float = 0.0) -> float:
 
 def _normalize_return(raw: float) -> float:
     """Historical rows sometimes store percent (7.49) vs ratio (0.0749)."""
-    if abs(raw) > 2.5:
+    # Values with |x| > 1 cannot be a fractional return in normal samples.
+    if abs(raw) > 1.0:
         return raw / 100.0
     return raw
 
 
+def _normalize_win_rate(raw: float) -> float:
+    if abs(raw) > 1.0:
+        return max(0.0, min(1.0, raw / 100.0))
+    return max(0.0, min(1.0, raw))
+
+
 def _normalize_drawdown(raw: float) -> float:
     # Prefer negative fraction; convert percent magnitudes.
-    if abs(raw) > 2.5:
+    if abs(raw) > 1.0:
         raw = raw / 100.0
     if raw > 0:
         raw = -raw
@@ -94,19 +101,32 @@ def _parse_result(raw: Any) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _canonical_strategy_name(name: str) -> str:
+    text = str(name or "").strip()
+    text = re.sub(r"^\[UNIFIED-[^\]]+\]\s*", "", text)
+    text = re.sub(r"^\[(?:AUTO-BT\d*|PR14-BT|FIX-BT)\]\s*", "", text, flags=re.I)
+    return text.strip()
+
+
 def _family_for(name: str) -> str:
     for label, pattern in FAMILY_RULES:
-        if pattern.search(name or ""):
+        if pattern.search(_canonical_strategy_name(name)):
             return label
     return "Other"
 
 
 def _score_row(row: dict[str, Any]) -> dict[str, Any]:
-    total_return = _normalize_return(_as_float(row.get("total_return")))
+    initial = _as_float(row.get("initial_capital"), 0.0)
+    final = _as_float(row.get("final_equity"), 0.0)
+    if initial > 0 and final > 0:
+        total_return = (final / initial) - 1.0
+    else:
+        total_return = _normalize_return(_as_float(row.get("total_return")))
     sharpe = _as_float(row.get("sharpe"))
     drawdown = _normalize_drawdown(_as_float(row.get("max_drawdown")))
     profit_factor = _as_float(row.get("profit_factor"))
     trades = int(_as_float(row.get("total_trades")))
+    win_rate = _normalize_win_rate(_as_float(row.get("win_rate")))
 
     # Component scores in 0..100
     ret_score = max(0.0, min(100.0, (total_return + 0.20) / 0.40 * 100.0))
@@ -134,10 +154,12 @@ def _score_row(row: dict[str, Any]) -> dict[str, Any]:
     row = dict(row)
     row.update(
         {
+            "strategy_name": _canonical_strategy_name(str(row.get("strategy_name") or "")),
             "total_return": total_return,
             "sharpe": sharpe,
             "max_drawdown": drawdown,
             "profit_factor": profit_factor,
+            "win_rate": win_rate,
             "total_trades": trades,
             "score": round(score, 4),
             "flag": flag,
@@ -172,7 +194,7 @@ def load_runs(*, tag: str = "", min_id: int = 0, max_id: int = 0) -> list[dict[s
     where = " AND ".join(clauses)
     sql = f"""
         SELECT id, strategy_name, market, symbol, timeframe, start_date, end_date,
-               result_json, created_at
+               initial_capital, result_json, created_at
         FROM qd_backtest_runs
         WHERE {where}
         ORDER BY id ASC
@@ -196,6 +218,8 @@ def load_runs(*, tag: str = "", min_id: int = 0, max_id: int = 0) -> list[dict[s
             "start_date": str(raw.get("start_date") or ""),
             "end_date": str(raw.get("end_date") or ""),
             "created_at": str(raw.get("created_at") or ""),
+            "initial_capital": raw.get("initial_capital") or metrics.get("initialCapital"),
+            "final_equity": metrics.get("finalEquity", metrics.get("final_equity")),
             "total_return": metrics.get("totalReturn", metrics.get("total_return")),
             "annual_return": metrics.get("annualReturn", metrics.get("annualizedReturn")),
             "sharpe": metrics.get("sharpeRatio", metrics.get("sharpe")),
@@ -335,7 +359,7 @@ def render_markdown(rows: list[dict[str, Any]], *, deduped: list[dict[str, Any]]
                 ret=_pct(float(row["total_return"])),
                 dd=_pct(float(row["max_drawdown"])),
                 sharpe=float(row["sharpe"]),
-                wr=_pct(_normalize_return(_as_float(row.get("win_rate")))),
+                wr=_pct(_as_float(row.get("win_rate"))),
                 trades=int(row["total_trades"]),
                 flag=row["flag"],
             )
