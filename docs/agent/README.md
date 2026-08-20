@@ -9,6 +9,7 @@ This folder holds **agent-facing** material for coding assistants (Cursor, Claud
 | [AI_INTEGRATION_DESIGN.md](AI_INTEGRATION_DESIGN.md) | How external AI agents (P4) and autonomous strategy AIs (P5) consume QuantDinger via a versioned, scoped Agent Gateway |
 | [AGENT_QUICKSTART.md](AGENT_QUICKSTART.md) | Operator + integrator walkthrough: issue a token, call the Gateway, run paper trades |
 | [agent-openapi.json](agent-openapi.json) | Machine-readable contract for `/api/agent/v1` (OpenAPI 3.0) |
+| [PRODUCTION_HOST.md](PRODUCTION_HOST.md) | Production host topology, compose, and CN futures backfill ops (no secrets) |
 | [../architecture/API_CONVENTIONS.md](../architecture/API_CONVENTIONS.md) | Shared HTTP conventions (envelopes, auth, Public/Internal tiers) |
 | [../api/openapi.yaml](../api/openapi.yaml) | Human Web API spec (flask-smorest; migration in progress) |
 
