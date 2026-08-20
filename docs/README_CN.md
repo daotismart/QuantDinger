@@ -493,7 +493,7 @@ Web 和移动端源码仓库独立发布 GHCR 镜像，只有从源码构建客�
 - 后端源代码采用 [Apache License 2.0](../LICENSE)。
 - QuantDinger 是 **Open Byte Inc** 的产品，名称、Logo、产品身份和商业授权与代码许可分开管理。
 - Web 前端源码发布在
-  [QuantDinger Frontend](https://github.com/OpenByteInc/QuantDinger-Vue)，适用其独立的源码可用许可证。
+  [QuantDinger Frontend](https://github.com/daotismart/QuantDinger-Vue)，适用其独立的源码可用许可证。
 - 移动端 H5 和原生客户端源码发布在
   [QuantDinger Mobile](https://github.com/OpenByteInc/QuantDinger-Mobile)，适用其独立的源码可用许可证。
 - 商标、品牌、署名和水印的使用规则见 [TRADEMARKS.md](../TRADEMARKS.md)。
