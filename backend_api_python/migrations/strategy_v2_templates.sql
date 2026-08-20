@@ -629,7 +629,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -671,14 +671,16 @@ def handle_data(context, data):
             return []
         return [min(arr[i - period:i]) for i in range(period, len(arr) + 1)]
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     ma20 = _rolling_mean(c30, 20)
     ma50 = _rolling_mean(c30, 50)
     ma100 = _rolling_mean(c30, 100)
+    if len(c30) < 50:
+        return
 
     position = get_position(g.futures)
     position_amt = float(position.amount or 0.0)
@@ -799,7 +801,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -869,9 +871,9 @@ def handle_data(context, data):
                 result.append(100.0 - 100.0 / (1.0 + ag / al))
         return result
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     rsi14 = _rsi(c30, 14)
@@ -1040,7 +1042,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -1100,9 +1102,9 @@ def handle_data(context, data):
                 result.append(100.0 - 100.0 / (1.0 + ag / al))
         return result
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     ma20 = _rolling_mean(c30, 20)
@@ -1282,7 +1284,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -1325,9 +1327,9 @@ def handle_data(context, data):
             result.append(var ** 0.5)
         return result
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     ma20 = _rolling_mean(c30, 20)
@@ -1497,7 +1499,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -1540,9 +1542,9 @@ def handle_data(context, data):
             result.append(var ** 0.5)
         return result
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     ma20 = _rolling_mean(c30, 20)
@@ -1726,7 +1728,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -1769,9 +1771,9 @@ def handle_data(context, data):
             result.append(var ** 0.5)
         return result
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     rets = [c30[i] / c30[i - 1] - 1.0 for i in range(1, len(c30))]
@@ -1947,7 +1949,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -1990,9 +1992,9 @@ def handle_data(context, data):
             result.append(var ** 0.5)
         return result
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     ma20 = _rolling_mean(c30, 20)

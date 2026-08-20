@@ -19,7 +19,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -71,9 +71,9 @@ def handle_data(context, data):
             out.append((sum((x - m) ** 2 for x in window) / period) ** 0.5)
         return out
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     position = get_position(g.futures)
@@ -101,7 +101,7 @@ def handle_data(context, data):
                 desired = -target_pct
         reason = "stat_zscore_momo"
     elif variant == 2:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 30 and len(c30) >= 20:
             spread = [c30[i] - float(opt['close'].values[-len(c30) + i]) for i in range(len(c30))]
             mz = _rolling_mean(spread, 20)
@@ -111,7 +111,7 @@ def handle_data(context, data):
                 desired = target_pct if z < -1.2 else (-target_pct if z > 1.2 and allow_short else 0.0)
         reason = "stat_spread_z"
     elif variant == 3:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 30:
             ratio = [c30[i] / max(1e-6, float(opt['close'].values[-len(c30) + i])) for i in range(len(c30))]
             mr = _rolling_mean(ratio, 30)
@@ -205,7 +205,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -257,9 +257,9 @@ def handle_data(context, data):
             out.append((sum((x - m) ** 2 for x in window) / period) ** 0.5)
         return out
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     position = get_position(g.futures)
@@ -269,7 +269,7 @@ def handle_data(context, data):
     desired = 0.0
     reason = ""
     if variant == 0:
-        opt = get_history(8000, '1m', ['close', 'volume'], g.option)
+        opt = get_history(800, '1m', ['close', 'volume'], g.option)
         if len(opt) >= 30:
             fv = float(opt['volume'].values[-1] or 0)
             ratio = fv / max(1.0, float(v30[-1]))
@@ -280,7 +280,7 @@ def handle_data(context, data):
                 desired = -target_pct
         reason = "opt_vol_ratio"
     elif variant == 1:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 5:
             oc = opt['close'].values
             if float(oc[-1]) > float(oc[-2]) and c30[-1] <= c30[-2]:
@@ -289,14 +289,14 @@ def handle_data(context, data):
                 desired = -target_pct
         reason = "opt_lead"
     elif variant == 2:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 20:
             ov = [abs(float(opt['close'].values[-len(c30) + i]) - c30[i]) for i in range(max(0, len(c30)-20), len(c30))]
             if ov and ov[-1] > sum(ov) / len(ov) * 1.2:
                 desired = target_pct if c30[-1] > c30[-2] else (-target_pct if allow_short else 0.0)
         reason = "opt_straddle_proxy"
     elif variant == 3:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 10:
             oc = [float(x) for x in opt['close'].values[-10:]]
             if oc[-1] > oc[0] * 1.01:
@@ -305,7 +305,7 @@ def handle_data(context, data):
                 desired = -target_pct
         reason = "opt_iv_momo"
     elif variant == 4:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 2:
             skew = float(opt['close'].values[-1]) / max(1e-6, c30[-1])
             skew_prev = float(opt['close'].values[-2]) / max(1e-6, c30[-2])
@@ -321,7 +321,7 @@ def handle_data(context, data):
                 desired = target_pct if c30[-1] > o30[-1] else (-target_pct if allow_short else 0.0)
         reason = "opt_vol_break"
     elif variant == 6:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 3:
             accel = float(opt['close'].values[-1]) - 2 * float(opt['close'].values[-2]) + float(opt['close'].values[-3])
             desired = target_pct if accel > 0 else (-target_pct if accel < 0 and allow_short else 0.0)
@@ -334,7 +334,7 @@ def handle_data(context, data):
             desired = target_pct
         reason = "opt_vega_flat"
     elif variant == 8:
-        opt = get_history(8000, '1m', 'close', g.option)
+        opt = get_history(800, '1m', 'close', g.option)
         if len(opt) >= 2:
             beta = (float(opt['close'].values[-1]) - float(opt['close'].values[-2])) / max(1e-6, c30[-1] - c30[-2])
             if beta > 1.2:
@@ -375,7 +375,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -427,9 +427,9 @@ def handle_data(context, data):
             out.append((sum((x - m) ** 2 for x in window) / period) ** 0.5)
         return out
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     position = get_position(g.futures)
@@ -520,7 +520,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -572,9 +572,9 @@ def handle_data(context, data):
             out.append((sum((x - m) ** 2 for x in window) / period) ** 0.5)
         return out
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     position = get_position(g.futures)
@@ -685,7 +685,7 @@ def initialize(context):
     context.set_benchmark(g.futures)
     context.subscribe(frequency="1m")
     context.set_metadata(direction_mode="both")
-    context.set_warmup(8000)
+    context.set_warmup(800)
 
 
 def handle_data(context, data):
@@ -737,9 +737,9 @@ def handle_data(context, data):
             out.append((sum((x - m) ** 2 for x in window) / period) ** 0.5)
         return out
 
-    bars = get_history(8000, "1m", ["open", "high", "low", "close", "volume"], g.futures)
+    bars = get_history(800, "1m", ["open", "high", "low", "close", "volume"], g.futures)
     o30, h30, l30, c30, v30 = _agg30(bars)
-    if o30 is None or len(c30) < 100:
+    if o30 is None or len(c30) < 25:
         return
 
     position = get_position(g.futures)
