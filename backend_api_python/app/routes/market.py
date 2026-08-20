@@ -80,10 +80,10 @@ def get_market_types():
 
     Visibility is controlled by the centralised :mod:`app.utils.market_visibility`
     rules, primarily the ``ENABLED_MARKETS`` whitelist, with
-    ``SHOW_CN_STOCK`` / ``SHOW_HK_STOCK`` kept for back-compat. The radar
-    (``/api/global-market/opportunities``) and the Agent API
-    (``/api/agent/v1/markets``) read from the same helper so all three
-    user-facing market lists stay in lock-step.
+    ``SHOW_CN_FUTURES`` / ``SHOW_CN_STOCK`` / ``SHOW_HK_STOCK`` kept for
+    back-compat. The radar (``/api/global-market/opportunities``) and the
+    Agent API (``/api/agent/v1/markets``) read from the same helper so all
+    three user-facing market lists stay in lock-step.
     """
     # Keep a stable UX order; CN equities/futures near US; MOEX last.
     desired_order = [

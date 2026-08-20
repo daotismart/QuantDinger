@@ -29,6 +29,9 @@ IBKRClient = None
 # Lazy import Alpaca
 AlpacaClient = None
 
+# Lazy import CTP (mainland China futures)
+CtpClient = None
+
 
 def _normalize_symbol_for_order(symbol: str, market_type: str = "swap") -> str:
     """
@@ -39,10 +42,11 @@ def _normalize_symbol_for_order(symbol: str, market_type: str = "swap") -> str:
     - BTCUSDT -> BTC/USDT
     - BTC/USDT:USDT -> BTC/USDT
     - PI, TRX -> PI/USDT, TRX/USDT (默认添加 /USDT)
+    - CN futures/options: keep instrument id (CNFutures:rb2609 -> rb2609)
     
     Args:
         symbol: 原始符号
-        market_type: 市场类型 (spot/swap)
+        market_type: 市场类型 (spot/swap/futures/options)
         
     Returns:
         规范化后的符号
@@ -51,6 +55,11 @@ def _normalize_symbol_for_order(symbol: str, market_type: str = "swap") -> str:
         return symbol
     
     sym = symbol.strip()
+    mt = str(market_type or "swap").strip().lower()
+    if mt in ("futures", "future", "options", "option"):
+        if ":" in sym:
+            return sym.split(":", 1)[-1].strip()
+        return sym
     
     if ':' in sym:
         sym = sym.split(':', 1)[0]
@@ -298,7 +307,65 @@ def place_order_from_signal(
             exchange_config=exchange_config,
         )
 
+    global CtpClient
+    if CtpClient is None:
+        try:
+            from app.services.cffex_trading import CtpClient as _CtpClient
+
+            CtpClient = _CtpClient
+        except ImportError:
+            pass
+
+    if CtpClient is not None and isinstance(client, CtpClient):
+        return _place_ctp_order(
+            client=client,
+            signal_type=signal_type,
+            symbol=symbol,
+            amount=qty,
+            exchange_config=exchange_config,
+        )
+
     raise LiveTradingError(f"Unsupported client type: {type(client)}")
+
+
+def _place_ctp_order(
+    client,
+    *,
+    signal_type: str,
+    symbol: str,
+    amount: float,
+    exchange_config: Optional[Dict[str, Any]] = None,
+) -> LiveOrderResult:
+    """Place a CTP futures/options order from a strategy signal."""
+    from app.services.ctp_td.gateway import signal_to_side_offset
+
+    side, offset = signal_to_side_offset(signal_type)
+    cfg = exchange_config if isinstance(exchange_config, dict) else {}
+    price = float(
+        cfg.get("price")
+        or cfg.get("ref_price")
+        or cfg.get("limit_price")
+        or cfg.get("limitPrice")
+        or 0.0
+    )
+    order_type = str(cfg.get("order_type") or cfg.get("orderType") or "market").strip().lower()
+    if order_type in ("limit", "lmt") and price <= 0:
+        raise LiveTradingError("CTP limit order requires price > 0")
+    if order_type not in ("limit", "lmt", "market", "any"):
+        order_type = "market"
+    # Strip market prefix (CNFutures:rb2609 -> rb2609)
+    clean = str(symbol or "").strip()
+    if ":" in clean:
+        clean = clean.split(":", 1)[-1].strip()
+
+    return client.place_order(
+        symbol=clean,
+        side=side,
+        offset=offset,
+        lots=float(amount or 0.0),
+        price=price,
+        order_type="limit" if order_type in ("limit", "lmt") else "market",
+    )
 
 
 def _place_ibkr_order(

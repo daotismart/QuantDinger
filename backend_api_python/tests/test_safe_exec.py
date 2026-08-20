@@ -349,6 +349,17 @@ def test_non_main_thread_timeouts_share_one_watchdog_thread():
     assert len(watchdogs) == 1
 
 
+def test_future_annotations_import_is_allowed():
+    code = "from __future__ import annotations\noutput = 1\n"
+    ok, err = validate_code_safety(code)
+    assert ok is True
+    assert err is None
+    env = {"output": None, "__builtins__": build_safe_builtins()}
+    result = safe_exec_with_validation(code, env, env, timeout=5)
+    assert result["success"] is True, result.get("error")
+    assert env["output"] == 1
+
+
 def test_shared_watchdog_still_interrupts_non_main_thread_execution():
     outcomes: list[str] = []
 

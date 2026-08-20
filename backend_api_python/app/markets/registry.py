@@ -154,7 +154,7 @@ MARKET_MODULES: Dict[str, MarketModule] = {
     "CNFuturesOptions": MarketModule(
         key="CNFuturesOptions",
         label="China Futures Options",
-        description="Mainland China futures options (commodity + CFFEX index options).",
+        description="Mainland China futures options. Search uses listed CTP contracts (all strikes/months); live orders use CTP/QMT.",
         asset_class="options",
         symbol_hint="m2509-C-2800",
         base_currency="CNY",
@@ -206,7 +206,7 @@ MARKET_MODULES: Dict[str, MarketModule] = {
     "CNIndexOptions": MarketModule(
         key="CNIndexOptions",
         label="CFFEX Index Options",
-        description="CFFEX equity-index options (IO/HO/MO). Alias subset of CNFuturesOptions.",
+        description="CFFEX equity-index options (IO/HO/MO) plus SSE/SZSE ETF options for search.",
         asset_class="options",
         symbol_hint="IO2509-C-4000",
         base_currency="CNY",
@@ -371,7 +371,11 @@ def _enabled_from_env(env: Mapping[str, str], market: str) -> bool:
     if market == "CNStock":
         return _flag(env, "SHOW_CN_STOCK", "false")
     if market in ("CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions"):
-        return _flag(env, "SHOW_CN_FUTURES", env.get("SHOW_CN_INDEX_DERIVATIVES", "false"))
+        if "SHOW_CN_FUTURES" in env:
+            return _flag(env, "SHOW_CN_FUTURES", "true")
+        if "SHOW_CN_INDEX_DERIVATIVES" in env:
+            return _flag(env, "SHOW_CN_INDEX_DERIVATIVES", "false")
+        return True
     if market == "HKStock":
         return _flag(env, "SHOW_HK_STOCK", "true")
     return True
@@ -380,7 +384,7 @@ def _enabled_from_env(env: Mapping[str, str], market: str) -> bool:
 def _requirement_status(req: DataRequirement, env: Mapping[str, str]) -> Dict[str, object]:
     configured = bool(req.built_in)
     if req.setting_keys:
-        configured = any(_setting_configured(env, key) for key in req.setting_keys)
+        configured = configured or any(_setting_configured(env, key) for key in req.setting_keys)
     return {
         "key": req.key,
         "label": req.label,

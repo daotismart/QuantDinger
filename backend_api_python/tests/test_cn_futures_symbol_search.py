@@ -1,6 +1,9 @@
 """CN futures/options discovery for watchlist search and market type pickers."""
 
+from app.markets.registry import list_market_modules
+from app.routes.settings import CONFIG_SCHEMA
 from app.services.market import symbol_search
+from app.utils.market_visibility import is_market_visible
 
 
 def test_market_types_include_cn_futures_when_visible(client, monkeypatch):
@@ -13,6 +16,41 @@ def test_market_types_include_cn_futures_when_visible(client, monkeypatch):
     payload = resp.get_json()
     values = [row["value"] for row in payload["data"]]
     assert values == ["USStock", "CNFutures", "CNIndexFutures", "Futures"]
+
+
+def test_cn_futures_visible_by_default(monkeypatch):
+    monkeypatch.delenv("ENABLED_MARKETS", raising=False)
+    monkeypatch.delenv("SHOW_CN_FUTURES", raising=False)
+    monkeypatch.delenv("SHOW_CN_INDEX_DERIVATIVES", raising=False)
+    assert is_market_visible("CNFutures") is True
+    assert is_market_visible("CNFuturesOptions") is True
+    assert is_market_visible("CNIndexFutures") is True
+    assert is_market_visible("CNIndexOptions") is True
+
+
+def test_cn_futures_hidden_when_flag_off(monkeypatch):
+    monkeypatch.delenv("ENABLED_MARKETS", raising=False)
+    monkeypatch.setenv("SHOW_CN_FUTURES", "false")
+    assert is_market_visible("CNFutures") is False
+    assert is_market_visible("CNStock") is False
+
+
+def test_market_modules_settings_expose_cn_futures_toggle():
+    items = {item["key"]: item for item in CONFIG_SCHEMA["market_modules"]["items"]}
+    assert "ENABLED_MARKETS" in items
+    assert items["SHOW_CN_FUTURES"]["default"] == "True"
+    option_values = {opt["value"] for opt in items["ENABLED_MARKETS"]["options"]}
+    assert {"CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions"} <= option_values
+
+
+def test_list_market_modules_marks_cn_futures_ready_when_enabled():
+    rows = {
+        item["key"]: item
+        for item in list_market_modules({"SHOW_CN_FUTURES": "true"})
+    }
+    assert rows["CNFutures"]["enabled"] is True
+    assert rows["CNFuturesOptions"]["enabled"] is True
+    assert rows["CNFutures"]["status"] in {"ready", "partial"}
 
 
 def test_find_cn_futures_contract_and_root():

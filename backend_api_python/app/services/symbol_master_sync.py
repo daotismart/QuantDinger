@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ from app.utils.db import get_db_connection
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_listed_option_row_cache: Optional[List[SymbolMasterRow]] = None
 
 
 @dataclass(frozen=True)
@@ -503,13 +506,12 @@ def fetch_cn_futures_symbols() -> List[SymbolMasterRow]:
     return _unique_rows(rows)
 
 
-def fetch_cn_futures_options_symbols() -> List[SymbolMasterRow]:
-    """Return mainland China futures-options roots."""
+def _cn_option_root_rows(market: str) -> List[SymbolMasterRow]:
     from app.markets.cn_futures import list_symbol_master_rows
 
     rows: List[SymbolMasterRow] = []
     for item in list_symbol_master_rows():
-        if item["market"] != "CNFuturesOptions":
+        if item["market"] != market:
             continue
         rows.append(
             SymbolMasterRow(
@@ -522,6 +524,55 @@ def fetch_cn_futures_options_symbols() -> List[SymbolMasterRow]:
                 asset_class=item["asset_class"],
             )
         )
+    return rows
+
+
+def _ctp_option_sync_enabled() -> bool:
+    raw = os.getenv("CN_OPTIONS_CTP_SYNC")
+    if raw is not None and str(raw).strip() != "":
+        return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+    # Avoid a 20k-row live CTP dump during unit tests.
+    return not os.getenv("PYTEST_CURRENT_TEST")
+
+
+def _listed_option_rows_from_ctp(*, force: bool = False) -> List[SymbolMasterRow]:
+    global _listed_option_row_cache
+    if not _ctp_option_sync_enabled():
+        return []
+    if _listed_option_row_cache is not None and not force:
+        return _listed_option_row_cache
+    from app.services.cn_options_chain import listed_option_catalog
+
+    rows: List[SymbolMasterRow] = []
+    for item in listed_option_catalog():
+        symbol = str(item.get("symbol") or "").strip()
+        name = str(item.get("name") or symbol).strip()
+        if not symbol or not name:
+            continue
+        rows.append(
+            SymbolMasterRow(
+                market=str(item.get("market") or ""),
+                symbol=symbol[:50],
+                name=name[:255],
+                exchange=str(item.get("exchange") or ""),
+                currency=str(item.get("currency") or "CNY"),
+                market_type=str(item.get("market_type") or "options"),
+                instrument_id=str(item.get("instrument_id") or ""),
+                asset_class=str(item.get("asset_class") or "options"),
+            )
+        )
+    _listed_option_row_cache = rows
+    return rows
+
+
+def fetch_cn_futures_options_symbols() -> List[SymbolMasterRow]:
+    """Return futures-options product roots plus listed CTP contracts."""
+    rows = _cn_option_root_rows("CNFuturesOptions")
+    try:
+        listed = [row for row in _listed_option_rows_from_ctp() if row.market == "CNFuturesOptions"]
+        rows.extend(listed)
+    except Exception as exc:
+        logger.warning("CTP futures-option chain unavailable, using static roots: %s", exc)
     return _unique_rows(rows)
 
 
@@ -548,24 +599,13 @@ def fetch_cn_index_futures_symbols() -> List[SymbolMasterRow]:
 
 
 def fetch_cn_index_options_symbols() -> List[SymbolMasterRow]:
-    """Return CFFEX equity-index options roots."""
-    from app.markets.cn_futures import list_symbol_master_rows
-
-    rows: List[SymbolMasterRow] = []
-    for item in list_symbol_master_rows():
-        if item["market"] != "CNIndexOptions":
-            continue
-        rows.append(
-            SymbolMasterRow(
-                market=item["market"],
-                symbol=item["symbol"],
-                name=item["name"],
-                exchange=item["exchange"],
-                currency=item["currency"],
-                market_type=item["market_type"],
-                asset_class=item["asset_class"],
-            )
-        )
+    """Return CFFEX index-option roots plus listed CTP / ETF option contracts."""
+    rows = _cn_option_root_rows("CNIndexOptions")
+    try:
+        listed = [row for row in _listed_option_rows_from_ctp() if row.market == "CNIndexOptions"]
+        rows.extend(listed)
+    except Exception as exc:
+        logger.warning("CTP index-option chain unavailable, using static roots: %s", exc)
     return _unique_rows(rows)
 
 
@@ -625,6 +665,16 @@ def upsert_symbol_master(rows: Sequence[SymbolMasterRow]) -> int:
                 "UPDATE qd_market_symbols SET is_active = 0 WHERE market = 'Crypto' AND exchange = ? AND market_type = ?",
                 (exchange_id, market_type),
             )
+        option_listed_markets = {
+            row.market
+            for row in rows
+            if row.market in {"CNFuturesOptions", "CNIndexOptions"} and (row.instrument_id or "")
+        }
+        for market in option_listed_markets:
+            cur.execute(
+                "UPDATE qd_market_symbols SET is_active = 0 WHERE market = ? AND COALESCE(instrument_id, '') <> ''",
+                (market,),
+            )
         for row in rows:
             asset_class = row.asset_class or _default_asset_class(row.market)
             cur.execute(
@@ -666,6 +716,8 @@ def _default_asset_class(market: str) -> str:
 
 def sync_symbol_master(markets: Optional[Sequence[str]] = None) -> Dict[str, Dict[str, object]]:
     """Fetch and upsert local symbol master data for the requested markets."""
+    global _listed_option_row_cache
+    _listed_option_row_cache = None
     selected = list(markets or FETCHERS.keys())
     stats: Dict[str, Dict[str, object]] = {}
     for market in selected:

@@ -19,6 +19,15 @@ CTP_MD_ENABLED=true
 CTP_MD_INSTRUMENTS=rb2505
 ```
 
+全市场主力连续日线/周线入库：
+
+```bash
+cd backend_api_python
+PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
+```
+
+清理任务只按 `bar_time` 删除分钟/小时线，不会删掉日线、周线历史。
+
 ## 进程分工
 
 - **实时**：Trading 进程线程（tick 落库/聚合/重订阅）

@@ -197,6 +197,37 @@ def load_bars(
     return out
 
 
+def count_bars(spec: WatchSpec) -> int:
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT COUNT(*) AS n
+                  FROM qd_market_bars
+                 WHERE market = ?
+                   AND symbol = ?
+                   AND timeframe = ?
+                   AND exchange_id = ?
+                   AND market_type = ?
+                """,
+                (
+                    spec.market,
+                    spec.symbol,
+                    spec.timeframe,
+                    spec.exchange_id or "",
+                    spec.market_type or "",
+                ),
+            )
+            row = cur.fetchone()
+            return int(row["n"] if row is not None else 0)
+        except Exception as exc:
+            logger.debug("count_bars failed: %s", exc)
+            return 0
+        finally:
+            cur.close()
+
+
 def upsert_bars(
     spec: WatchSpec,
     bars: Sequence[Dict[str, Any]],
@@ -315,6 +346,10 @@ def purge_old_ticks(*, retention_days: int) -> int:
             cur.close()
 
 
+# Daily / weekly history is a full-market archive; retention only trims intraday.
+INTRADAY_PURGE_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "4h")
+
+
 def purge_old_bars(*, retention_days: int) -> int:
     with get_db_connection() as db:
         cur = db.cursor()
@@ -322,7 +357,8 @@ def purge_old_bars(*, retention_days: int) -> int:
             cur.execute(
                 """
                 DELETE FROM qd_market_bars
-                 WHERE updated_at < NOW() - (%s * INTERVAL '1 day')
+                 WHERE LOWER(timeframe) IN ('1m', '3m', '5m', '15m', '30m', '1h', '4h')
+                   AND bar_time < EXTRACT(EPOCH FROM (NOW() - (%s * INTERVAL '1 day')))::bigint
                 """,
                 (int(retention_days),),
             )

@@ -62,6 +62,37 @@ def test_minute_history_stitches_contract_chunks(monkeypatch):
     assert rows[-1]["volume"] == 10
 
 
+def test_candidate_minute_symbols_prefer_dated_before_continuous():
+    src = CnFuturesDataSource()
+    cands = src._candidate_minute_symbols("SA701", months=4)
+    assert cands[0] == "SA2701"
+    assert "SA0" in cands
+    assert cands.index("SA2701") < cands.index("SA0")
+
+
+def test_short_kline_does_not_fallback_to_continuous_when_dated_exists(monkeypatch):
+    """Regression: SA701 must not silently become SA0 (day/night jump)."""
+    monkeypatch.setenv("CN_FUTURES_MARKET_DATA_PROVIDER", "akshare")
+    src = CnFuturesDataSource()
+    calls = []
+
+    def fake_load(_ak, symbol, period):
+        calls.append(symbol)
+        if symbol.upper() == "SA2701":
+            return _bars(1_700_000_000, 5, step=60)
+        if symbol.upper() == "SA0":
+            return _bars(1_700_000_000, 5, step=60, volume=99)
+        return []
+
+    monkeypatch.setattr(src, "_import_akshare", lambda: object())
+    monkeypatch.setattr(src, "_load_minute_rows", fake_load)
+    rows = src.get_kline("SA701", "1m", limit=5)
+    assert len(rows) == 5
+    assert calls[0] == "SA2701"
+    assert "SA0" not in calls
+    assert rows[-1]["volume"] == 1.0
+
+
 def test_short_kline_does_not_require_stitch(monkeypatch):
     monkeypatch.setenv("CN_FUTURES_MARKET_DATA_PROVIDER", "akshare")
     src = CnFuturesDataSource()

@@ -680,7 +680,21 @@ CONFIG_SCHEMA = {
                 'type': 'market_multiselect',
                 'default': '',
                 'options': market_options(),
-                'description': 'Markets exposed to research, strategy, market data, Agent API, and live-trading entry points. Saved as ENABLED_MARKETS in .env for backward compatibility. Empty = whitelist disabled and legacy SHOW_* flags apply.'
+                'description': 'Whitelist of markets shown in Market, strategy, Agent API, and live-trading pickers. Include CNFutures / CNFuturesOptions / CNIndexFutures / CNIndexOptions for mainland futures. Empty = no whitelist; then SHOW_CN_FUTURES / SHOW_CN_STOCK apply.'
+            },
+            {
+                'key': 'SHOW_CN_FUTURES',
+                'label': 'Enable China Futures & Options',
+                'type': 'boolean',
+                'default': 'True',
+                'description': 'Show CNFutures, CNFuturesOptions, CNIndexFutures, and CNIndexOptions. Ignored when ENABLED_MARKETS is non-empty — add those keys to the whitelist instead.'
+            },
+            {
+                'key': 'SHOW_CN_STOCK',
+                'label': 'Enable China A-Shares',
+                'type': 'boolean',
+                'default': 'False',
+                'description': 'Show CNStock (A-shares). Ignored when ENABLED_MARKETS is non-empty.'
             },
         ]
     },

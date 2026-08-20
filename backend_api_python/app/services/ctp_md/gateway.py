@@ -11,6 +11,10 @@ from app.services.ctp_md.config import CtpMdConfig, CtpMdSettings
 from app.services.ctp_md.models import CtpTick, tick_from_depth_market_data
 from app.services.ctp_md.store import CtpTickStore, get_ctp_tick_store
 from app.services.ctp_md.symbols import normalize_ctp_instrument, unique_instruments
+from app.markets.cn_futures_sessions import (
+    filter_collectible_instruments,
+    md_connection_open,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -106,6 +110,8 @@ class CtpMdGateway:
                 "pendingSubscribe": sorted(self._pending_subscribe),
                 "lastError": self.last_error,
                 "bindingLoaded": self._mdapi is not None or self._api is not None,
+                "sessionOpen": self._session_should_connect(),
+                "sessionCollectible": self._collectible_instruments(),
             }
 
     def start(self) -> None:
@@ -126,37 +132,72 @@ class CtpMdGateway:
         )
         self._thread.start()
 
+    def _watched_instruments(self) -> list[str]:
+        with self._lock:
+            items = unique_instruments(
+                list(self._pending_subscribe)
+                + list(self._subscribed)
+                + list(self.settings.instruments or [])
+            )
+        return items
+
+    def _collectible_instruments(self) -> list[str]:
+        return filter_collectible_instruments(self._watched_instruments())
+
+    def _session_should_connect(self) -> bool:
+        return md_connection_open(self._watched_instruments())
+
+    def _wait_for_session(self) -> None:
+        logged = False
+        while not self._stop.is_set() and not self._session_should_connect():
+            if not logged:
+                logger.info(
+                    "CTP MdApi waiting for next CN futures session (watch=%s)",
+                    ",".join(self._watched_instruments()) or "(none)",
+                )
+                logged = True
+            if self._stop.wait(15.0):
+                return
+        if logged and not self._stop.is_set():
+            logger.info("CTP MdApi session window open, connecting")
+
+    def _release_api(self) -> None:
+        api = self._api
+        self._api = None
+        self._spi = None
+        self._connected = False
+        self._logged_in = False
+        if api is None:
+            return
+        try:
+            api.RegisterSpi(None)
+        except Exception:
+            pass
+        try:
+            release = getattr(api, "Release", None)
+            if callable(release):
+                release()
+        except Exception:
+            pass
+
     def stop(self, timeout: float = 3.0) -> None:
         self._stop.set()
-        api = self._api
-        if api is not None:
-            try:
-                api.RegisterSpi(None)
-            except Exception:
-                pass
-            try:
-                release = getattr(api, "Release", None)
-                if callable(release):
-                    release()
-            except Exception:
-                pass
+        self._release_api()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=max(0.0, float(timeout or 0.0)))
         self._connected = False
         self._logged_in = False
-        self._api = None
-        self._spi = None
 
     def subscribe(self, instruments: Iterable[str]) -> list[str]:
         ids = unique_instruments(instruments)
         with self._lock:
             for instrument in ids:
                 self._pending_subscribe.add(instrument)
-            pending = list(self._pending_subscribe)
             logged_in = self._logged_in
             api = self._api
-        if logged_in and api is not None and pending:
-            self._do_subscribe(api, pending)
+        collectible = filter_collectible_instruments(ids)
+        if logged_in and api is not None and collectible:
+            self._do_subscribe(api, collectible)
         return ids
 
     def unsubscribe(self, instruments: Iterable[str]) -> list[str]:
@@ -183,12 +224,11 @@ class CtpMdGateway:
     def _run(self) -> None:
         backoff = max(1.0, float(self.settings.reconnect_seconds or 5.0))
         while not self._stop.is_set():
+            self._wait_for_session()
+            if self._stop.is_set():
+                break
             try:
                 self._connect_once()
-                while not self._stop.is_set():
-                    time.sleep(0.5)
-                    if not self._connected:
-                        break
             except CtpMdDependencyError as exc:
                 self._last_error = str(exc)
                 logger.error(self._last_error)
@@ -196,8 +236,12 @@ class CtpMdGateway:
             except Exception as exc:
                 self._last_error = str(exc)
                 logger.warning("CTP MdApi session error: %s", exc)
-            self._connected = False
-            self._logged_in = False
+            self._release_api()
+            if self._stop.is_set():
+                break
+            if not self._session_should_connect():
+                backoff = max(1.0, float(self.settings.reconnect_seconds or 5.0))
+                continue
             if self._stop.wait(backoff):
                 break
             backoff = min(30.0, backoff * 1.5)
@@ -223,9 +267,12 @@ class CtpMdGateway:
             time.sleep(0.2)
         if not self._logged_in and not self._stop.is_set():
             raise RuntimeError(self._last_error or "CTP MdApi login timed out")
-        # Park until disconnect/stop.
+        # Park until disconnect, stop, or the CN futures session window closes.
         while not self._stop.is_set() and self._connected:
-            time.sleep(0.5)
+            if not self._session_should_connect():
+                logger.info("CTP MdApi session window closed, releasing front")
+                break
+            time.sleep(1.0)
 
     def _next_request_id(self) -> int:
         with self._lock:
@@ -241,21 +288,26 @@ class CtpMdGateway:
                 gateway._connected = True
                 gateway._last_error = ""
                 logger.info("CTP MdApi front connected: %s", gateway.settings.front)
-                if (
-                    gateway.settings.app_id
-                    and gateway.settings.auth_code
-                    and hasattr(mdapi, "CThostFtdcReqAuthenticateField")
-                    and hasattr(api, "ReqAuthenticate")
-                ):
-                    req = mdapi.CThostFtdcReqAuthenticateField()
-                    req.BrokerID = gateway.settings.broker_id
-                    req.UserID = gateway.settings.user_id
-                    req.AppID = gateway.settings.app_id
-                    req.AuthCode = gateway.settings.auth_code
-                    if gateway.settings.product_info and hasattr(req, "UserProductInfo"):
-                        req.UserProductInfo = gateway.settings.product_info
-                    api.ReqAuthenticate(req, gateway._next_request_id())
-                    return
+                try:
+                    if (
+                        gateway.settings.app_id
+                        and gateway.settings.auth_code
+                        and hasattr(mdapi, "CThostFtdcReqAuthenticateField")
+                        and hasattr(api, "ReqAuthenticate")
+                    ):
+                        req = mdapi.CThostFtdcReqAuthenticateField()
+                        req.BrokerID = gateway.settings.broker_id
+                        req.UserID = gateway.settings.user_id
+                        req.AppID = gateway.settings.app_id
+                        req.AuthCode = gateway.settings.auth_code
+                        if gateway.settings.product_info and hasattr(req, "UserProductInfo"):
+                            req.UserProductInfo = gateway.settings.product_info
+                        api.ReqAuthenticate(req, gateway._next_request_id())
+                        return
+                except AttributeError:
+                    logger.warning(
+                        "CTP MdApi ReqAuthenticate unsupported; falling back to UserLogin"
+                    )
                 gateway._login(mdapi, api)
 
             def OnFrontDisconnected(self, nReason):
@@ -278,8 +330,9 @@ class CtpMdGateway:
                 logger.info("CTP MdApi login ok broker=%s user=%s", gateway.settings.broker_id, gateway.settings.user_id)
                 with gateway._lock:
                     pending = sorted(gateway._pending_subscribe | gateway._subscribed)
-                if pending:
-                    gateway._do_subscribe(api, pending)
+                collectible = filter_collectible_instruments(pending)
+                if collectible:
+                    gateway._do_subscribe(api, collectible)
 
             def OnRspSubMarketData(self, pSpecificInstrument, pRspInfo, nRequestID, bIsLast):
                 if gateway._rsp_failed(pRspInfo):

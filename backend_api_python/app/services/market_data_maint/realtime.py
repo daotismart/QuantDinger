@@ -11,6 +11,7 @@ from app.services.ctp_md.gateway import get_ctp_md_gateway
 from app.services.ctp_md.models import CtpTick
 from app.services.ctp_md.service import ctp_md_status
 from app.services.ctp_md.symbols import normalize_ctp_instrument, unique_instruments
+from app.markets.cn_futures_sessions import is_instrument_in_session, md_connection_open
 from app.services.market_data_maint.config import MarketDataMaintSettings, WatchSpec
 from app.services.market_data_maint import repository
 from app.services.market_data_maint.validators import align_bar_time, tick_anomaly
@@ -238,12 +239,21 @@ class RealtimeMaintainer:
         gateway = get_ctp_md_gateway()
         if not gateway.settings.enabled:
             return 0
+        if not md_connection_open(
+            list(gateway.status().get("pendingSubscribe") or [])
+            + list(gateway.status().get("subscribed") or [])
+        ):
+            return 0
         stale_after = self.settings.tick_stale_after_sec
         now = time.time()
         stale: List[str] = []
         with self._lock:
             subscribed = list(gateway.status().get("subscribed") or [])
-            for symbol in subscribed:
+            pending = list(gateway.status().get("pendingSubscribe") or [])
+            watched = unique_instruments(subscribed + pending)
+            for symbol in watched:
+                if not is_instrument_in_session(symbol):
+                    continue
                 last = self._last_tick.get(symbol)
                 if not last:
                     stale.append(symbol)

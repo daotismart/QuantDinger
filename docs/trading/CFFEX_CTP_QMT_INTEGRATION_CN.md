@@ -12,7 +12,42 @@
 | 行情 / 历史 | `CnFuturesDataSource`，默认 `auto`：akshare 拉取完整日线历史，失败回落 compliance |
 | 开平仓运行时 | 保证金、今/昨仓；期权卖方保证金 |
 | 实盘政策 | CTP/QMT × futures/options 全市场白名单 |
-| 安全 | 通用 `Futures` 拒绝国内品种；实盘需 `CFFEX_LIVE_TRADING_ENABLED=true` + 外部桥 |
+| 实盘下单 | OpenCTP TdApi（`app.services.ctp_td`），经 `CtpClient` 且 `mode=live` |
+| 安全 | 通用 `Futures` 拒绝国内品种；实盘需 `CFFEX_LIVE_TRADING_ENABLED=true` |
+
+## CTP 实盘下单（TdApi）
+
+1. 后端安装 OpenCTP（如 `pip install openctp-ctp`），按券商要求配置中文 locale（如 `zh_CN.GB18030`）。
+2. 配置交易前置（缺省时可回退同名 `CTP_MD_*`）：
+
+```bash
+CFFEX_LIVE_TRADING_ENABLED=true
+CTP_TD_FRONT=tcp://host:port
+CTP_TD_BROKER_ID=...
+CTP_TD_USER_ID=...
+CTP_TD_PASSWORD=...
+CTP_TD_APP_ID=...          # 需要鉴权时
+CTP_TD_AUTH_CODE=...
+CTP_TD_PRODUCT_INFO=...    # 可选
+```
+
+3. 在凭证库创建 `exchange_id=ctp` 且 `environment=live` 的账户
+   （`POST /api/credentials/create`）。支持 `CTP_USERNAME` / `CTP_TRADE_SERVER` /
+   `CTP_ENVIRONMENT=实盘` 等别名；字段留空时可回退服务器 `CTP_TD_*` / `CTP_MD_*`。
+4. 策略市场类别为 `CNFutures` / `CNFuturesOptions`；下单数量单位为**手**。
+
+仅验证连通（不下单）：
+
+```python
+from app.services.live_trading.factory import create_client
+client = create_client(
+    {"exchange_id": "ctp", "environment": "live", "market_scope": "futures"},
+    market_type="futures",
+)
+print(client.test_connection())
+```
+
+未明确接受实盘风险前，请保持 `CFFEX_LIVE_TRADING_ENABLED=false`。
 
 ## 完整历史行情
 
@@ -34,7 +69,8 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 - 带月份合约（`rb2509`）拉该交割月
 - 分钟周期：`1m` / `3m` / `5m` / `15m` / `30m` / `1H` / `4H`
 - 完整分钟历史通过 `CN_FUTURES_MINUTE_STITCH_MONTHS`（默认 12）拼接邻近合约
-- 期权历史暂用标的主力连续作参考序列
+- 在市期权日线优先走 `option_commodity_hist_sina`（如 `m2609C2800`），失败再回退标的主力连续；分钟线始终用标的连续。
+- 搜索目录在执行 `scripts/sync_cn_option_contracts.py` 后包含全部 CTP 在市期权。不要用 CTP Md 全订期权链。
 
 ## 交易示例
 
@@ -46,7 +82,7 @@ PYTHONPATH=. python scripts/fetch_cn_futures_history.py --symbol RB0 --timeframe
 
 ## 可见性
 
-`SHOW_CN_FUTURES=true`，或写入 `ENABLED_MARKETS`。
+`SHOW_CN_FUTURES=true`（默认开启），或在 **设置 → 市场模块** 勾选 `CNFutures` / `CNFuturesOptions` 写入 `ENABLED_MARKETS`。
 
 ## 测试
 

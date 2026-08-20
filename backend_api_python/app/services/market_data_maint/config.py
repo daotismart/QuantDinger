@@ -63,7 +63,19 @@ def parse_watch_csv(raw: str, *, default_market: str = "Futures", default_tf: st
             market, symbol, timeframe = default_market, pieces[0], default_tf
         elif len(pieces) == 2:
             # Futures:rb2505 OR rb2505:1m
-            if pieces[0] in {"Crypto", "Futures", "USStock", "CNStock", "HKStock", "Forex", "MOEX"}:
+            if pieces[0] in {
+                "Crypto",
+                "Futures",
+                "USStock",
+                "CNStock",
+                "HKStock",
+                "Forex",
+                "MOEX",
+                "CNFutures",
+                "CNFuturesOptions",
+                "CNIndexFutures",
+                "CNIndexOptions",
+            }:
                 market, symbol, timeframe = pieces[0], pieces[1], default_tf
             else:
                 market, symbol, timeframe = default_market, pieces[0], pieces[1]
