@@ -68,6 +68,7 @@ On the host:
 curl -sS http://127.0.0.1:5000/api/health
 curl -sS http://127.0.0.1:5000/api/health/ready
 curl -sS http://127.0.0.1:8820/api/health
+docker ps --filter name=quantdinger-celery-worker
 ```
 
 From outside:
@@ -75,6 +76,16 @@ From outside:
 ```bash
 curl -sS http://129.211.55.75:8820/api/health
 ```
+
+### Celery worker notes
+
+This host keeps `CELERY_CONCURRENCY=1` because RAM is tight (~3.6 GiB shared with other stacks). Long `market_data_historical_maint` jobs therefore monopolize the only worker slot. Mitigations in use:
+
+- historical cycles emit worker heartbeats between symbols;
+- `CELERY_HEALTH_MAX_AGE_SEC=1800` on the celery health check;
+- `MARKET_DATA_MAINT_HISTORICAL_INTERVAL_SEC=900` to reduce overlap.
+
+Do not raise concurrency without checking free memory first.
 
 ## Other stacks on the same machine
 
@@ -92,3 +103,24 @@ Do not reclaim those ports when redeploying QuantDinger.
 3. Change code on a feature branch locally; ship via image rebuild or controlled hotfix under `ops/hotfixes/` + `docker-compose.hotfix.yml`.
 4. Never commit host `.env`, `.deploy-credentials.txt`, or CTP credentials into git.
 5. After deploy, re-check `/api/health` and `/api/health/ready`, and note `celery-worker` health if it was previously unhealthy.
+
+## Frontend hotfix warning
+
+Do **not** bind-mount individual hashed Vite chunks from `ops/hotfixes/*.js` onto
+`quantdinger-frontend` unless the entire dependent chunk graph is mounted too.
+
+A previous mount of `QuickTradePanel-B0Dq_CAe.js` reused the current filename but
+imported missing older chunks (`market-CGhPjXGb`, `broker-DL9eAdB-`, `index-CNkhJNEQ`),
+which hung the SPA (including Indicator) with dynamic-import 404s.
+
+Current mitigation on the host:
+
+- no stale JS chunk mounts;
+- nginx `/assets/` served with `Cache-Control: no-cache` temporarily;
+- QuickTradePanel chunk renamed to `QuickTradePanel-B0Dq_CAeR2.js` inside the image
+  so browsers drop the poisoned cache entry.
+
+Indicator page route: `#/indicator-ide` (legacy `#/indicator-analysis` redirects there).
+
+Crypto OHLCV from this host currently times out without `PROXY_URL` (Binance/OKX
+unreachable). USStock / CNFutures kline still work.
