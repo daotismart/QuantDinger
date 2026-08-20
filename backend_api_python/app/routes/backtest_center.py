@@ -22,7 +22,7 @@ from app.services.backtest_execution import (
 from app.services.backtest_limits import BacktestRangeLimitError
 from app.services.billing_service import get_billing_service
 from app.services.script_source import get_script_source_service
-from app.services.strategy_v2.display_names import compose_strategy_display_name
+from app.services.strategy_display_names import compose_strategy_display_name
 from app.services.strategy_v2 import (
     FactorResearchRepository,
     StrategyBacktestRepository,

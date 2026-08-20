@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from app.services.script_source import get_script_source_service
-from app.services.strategy_v2.display_names import (
+from app.services.strategy_display_names import (
     compose_strategy_display_name,
     format_universe_symbol,
     is_auto_generated_strategy_name,
@@ -22,7 +22,7 @@ def _template_titles() -> dict[str, str]:
 
 
 def _match_template_key(code: str, template_titles: dict[str, str]) -> str:
-    from app.services.strategy_v2.display_names import extract_code_doc_title
+    from app.services.strategy_display_names import extract_code_doc_title
 
     doc_title = extract_code_doc_title(code)
     if not doc_title:

@@ -25,7 +25,7 @@ from .market_data import load_strategy_frame
 from .runtime import StrategyV2BacktestRunner
 from .snapshot import MarketDataSnapshotStore, canonical_frame_bytes
 from .storage import StrategyBacktestRepository
-from .display_names import compose_strategy_display_name, format_universe_symbol
+from app.services.strategy_display_names import compose_strategy_display_name, format_universe_symbol
 
 
 class StrategyV2BacktestService:

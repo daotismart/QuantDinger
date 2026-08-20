@@ -12,7 +12,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
-from app.services.strategy_v2.display_names import (
+from app.services.strategy_display_names import (
     compose_strategy_display_name,
     extract_code_doc_title,
     is_auto_generated_strategy_name,

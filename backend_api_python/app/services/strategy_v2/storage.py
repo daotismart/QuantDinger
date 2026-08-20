@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.utils.db import get_db_connection
-from app.services.script_source import get_script_source_service
-from app.services.strategy_v2.display_names import (
+from app.services.strategy_display_names import (
     compose_strategy_display_name,
     format_universe_symbol,
     is_auto_generated_strategy_name,
@@ -297,7 +296,11 @@ class StrategyBacktestRepository:
         source_info = (source_context or {}).get(source_id, {})
         source_name = str(source_info.get("name") or "")
         template_key = str(source_info.get("template_key") or "").strip()
-        template = get_script_source_service().get_template_by_key(template_key) if template_key else None
+        template = None
+        if template_key:
+            from app.services.script_source import get_script_source_service
+
+            template = get_script_source_service().get_template_by_key(template_key)
         template_metadata = template.get("metadata") if isinstance(template, dict) and isinstance(template.get("metadata"), dict) else {}
         display_name = compose_strategy_display_name(
             name=str(item.get("strategy_name") or source_name or ""),

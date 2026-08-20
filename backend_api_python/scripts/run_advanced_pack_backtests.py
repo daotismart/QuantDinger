@@ -9,6 +9,7 @@ from datetime import datetime
 
 from app.services.script_source import get_script_source_service
 from app.services.strategy_v2 import StrategyV2BacktestService
+from app.services.strategy_display_names import compose_strategy_display_name
 
 ADVANCED_PACKS = (
     "strategy_v2_stat_arb_pack",
@@ -41,8 +42,15 @@ def main() -> int:
         template = templates[pack_key]
         code = str(template.get("code") or "")
         title = str(template.get("title") or pack_key)
+        metadata = template.get("metadata") if isinstance(template.get("metadata"), dict) else {}
         for variant in range(10):
-            label = f"{pack_key}:v{variant}"
+            strategy_name = compose_strategy_display_name(
+                name=title,
+                template_title=title,
+                template_key=pack_key,
+                params={"variant": variant},
+                metadata=metadata,
+            )
             try:
                 run_id, result = service.run(
                     user_id=USER_ID,
@@ -58,7 +66,7 @@ def main() -> int:
                         "allow_short": True,
                     },
                     persist=True,
-                    strategy_name=f"{title} variant {variant}",
+                    strategy_name=strategy_name,
                 )
                 metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else result
                 results.append(
