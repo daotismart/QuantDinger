@@ -54,6 +54,18 @@ _DEFAULT_LIMITS: Dict[str, BacktestRangePolicy] = {
 
 
 _MARKET_LIMITS: Dict[str, Dict[str, BacktestRangePolicy]] = {
+    # Local qd_market_bars + session-aware warmup make multi-week 1m windows
+    # practical for CN futures / options packs (continuous + month codes).
+    "CNFutures": {
+        "1m": BacktestRangePolicy(90, "90 days", "CN futures local bar depth"),
+        "3m": BacktestRangePolicy(90, "90 days", "CN futures local bar depth"),
+        "5m": BacktestRangePolicy(180, "6 months", "CN futures local bar depth"),
+    },
+    "CNFuturesOptions": {
+        "1m": BacktestRangePolicy(90, "90 days", "CN futures options local bar depth"),
+        "3m": BacktestRangePolicy(90, "90 days", "CN futures options local bar depth"),
+        "5m": BacktestRangePolicy(180, "6 months", "CN futures options local bar depth"),
+    },
     # yfinance intraday endpoints are much narrower than daily/weekly history.
     # Keep the cap below the upstream hard edge so indicator warmup does not
     # push an apparently valid user window into an upstream 400.
