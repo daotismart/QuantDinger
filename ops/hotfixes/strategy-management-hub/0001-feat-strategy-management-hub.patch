@@ -1,0 +1,843 @@
+From a0626129fbd2b50742d39e3b0c18cd6b4108e077 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 21 Aug 2026 03:28:43 +0000
+Subject: [PATCH] feat: add strategy management hub, menu group, and backtest
+ ranking
+
+Group develop/backtest/ranking under Strategy Management, add a lifecycle
+hub page, deep-link publish/versions into the IDE, and surface a personal
+backtest leaderboard page backed by GET /api/backtest/ranking.
+---
+ src/api/strategy.js                  |   9 +
+ src/config/router.config.js          |  13 ++
+ src/layouts/BasicLayout.vue          |  16 +-
+ src/locales/lang/en-US.js            |  57 ++++++
+ src/locales/lang/zh-CN.js            |  57 ++++++
+ src/views/backtest-ranking/index.vue | 265 ++++++++++++++++++++++++++
+ src/views/strategy-ide/index.vue     |  18 +-
+ src/views/strategy-manage/index.vue  | 273 +++++++++++++++++++++++++++
+ 8 files changed, 695 insertions(+), 13 deletions(-)
+ create mode 100644 src/views/backtest-ranking/index.vue
+ create mode 100644 src/views/strategy-manage/index.vue
+
+diff --git a/src/api/strategy.js b/src/api/strategy.js
+index 997ee19..859d179 100644
+--- a/src/api/strategy.js
++++ b/src/api/strategy.js
+@@ -32,6 +32,7 @@ const api = {
+   strategyBacktestTune: '/api/backtest/tune',
+   strategyBacktestHistory: '/api/backtest/history',
+   strategyBacktestGet: '/api/backtest/get',
++  strategyBacktestRanking: '/api/backtest/ranking',
+   scriptSources: '/api/strategies/script-sources',
+   scriptSourceDetail: '/api/strategies/script-sources/detail',
+   createScriptSource: '/api/strategies/script-sources/create',
+@@ -355,6 +356,14 @@ export function getStrategyBacktestRun (runId) {
+   })
+ }
+ 
++export function getStrategyBacktestRanking (params = {}) {
++  return request({
++    url: api.strategyBacktestRanking,
++    method: 'get',
++    params
++  })
++}
++
+ export function getScriptSourceList (params = {}) {
+   return request({
+     url: api.scriptSources,
+diff --git a/src/config/router.config.js b/src/config/router.config.js
+index 44bc85c..33c580a 100644
+--- a/src/config/router.config.js
++++ b/src/config/router.config.js
+@@ -35,6 +35,13 @@ export const asyncRouterMap = [
+         component: () => import('@/views/indicator-community'),
+         meta: { title: 'menu.dashboard.community', keepAlive: false, icon: 'shop', permission: ['dashboard'] }
+       },
++      // Strategy management hub.
++      {
++        path: '/strategy-manage',
++        name: 'StrategyManage',
++        component: () => import('@/views/strategy-manage'),
++        meta: { title: 'menu.dashboard.strategyManage', keepAlive: true, icon: 'appstore', permission: ['dashboard'] }
++      },
+       // Strategy IDE.
+       {
+         path: '/strategy-ide',
+@@ -48,6 +55,12 @@ export const asyncRouterMap = [
+         component: () => import('@/views/backtest-center'),
+         meta: { title: 'menu.dashboard.backtestCenter', keepAlive: true, icon: 'bar-chart', permission: ['dashboard'] }
+       },
++      {
++        path: '/backtest-ranking',
++        name: 'BacktestRanking',
++        component: () => import('@/views/backtest-ranking'),
++        meta: { title: 'menu.dashboard.backtestRanking', keepAlive: true, icon: 'trophy', permission: ['dashboard'] }
++      },
+       {
+         path: '/indicator-ide',
+         name: 'IndicatorIDE',
+diff --git a/src/layouts/BasicLayout.vue b/src/layouts/BasicLayout.vue
+index d70f5bf..f07c6d4 100644
+--- a/src/layouts/BasicLayout.vue
++++ b/src/layouts/BasicLayout.vue
+@@ -585,19 +585,11 @@ export default {
+         },
+         {
+           name: 'MenuGroupStrategy',
+-          path: '/menu-group/strategy-lab',
+-          title: this.$t('menu.group.strategyLab') || 'Strategy Lab',
++          path: '/menu-group/strategy-manage',
++          title: this.$t('menu.group.strategyManage') || 'Strategy Management',
+           icon: 'experiment',
+-          paths: ['/strategy-ide'],
+-          singleAsItem: true
+-        },
+-        {
+-          name: 'MenuGroupBacktest',
+-          path: '/menu-group/backtest-center',
+-          title: this.$t('menu.dashboard.backtestCenter') || 'Backtest Center',
+-          icon: 'bar-chart',
+-          paths: ['/backtest-center'],
+-          singleAsItem: true
++          paths: ['/strategy-manage', '/strategy-ide', '/backtest-center', '/backtest-ranking'],
++          singleAsItem: false
+         },
+         {
+           name: 'MenuGroupLiveMonitor',
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index 73ea598..9c60b70 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -328,6 +328,9 @@ const locale = {
+   "menu.dashboard.backtestCenter": "Backtest",
+   "menu.dashboard.indicatorIde": "Indicator",
+   "menu.dashboard.strategyIde": "Strategy",
++  "menu.group.strategyManage": "Strategy Management",
++  "menu.dashboard.backtestRanking": "Backtest Rank",
++  "menu.dashboard.strategyManage": "Strategy Mgmt",
+   "menu.dashboard.tradingBot": "Strategy Template",
+   "menu.dashboard.brokerAccounts": "Account",
+   "menu.dashboard.scriptStrategies": "Script",
+@@ -7282,4 +7285,58 @@ export default {
+   "strategyCenter.positionOwnership.loadFailed": "Failed to load position ownership",
+   "strategyCenter.positionOwnership.repairSuccess": "Position ownership updated",
+   "strategyCenter.positionOwnership.repairFailed": "Position ownership repair failed"
++  "strategyManage.kicker": "Strategy Lifecycle",
++  "strategyManage.title": "Strategy Management",
++  "strategyManage.subtitle": "Manage development, backtests, publishing, versions, and rankings in one workflow.",
++  "strategyManage.actions.newStrategy": "New Strategy",
++  "strategyManage.cards.develop.title": "Develop",
++  "strategyManage.cards.develop.desc": "Write, compile, and save strategy source in the IDE.",
++  "strategyManage.cards.develop.cta": "Open IDE",
++  "strategyManage.cards.backtest.title": "Backtest",
++  "strategyManage.cards.backtest.desc": "Run historical backtests and parameter searches.",
++  "strategyManage.cards.backtest.cta": "Open Backtest",
++  "strategyManage.cards.publish.title": "Publish",
++  "strategyManage.cards.publish.desc": "Publish backtested strategies to the marketplace.",
++  "strategyManage.cards.publish.cta": "Publish",
++  "strategyManage.cards.versions.title": "Versions",
++  "strategyManage.cards.versions.desc": "Browse, preview, and restore strategy versions.",
++  "strategyManage.cards.versions.cta": "Open Versions",
++  "strategyManage.cards.ranking.title": "Backtest Ranking",
++  "strategyManage.cards.ranking.desc": "Compare your backtests by composite score.",
++  "strategyManage.cards.ranking.cta": "View Ranking",
++  "strategyManage.cards.live.title": "Live Monitor",
++  "strategyManage.cards.live.desc": "Deploy and monitor live or paper strategies.",
++  "strategyManage.cards.live.cta": "Open Live",
++  "strategyManage.flowTitle": "Recommended flow",
++  "strategyManage.flow.develop": "Develop: finish strategy logic and parameters in the IDE",
++  "strategyManage.flow.backtest": "Backtest: validate return, drawdown, and trade quality",
++  "strategyManage.flow.rank": "Rank: compare scores and promote winners",
++  "strategyManage.flow.publish": "Publish: list strategies that pass the backtest gate",
++  "strategyManage.flow.version": "Versions: keep a recoverable evolution history",
++  "strategyManage.flow.live": "Live: deploy, monitor, and review",
++  "backtestRanking.kicker": "Strategy Management",
++  "backtestRanking.title": "Backtest Ranking",
++  "backtestRanking.subtitle": "Rank your successful runs by return, Sharpe, drawdown, profit factor, and trade activity.",
++  "backtestRanking.backToManage": "Back to Management",
++  "backtestRanking.filterTag": "Batch tag, e.g. UNIFIED-20260820",
++  "backtestRanking.filterMarket": "Market, e.g. Crypto",
++  "backtestRanking.filterTimeframe": "Timeframe, e.g. 1h",
++  "backtestRanking.applyFilters": "Apply",
++  "backtestRanking.scoreHint": "Weights: return 40% + Sharpe 25% + drawdown 20% + profit factor 10% + traded 5%. No-trade and extreme outliers are down-weighted.",
++  "backtestRanking.empty": "No successful backtests yet. Run strategies in Backtest Center first.",
++  "backtestRanking.loadFailed": "Failed to load ranking",
++  "backtestRanking.col.rank": "Rank",
++  "backtestRanking.col.strategy": "Strategy",
++  "backtestRanking.col.score": "Score",
++  "backtestRanking.col.return": "Return",
++  "backtestRanking.col.sharpe": "Sharpe",
++  "backtestRanking.col.drawdown": "Max DD",
++  "backtestRanking.col.trades": "Trades",
++  "backtestRanking.col.flag": "Flag",
++  "backtestRanking.col.action": "Actions",
++  "backtestRanking.flag.ok": "OK",
++  "backtestRanking.flag.no_trades": "No trades",
++  "backtestRanking.flag.extreme_outlier": "Outlier",
++  "backtestRanking.openBacktest": "Backtest",
++  "backtestRanking.openIde": "IDE",
+ }
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index 9818efc..c445340 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -3987,6 +3987,9 @@ const locale = {
+   "menu.dashboard.signalRobot": "信号机器人",
+   "menu.dashboard.strategyCenter": "实盘",
+   "menu.dashboard.strategyIde": "策略",
++  "menu.group.strategyManage": "策略管理",
++  "menu.dashboard.backtestRanking": "回测排行",
++  "menu.dashboard.strategyManage": "策略管理",
+   "menu.dashboard.tradingAssistant": "实盘",
+   "menu.dashboard.tradingBot": "策略模板",
+   "menu.dashboard.workplace": "工作台",
+@@ -7583,4 +7586,58 @@ export default {
+   "strategyCenter.positionOwnership.loadFailed": "持仓归属加载失败",
+   "strategyCenter.positionOwnership.repairSuccess": "持仓归属已更新",
+   "strategyCenter.positionOwnership.repairFailed": "持仓归属修复失败"
++  "strategyManage.kicker": "策略生命周期",
++  "strategyManage.title": "策略管理",
++  "strategyManage.subtitle": "集中管理策略开发、回测、发布、版本与排行，形成可复用的研究到上线闭环。",
++  "strategyManage.actions.newStrategy": "新建策略",
++  "strategyManage.cards.develop.title": "策略开发",
++  "strategyManage.cards.develop.desc": "在策略 IDE 中编写、编译并保存策略源码。",
++  "strategyManage.cards.develop.cta": "打开开发",
++  "strategyManage.cards.backtest.title": "策略回测",
++  "strategyManage.cards.backtest.desc": "对策略源码运行历史回测与参数寻优。",
++  "strategyManage.cards.backtest.cta": "打开回测",
++  "strategyManage.cards.publish.title": "策略发布",
++  "strategyManage.cards.publish.desc": "将通过回测的策略发布到策略市场。",
++  "strategyManage.cards.publish.cta": "去发布",
++  "strategyManage.cards.versions.title": "版本管理",
++  "strategyManage.cards.versions.desc": "查看、预览并恢复历史策略版本。",
++  "strategyManage.cards.versions.cta": "查看版本",
++  "strategyManage.cards.ranking.title": "回测排行榜",
++  "strategyManage.cards.ranking.desc": "按综合得分对比你的回测结果，快速筛选优质策略。",
++  "strategyManage.cards.ranking.cta": "查看排行",
++  "strategyManage.cards.live.title": "实盘监控",
++  "strategyManage.cards.live.desc": "部署并监控实盘/仿真策略运行状态。",
++  "strategyManage.cards.live.cta": "进入实盘",
++  "strategyManage.flowTitle": "推荐流程",
++  "strategyManage.flow.develop": "开发：在 IDE 完成策略逻辑与参数定义",
++  "strategyManage.flow.backtest": "回测：验证收益、回撤与交易质量",
++  "strategyManage.flow.rank": "排行：对比多策略回测得分，择优推进",
++  "strategyManage.flow.publish": "发布：满足回测门槛后上架策略市场",
++  "strategyManage.flow.version": "版本：保留可回溯的策略演进记录",
++  "strategyManage.flow.live": "实盘：部署监控并持续复盘",
++  "backtestRanking.kicker": "策略管理",
++  "backtestRanking.title": "回测排行榜",
++  "backtestRanking.subtitle": "基于收益、夏普、回撤、盈亏比与成交活跃度的综合评分，对你的成功回测进行排名。",
++  "backtestRanking.backToManage": "返回策略管理",
++  "backtestRanking.filterTag": "批次标签，如 UNIFIED-20260820",
++  "backtestRanking.filterMarket": "市场，如 Crypto",
++  "backtestRanking.filterTimeframe": "周期，如 1h",
++  "backtestRanking.applyFilters": "筛选",
++  "backtestRanking.scoreHint": "得分权重：收益 40% + 夏普 25% + 回撤 20% + 盈亏比 10% + 有成交 5%；无成交或极端异常会降权。",
++  "backtestRanking.empty": "暂无成功回测记录，请先在回测中心运行策略。",
++  "backtestRanking.loadFailed": "加载排行榜失败",
++  "backtestRanking.col.rank": "排名",
++  "backtestRanking.col.strategy": "策略",
++  "backtestRanking.col.score": "得分",
++  "backtestRanking.col.return": "收益",
++  "backtestRanking.col.sharpe": "夏普",
++  "backtestRanking.col.drawdown": "最大回撤",
++  "backtestRanking.col.trades": "成交数",
++  "backtestRanking.col.flag": "标记",
++  "backtestRanking.col.action": "操作",
++  "backtestRanking.flag.ok": "正常",
++  "backtestRanking.flag.no_trades": "无成交",
++  "backtestRanking.flag.extreme_outlier": "异常值",
++  "backtestRanking.openBacktest": "回测",
++  "backtestRanking.openIde": "开发",
+ }
+diff --git a/src/views/backtest-ranking/index.vue b/src/views/backtest-ranking/index.vue
+new file mode 100644
+index 0000000..6a1b292
+--- /dev/null
++++ b/src/views/backtest-ranking/index.vue
+@@ -0,0 +1,265 @@
++<template>
++  <div class="backtest-ranking" :class="{ 'theme-dark': isDarkTheme }" data-testid="backtest-ranking">
++    <header class="br-header">
++      <div>
++        <div class="br-kicker">{{ $t('backtestRanking.kicker') }}</div>
++        <h1>{{ $t('backtestRanking.title') }}</h1>
++        <p>{{ $t('backtestRanking.subtitle') }}</p>
++      </div>
++      <div class="br-actions">
++        <a-button icon="apartment" @click="$router.push('/strategy-manage')">
++          {{ $t('backtestRanking.backToManage') }}
++        </a-button>
++        <a-button type="primary" icon="reload" :loading="loading" @click="loadRanking">
++          {{ $t('common.refresh') }}
++        </a-button>
++      </div>
++    </header>
++
++    <section class="br-filters">
++      <a-input
++        v-model="filters.tag"
++        allow-clear
++        :placeholder="$t('backtestRanking.filterTag')"
++        style="width: 200px"
++        @pressEnter="loadRanking"
++      />
++      <a-input
++        v-model="filters.market"
++        allow-clear
++        :placeholder="$t('backtestRanking.filterMarket')"
++        style="width: 160px"
++        @pressEnter="loadRanking"
++      />
++      <a-input
++        v-model="filters.timeframe"
++        allow-clear
++        :placeholder="$t('backtestRanking.filterTimeframe')"
++        style="width: 140px"
++        @pressEnter="loadRanking"
++      />
++      <a-button type="primary" @click="loadRanking">{{ $t('backtestRanking.applyFilters') }}</a-button>
++    </section>
++
++    <a-alert
++      type="info"
++      show-icon
++      class="br-hint"
++      :message="$t('backtestRanking.scoreHint')"
++    />
++
++    <a-table
++      row-key="rowKey"
++      :loading="loading"
++      :columns="columns"
++      :data-source="rows"
++      :pagination="{ pageSize: 20, showSizeChanger: true }"
++      :locale="{ emptyText: $t('backtestRanking.empty') }"
++    >
++      <template slot="rank" slot-scope="text">
++        <span class="rank-pill" :class="{ 'rank-top': text <= 3 }">{{ text }}</span>
++      </template>
++      <template slot="strategy" slot-scope="text, record">
++        <div class="strategy-cell">
++          <strong>{{ text }}</strong>
++          <span>{{ record.family }} · {{ record.market || '-' }} · {{ record.symbol || '-' }} · {{ record.timeframe || '-' }}</span>
++        </div>
++      </template>
++      <template slot="pct" slot-scope="text">
++        <span :class="Number(text) >= 0 ? 'pos' : 'neg'">{{ formatPct(text) }}</span>
++      </template>
++      <template slot="num" slot-scope="text">
++        {{ formatNum(text) }}
++      </template>
++      <template slot="flag" slot-scope="text">
++        <a-tag :color="flagColor(text)">{{ flagLabel(text) }}</a-tag>
++      </template>
++      <template slot="action" slot-scope="text, record">
++        <a-button type="link" size="small" @click="openBacktest(record)">{{ $t('backtestRanking.openBacktest') }}</a-button>
++        <a-button type="link" size="small" @click="openIde(record)">{{ $t('backtestRanking.openIde') }}</a-button>
++      </template>
++    </a-table>
++  </div>
++</template>
++
++<script>
++import { mapState } from 'vuex'
++import { getStrategyBacktestRanking } from '@/api/strategy'
++
++export default {
++  name: 'BacktestRanking',
++  data () {
++    return {
++      loading: false,
++      rows: [],
++      filters: {
++        tag: '',
++        market: '',
++        timeframe: ''
++      }
++    }
++  },
++  computed: {
++    ...mapState({
++      isDarkTheme: state => !!(state.app && state.app.theme === 'dark')
++    }),
++    columns () {
++      return [
++        { title: this.$t('backtestRanking.col.rank'), dataIndex: 'rank', key: 'rank', width: 72, scopedSlots: { customRender: 'rank' } },
++        { title: this.$t('backtestRanking.col.strategy'), dataIndex: 'strategy_name', key: 'strategy', scopedSlots: { customRender: 'strategy' } },
++        { title: this.$t('backtestRanking.col.score'), dataIndex: 'score', key: 'score', width: 100, customRender: (v) => this.formatNum(v) },
++        { title: this.$t('backtestRanking.col.return'), dataIndex: 'total_return', key: 'return', width: 110, scopedSlots: { customRender: 'pct' } },
++        { title: this.$t('backtestRanking.col.sharpe'), dataIndex: 'sharpe', key: 'sharpe', width: 100, scopedSlots: { customRender: 'num' } },
++        { title: this.$t('backtestRanking.col.drawdown'), dataIndex: 'max_drawdown', key: 'dd', width: 110, scopedSlots: { customRender: 'pct' } },
++        { title: this.$t('backtestRanking.col.trades'), dataIndex: 'total_trades', key: 'trades', width: 90 },
++        { title: this.$t('backtestRanking.col.flag'), dataIndex: 'flag', key: 'flag', width: 120, scopedSlots: { customRender: 'flag' } },
++        { title: this.$t('backtestRanking.col.action'), key: 'action', width: 180, scopedSlots: { customRender: 'action' } }
++      ]
++    }
++  },
++  created () {
++    this.loadRanking()
++  },
++  methods: {
++    async loadRanking () {
++      this.loading = true
++      try {
++        const res = await getStrategyBacktestRanking({
++          tag: this.filters.tag || undefined,
++          market: this.filters.market || undefined,
++          timeframe: this.filters.timeframe || undefined,
++          limit: 200
++        })
++        const items = (res && res.code === 1 && res.data && res.data.items) ? res.data.items : []
++        this.rows = items.map((item, index) => ({
++          ...item,
++          rowKey: `${item.run_id || index}-${item.strategy_name}-${item.timeframe}`
++        }))
++      } catch (e) {
++        this.rows = []
++        this.$message.error(e.backendMessage || e.message || this.$t('backtestRanking.loadFailed'))
++      } finally {
++        this.loading = false
++      }
++    },
++    formatPct (value) {
++      const num = Number(value)
++      if (!Number.isFinite(num)) return '-'
++      return `${(num * 100).toFixed(2)}%`
++    },
++    formatNum (value) {
++      const num = Number(value)
++      if (!Number.isFinite(num)) return '-'
++      return num.toFixed(2)
++    },
++    flagColor (flag) {
++      if (flag === 'ok') return 'green'
++      if (flag === 'no_trades') return 'orange'
++      return 'red'
++    },
++    flagLabel (flag) {
++      const key = `backtestRanking.flag.${flag || 'ok'}`
++      const translated = this.$t(key)
++      return translated === key ? flag : translated
++    },
++    openBacktest (record) {
++      const query = {}
++      if (record.source_id) query.sourceId = String(record.source_id)
++      this.$router.push({ path: '/backtest-center', query }).catch(() => {})
++    },
++    openIde (record) {
++      const query = {}
++      if (record.source_id) query.sourceId = String(record.source_id)
++      this.$router.push({ path: '/strategy-ide', query }).catch(() => {})
++    }
++  }
++}
++</script>
++
++<style lang="less" scoped>
++.backtest-ranking {
++  min-height: calc(100vh - 64px);
++  padding: 24px 28px 40px;
++  background: linear-gradient(180deg, #f7f8fa 0%, #eef2f6 100%);
++}
++
++.backtest-ranking.theme-dark {
++  background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
++  color: #e6edf3;
++}
++
++.br-header {
++  display: flex;
++  justify-content: space-between;
++  gap: 16px;
++  margin-bottom: 16px;
++}
++
++.br-kicker {
++  color: #a16207;
++  font-size: 12px;
++  font-weight: 700;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++}
++
++.br-header h1 {
++  margin: 4px 0 8px;
++  font-size: 28px;
++}
++
++.br-header p {
++  margin: 0;
++  color: #667085;
++  max-width: 680px;
++}
++
++.theme-dark .br-header p { color: #8b949e; }
++
++.br-actions, .br-filters {
++  display: flex;
++  gap: 8px;
++  flex-wrap: wrap;
++  align-items: center;
++}
++
++.br-filters { margin-bottom: 12px; }
++.br-hint { margin-bottom: 14px; }
++
++.rank-pill {
++  display: inline-flex;
++  min-width: 28px;
++  height: 28px;
++  border-radius: 999px;
++  align-items: center;
++  justify-content: center;
++  background: #e5e7eb;
++  font-weight: 700;
++}
++
++.rank-pill.rank-top {
++  background: #fbbf24;
++  color: #78350f;
++}
++
++.strategy-cell {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++}
++
++.strategy-cell span {
++  color: #667085;
++  font-size: 12px;
++}
++
++.theme-dark .strategy-cell span { color: #8b949e; }
++
++.pos { color: #059669; }
++.neg { color: #dc2626; }
++
++@media (max-width: 720px) {
++  .backtest-ranking { padding: 16px; }
++  .br-header { flex-direction: column; }
++}
++</style>
+diff --git a/src/views/strategy-ide/index.vue b/src/views/strategy-ide/index.vue
+index 5462d6a..026fb80 100644
+--- a/src/views/strategy-ide/index.vue
++++ b/src/views/strategy-ide/index.vue
+@@ -737,7 +737,12 @@ export default {
+   mounted () {
+     this._saveShortcut = (event) => this.handleSaveShortcut(event)
+     window.addEventListener('keydown', this._saveShortcut, true)
+-    this.initPage()
++    this.initPage().then(() => this.applyRouteAction())
++  },
++  watch: {
++    '$route.query.action' () {
++      this.applyRouteAction()
++    }
+   },
+   beforeDestroy () {
+     if (this._saveShortcut) {
+@@ -1559,6 +1564,17 @@ export default {
+       this.scriptVersionPreview = null
+       this.loadScriptVersions()
+     },
++    applyRouteAction () {
++      const action = String((this.$route.query || {}).action || '').trim().toLowerCase()
++      if (!action) return
++      this.$nextTick(() => {
++        if (action === 'publish') {
++          this.openPublishModal()
++        } else if (action === 'versions' || action === 'version') {
++          this.openVersionDrawer()
++        }
++      })
++    },
+     async loadScriptVersions () {
+       if (!this.currentSourceId) return
+       this.scriptVersionLoading = true
+diff --git a/src/views/strategy-manage/index.vue b/src/views/strategy-manage/index.vue
+new file mode 100644
+index 0000000..df06807
+--- /dev/null
++++ b/src/views/strategy-manage/index.vue
+@@ -0,0 +1,273 @@
++<template>
++  <div class="strategy-manage" :class="{ 'theme-dark': isDarkTheme }" data-testid="strategy-manage">
++    <header class="sm-header">
++      <div>
++        <div class="sm-kicker">{{ $t('strategyManage.kicker') }}</div>
++        <h1>{{ $t('strategyManage.title') }}</h1>
++        <p>{{ $t('strategyManage.subtitle') }}</p>
++      </div>
++      <a-button type="primary" icon="plus" @click="go('/strategy-ide', { draft: '1' })">
++        {{ $t('strategyManage.actions.newStrategy') }}
++      </a-button>
++    </header>
++
++    <section class="sm-grid">
++      <button
++        v-for="card in cards"
++        :key="card.key"
++        type="button"
++        class="sm-card"
++        :data-testid="`strategy-manage-card-${card.key}`"
++        @click="go(card.path, card.query)"
++      >
++        <div class="sm-card-icon" :style="{ background: card.tone }">
++          <a-icon :type="card.icon" />
++        </div>
++        <div class="sm-card-body">
++          <h2>{{ card.title }}</h2>
++          <p>{{ card.desc }}</p>
++          <span class="sm-card-cta">{{ card.cta }} <a-icon type="arrow-right" /></span>
++        </div>
++      </button>
++    </section>
++
++    <section class="sm-flow">
++      <h3>{{ $t('strategyManage.flowTitle') }}</h3>
++      <ol>
++        <li>{{ $t('strategyManage.flow.develop') }}</li>
++        <li>{{ $t('strategyManage.flow.backtest') }}</li>
++        <li>{{ $t('strategyManage.flow.rank') }}</li>
++        <li>{{ $t('strategyManage.flow.publish') }}</li>
++        <li>{{ $t('strategyManage.flow.version') }}</li>
++        <li>{{ $t('strategyManage.flow.live') }}</li>
++      </ol>
++    </section>
++  </div>
++</template>
++
++<script>
++import { mapState } from 'vuex'
++
++export default {
++  name: 'StrategyManage',
++  computed: {
++    ...mapState({
++      isDarkTheme: state => !!(state.app && state.app.theme === 'dark')
++    }),
++    cards () {
++      return [
++        {
++          key: 'develop',
++          icon: 'code',
++          tone: 'linear-gradient(135deg, #1f6feb, #58a6ff)',
++          title: this.$t('strategyManage.cards.develop.title'),
++          desc: this.$t('strategyManage.cards.develop.desc'),
++          cta: this.$t('strategyManage.cards.develop.cta'),
++          path: '/strategy-ide'
++        },
++        {
++          key: 'backtest',
++          icon: 'bar-chart',
++          tone: 'linear-gradient(135deg, #0e8a5f, #3dd68c)',
++          title: this.$t('strategyManage.cards.backtest.title'),
++          desc: this.$t('strategyManage.cards.backtest.desc'),
++          cta: this.$t('strategyManage.cards.backtest.cta'),
++          path: '/backtest-center'
++        },
++        {
++          key: 'publish',
++          icon: 'cloud-upload',
++          tone: 'linear-gradient(135deg, #9a3412, #fb923c)',
++          title: this.$t('strategyManage.cards.publish.title'),
++          desc: this.$t('strategyManage.cards.publish.desc'),
++          cta: this.$t('strategyManage.cards.publish.cta'),
++          path: '/strategy-ide',
++          query: { action: 'publish' }
++        },
++        {
++          key: 'versions',
++          icon: 'history',
++          tone: 'linear-gradient(135deg, #5b21b6, #a78bfa)',
++          title: this.$t('strategyManage.cards.versions.title'),
++          desc: this.$t('strategyManage.cards.versions.desc'),
++          cta: this.$t('strategyManage.cards.versions.cta'),
++          path: '/strategy-ide',
++          query: { action: 'versions' }
++        },
++        {
++          key: 'ranking',
++          icon: 'trophy',
++          tone: 'linear-gradient(135deg, #a16207, #fbbf24)',
++          title: this.$t('strategyManage.cards.ranking.title'),
++          desc: this.$t('strategyManage.cards.ranking.desc'),
++          cta: this.$t('strategyManage.cards.ranking.cta'),
++          path: '/backtest-ranking'
++        },
++        {
++          key: 'live',
++          icon: 'fund',
++          tone: 'linear-gradient(135deg, #0f766e, #2dd4bf)',
++          title: this.$t('strategyManage.cards.live.title'),
++          desc: this.$t('strategyManage.cards.live.desc'),
++          cta: this.$t('strategyManage.cards.live.cta'),
++          path: '/strategy-center'
++        }
++      ]
++    }
++  },
++  methods: {
++    go (path, query = {}) {
++      this.$router.push({ path, query: query || {} }).catch(() => {})
++    }
++  }
++}
++</script>
++
++<style lang="less" scoped>
++.strategy-manage {
++  min-height: calc(100vh - 64px);
++  padding: 24px 28px 40px;
++  background:
++    radial-gradient(circle at top left, rgba(31, 111, 235, 0.08), transparent 34%),
++    linear-gradient(180deg, #f7f8fa 0%, #eef2f6 100%);
++  color: #1f2937;
++}
++
++.strategy-manage.theme-dark {
++  background:
++    radial-gradient(circle at top left, rgba(56, 139, 253, 0.16), transparent 34%),
++    linear-gradient(180deg, #0d1117 0%, #161b22 100%);
++  color: #e6edf3;
++}
++
++.sm-header {
++  display: flex;
++  justify-content: space-between;
++  gap: 20px;
++  align-items: flex-start;
++  margin-bottom: 22px;
++}
++
++.sm-kicker {
++  color: #1f6feb;
++  font-size: 12px;
++  font-weight: 700;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++}
++
++.theme-dark .sm-kicker { color: #58a6ff; }
++
++.sm-header h1 {
++  margin: 4px 0 8px;
++  font-size: 30px;
++  line-height: 1.2;
++}
++
++.sm-header p {
++  margin: 0;
++  max-width: 640px;
++  color: #667085;
++}
++
++.theme-dark .sm-header p { color: #8b949e; }
++
++.sm-grid {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: 14px;
++}
++
++.sm-card {
++  display: flex;
++  gap: 14px;
++  text-align: left;
++  border: 1px solid rgba(15, 23, 42, 0.08);
++  border-radius: 14px;
++  background: rgba(255, 255, 255, 0.92);
++  padding: 18px;
++  cursor: pointer;
++  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
++}
++
++.theme-dark .sm-card {
++  background: rgba(22, 27, 34, 0.92);
++  border-color: rgba(240, 246, 252, 0.08);
++}
++
++.sm-card:hover {
++  transform: translateY(-2px);
++  border-color: rgba(31, 111, 235, 0.35);
++  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
++}
++
++.sm-card-icon {
++  width: 44px;
++  height: 44px;
++  border-radius: 12px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  color: #fff;
++  font-size: 20px;
++  flex: none;
++}
++
++.sm-card-body h2 {
++  margin: 0 0 6px;
++  font-size: 18px;
++}
++
++.sm-card-body p {
++  margin: 0 0 12px;
++  color: #667085;
++  min-height: 44px;
++}
++
++.theme-dark .sm-card-body p { color: #8b949e; }
++
++.sm-card-cta {
++  color: #1f6feb;
++  font-weight: 600;
++}
++
++.theme-dark .sm-card-cta { color: #58a6ff; }
++
++.sm-flow {
++  margin-top: 22px;
++  padding: 18px 20px;
++  border-radius: 14px;
++  border: 1px solid rgba(15, 23, 42, 0.08);
++  background: rgba(255, 255, 255, 0.8);
++}
++
++.theme-dark .sm-flow {
++  background: rgba(22, 27, 34, 0.8);
++  border-color: rgba(240, 246, 252, 0.08);
++}
++
++.sm-flow h3 {
++  margin: 0 0 10px;
++  font-size: 16px;
++}
++
++.sm-flow ol {
++  margin: 0;
++  padding-left: 18px;
++  color: #475467;
++}
++
++.theme-dark .sm-flow ol { color: #adbac7; }
++
++.sm-flow li + li { margin-top: 4px; }
++
++@media (max-width: 1100px) {
++  .sm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++}
++
++@media (max-width: 720px) {
++  .strategy-manage { padding: 16px; }
++  .sm-header { flex-direction: column; }
++  .sm-grid { grid-template-columns: 1fr; }
++}
++</style>
+-- 
+2.43.0
+

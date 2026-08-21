@@ -92,3 +92,17 @@ Do not reclaim those ports when redeploying QuantDinger.
 3. Change code on a feature branch locally; ship via image rebuild or controlled hotfix under `ops/hotfixes/` + `docker-compose.hotfix.yml`.
 4. Never commit host `.env`, `.deploy-credentials.txt`, or CTP credentials into git.
 5. After deploy, re-check `/api/health` and `/api/health/ready`, and note `celery-worker` health if it was previously unhealthy.
+
+## Strategy management menu
+
+Frontend IA now groups strategy work under **Strategy Management**:
+hub `/strategy-manage`, develop `/strategy-ide`, backtest `/backtest-center`,
+ranking `/backtest-ranking`. Publish/versions open the IDE with
+`?action=publish|versions`.
+
+Backend ranking API: `GET /api/backtest/ranking` (current user successful
+runs; optional `tag` / `market` / `timeframe`).
+
+Durable UI source lives in private QuantDinger-Vue; see
+`ops/hotfixes/strategy-management-hub/`.
+
