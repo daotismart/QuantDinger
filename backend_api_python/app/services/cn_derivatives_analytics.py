@@ -8,86 +8,116 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from app.markets.cn_futures import get_future_product, list_products
+from app.markets.cn_options import INDEX_OPTION_UNDERLYING
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Live Sina commodity option Chinese names (scraped from optionsDP.php).
+# Names must match Sina's nav labels exactly; outdated aliases (e.g. 铜期权) 404.
 SINA_OPTION_NAME: Dict[str, str] = {
     "A": "黄大豆1号期权",
     "B": "黄大豆2号期权",
     "M": "豆粕期权",
     "Y": "豆油期权",
-    "P": "棕榈油期权",
     "C": "玉米期权",
-    "CS": "玉米淀粉期权",
-    "L": "聚乙烯期权",
-    "V": "PVC期权",
-    "PP": "聚丙烯期权",
     "I": "铁矿石期权",
-    "JM": "焦煤期权",
     "EG": "乙二醇期权",
     "EB": "苯乙烯期权",
     "PG": "液化石油气期权",
-    "LH": "生猪期权",
     "RB": "螺纹钢期权",
-    "HC": "热轧卷板期权",
-    "CU": "铜期权",
-    "AL": "铝期权",
-    "ZN": "锌期权",
-    "NI": "镍期权",
-    "SN": "锡期权",
+    "CU": "沪铜期权",
+    "AL": "沪铝期权",
     "AU": "黄金期权",
     "AG": "白银期权",
     "RU": "橡胶期权",
-    "BU": "沥青期权",
-    "FU": "燃油期权",
-    "SP": "纸浆期权",
-    "SC": "原油期权",
-    "NR": "20号胶期权",
-    "LU": "低硫燃料油期权",
-    "BC": "国际铜期权",
+    "BR": "丁二烯橡胶期权",
     "SR": "白糖期权",
     "CF": "棉花期权",
     "TA": "PTA期权",
     "MA": "甲醇期权",
-    "FG": "玻璃期权",
     "OI": "菜籽油期权",
-    "RM": "菜粕期权",
-    "SF": "硅铁期权",
-    "SM": "锰硅期权",
-    "AP": "苹果期权",
-    "CJ": "红枣期权",
-    "UR": "尿素期权",
-    "SA": "纯碱期权",
-    "PF": "短纤期权",
+    "RM": "菜籽粕期权",
     "PK": "花生期权",
+    "ZC": "动力煤期权",
+    "SH": "烧碱期权",
+    "PX": "二甲苯期权",
     "SI": "工业硅期权",
     "LC": "碳酸锂期权",
 }
 
+# CFFEX index options via dedicated Sina endpoints (not commodity optionsDP).
+CFFEX_OPTION_LIST_FN: Dict[str, str] = {
+    "IO": "option_cffex_hs300_list_sina",
+    "HO": "option_cffex_sz50_list_sina",
+    "MO": "option_cffex_zz1000_list_sina",
+}
+CFFEX_OPTION_LIST_KEY: Dict[str, str] = {
+    "IO": "沪深300指数",
+    "HO": "上证50指数",
+    "MO": "中证1000指数",
+}
+CFFEX_OPTION_SPOT_FN: Dict[str, str] = {
+    "IO": "option_cffex_hs300_spot_sina",
+    "HO": "option_cffex_sz50_spot_sina",
+    "MO": "option_cffex_zz1000_spot_sina",
+}
+
 CN_NAME: Dict[str, str] = {
+    # CFFEX
     "IF": "沪深300股指期货",
     "IH": "上证50股指期货",
     "IC": "中证500股指期货",
     "IM": "中证1000股指期货",
+    "IO": "沪深300股指期权",
+    "HO": "上证50股指期权",
+    "MO": "中证1000股指期权",
+    "T": "10年期国债期货",
+    "TF": "5年期国债期货",
+    "TS": "2年期国债期货",
+    "TL": "30年期国债期货",
+    # SHFE
+    "CU": "铜",
+    "AL": "铝",
+    "ZN": "锌",
+    "PB": "铅",
+    "NI": "镍",
+    "SN": "锡",
+    "AU": "黄金",
+    "AG": "白银",
     "RB": "螺纹钢",
     "HC": "热轧卷板",
-    "I": "铁矿石",
+    "SS": "不锈钢",
+    "BU": "沥青",
+    "RU": "橡胶",
+    "FU": "燃油",
+    "SP": "纸浆",
+    "AO": "氧化铝",
+    "BR": "丁二烯橡胶",
+    "AD": "铸造铝合金",
+    "OP": "胶版印刷纸",
+    # DCE
+    "A": "黄大豆1号",
+    "B": "黄大豆2号",
     "M": "豆粕",
     "Y": "豆油",
     "P": "棕榈油",
     "C": "玉米",
-    "A": "黄大豆1号",
-    "AU": "黄金",
-    "AG": "白银",
-    "CU": "铜",
-    "AL": "铝",
-    "ZN": "锌",
-    "NI": "镍",
-    "RU": "橡胶",
-    "BU": "沥青",
-    "FU": "燃油",
-    "SC": "原油",
+    "CS": "玉米淀粉",
+    "JD": "鸡蛋",
+    "L": "聚乙烯",
+    "V": "PVC",
+    "PP": "聚丙烯",
+    "J": "焦炭",
+    "JM": "焦煤",
+    "I": "铁矿石",
+    "EG": "乙二醇",
+    "EB": "苯乙烯",
+    "PG": "液化石油气",
+    "LH": "生猪",
+    "LG": "原木",
+    "BZ": "纯苯",
+    # CZCE
     "SR": "白糖",
     "CF": "棉花",
     "TA": "PTA",
@@ -95,18 +125,31 @@ CN_NAME: Dict[str, str] = {
     "FG": "玻璃",
     "OI": "菜籽油",
     "RM": "菜粕",
+    "SF": "硅铁",
+    "SM": "锰硅",
+    "AP": "苹果",
+    "CJ": "红枣",
+    "UR": "尿素",
     "SA": "纯碱",
-    "JM": "焦煤",
-    "J": "焦炭",
-    "L": "聚乙烯",
-    "PP": "聚丙烯",
-    "V": "PVC",
-    "EG": "乙二醇",
-    "EB": "苯乙烯",
-    "PG": "LPG",
-    "LH": "生猪",
+    "PF": "短纤",
+    "PK": "花生",
+    "SH": "烧碱",
+    "PX": "对二甲苯",
+    "PL": "丙烯",
+    "PR": "瓶片",
+    "ZC": "动力煤",
+    # INE
+    "SC": "原油",
+    "NR": "20号胶",
+    "LU": "低硫燃料油",
+    "BC": "国际铜",
+    "EC": "集运指数（欧线）",
+    # GFEX
     "SI": "工业硅",
     "LC": "碳酸锂",
+    "PS": "多晶硅",
+    "PD": "钯金",
+    "PT": "铂金",
 }
 
 
@@ -131,18 +174,27 @@ def _ak():
 def _product_payload(root: str) -> Dict[str, Any]:
     root_u = str(root or "").upper()
     product = get_future_product(root_u)
+    has_chain = root_u in SINA_OPTION_NAME or root_u in CFFEX_OPTION_LIST_FN
+    underlying_root = INDEX_OPTION_UNDERLYING.get(root_u, root_u)
     if not product:
         return {
             "root": root_u,
             "name": root_u,
             "name_cn": CN_NAME.get(root_u, root_u),
-            "has_options": root_u in SINA_OPTION_NAME,
+            "has_options": has_chain,
+            "has_option_chain": has_chain,
             "multiplier": 10.0,
             "option_multiplier": 10.0,
             "exchange": "",
             "product_class": "commodity",
             "option_sina_name": SINA_OPTION_NAME.get(root_u),
-            "continuous_symbol": f"{root_u}0",
+            "option_feed": (
+                "cffex_sina"
+                if root_u in CFFEX_OPTION_LIST_FN
+                else ("commodity_sina" if root_u in SINA_OPTION_NAME else None)
+            ),
+            "continuous_symbol": f"{underlying_root}0",
+            "underlying_root": underlying_root,
             "long_margin_rate": 0.10,
             "option_seller_margin_rate": 0.12,
         }
@@ -153,11 +205,18 @@ def _product_payload(root: str) -> Dict[str, Any]:
         "exchange": product.exchange,
         "multiplier": float(product.multiplier or 1),
         "tick_size": float(product.tick_size or 0),
-        "has_options": bool(product.has_options or product.root in SINA_OPTION_NAME),
+        "has_options": bool(product.has_options or has_chain),
+        "has_option_chain": has_chain,
         "product_class": product.product_class,
         "option_multiplier": float(product.option_multiplier or product.multiplier or 1),
         "option_sina_name": SINA_OPTION_NAME.get(product.root),
-        "continuous_symbol": f"{product.root}0",
+        "option_feed": (
+            "cffex_sina"
+            if product.root in CFFEX_OPTION_LIST_FN
+            else ("commodity_sina" if product.root in SINA_OPTION_NAME else None)
+        ),
+        "continuous_symbol": f"{underlying_root}0",
+        "underlying_root": underlying_root,
         "long_margin_rate": float(getattr(product, "long_margin_rate", 0.10) or 0.10),
         "option_seller_margin_rate": float(
             getattr(product, "option_seller_margin_rate", 0.12) or 0.12
@@ -349,7 +408,10 @@ def _futures_zh_spot(symbol: str) -> Optional[Dict[str, Any]]:
 
 
 def _option_months(root: str) -> List[str]:
-    name = SINA_OPTION_NAME.get(str(root or "").upper())
+    root_u = str(root or "").upper()
+    if root_u in CFFEX_OPTION_LIST_FN:
+        return _cffex_option_months(root_u)
+    name = SINA_OPTION_NAME.get(root_u)
     if not name:
         return []
     try:
@@ -368,6 +430,30 @@ def _option_months(root: str) -> List[str]:
         return []
 
 
+def _cffex_option_months(root: str) -> List[str]:
+    root_u = str(root or "").upper()
+    fn_name = CFFEX_OPTION_LIST_FN.get(root_u)
+    key = CFFEX_OPTION_LIST_KEY.get(root_u)
+    if not fn_name or not key:
+        return []
+    try:
+        ak = _ak()
+        fn = getattr(ak, fn_name, None)
+        if not callable(fn):
+            return []
+        payload = fn() or {}
+        months = payload.get(key) or []
+        out: List[str] = []
+        for value in months:
+            text = str(value or "").strip().lower()
+            if text:
+                out.append(text)
+        return out
+    except Exception as exc:
+        logger.warning("cffex option months for %s failed: %s", root_u, exc)
+        return []
+
+
 def _mid(bid: float, ask: float, last: float) -> float:
     if bid > 0 and ask > 0:
         return (bid + ask) / 2.0
@@ -376,51 +462,103 @@ def _mid(bid: float, ask: float, last: float) -> float:
     return max(bid, ask, 0.0)
 
 
+def _parse_option_chain_frame(frame: Any) -> List[Dict[str, Any]]:
+    """Normalize commodity / CFFEX Sina option chain tables into a common shape."""
+    if frame is None or getattr(frame, "empty", True):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for _, item in frame.iterrows():
+        strike = _safe_float(item.get("行权价"))
+        if strike <= 0:
+            continue
+        call_last = _safe_float(item.get("看涨合约-最新价"))
+        put_last = _safe_float(item.get("看跌合约-最新价"))
+        call_bid = _safe_float(item.get("看涨合约-买价"))
+        call_ask = _safe_float(item.get("看涨合约-卖价"))
+        put_bid = _safe_float(item.get("看跌合约-买价"))
+        put_ask = _safe_float(item.get("看跌合约-卖价"))
+        call_symbol = str(
+            item.get("看涨合约-看涨期权合约")
+            or item.get("看涨合约-标识")
+            or item.get("看涨合约代码")
+            or ""
+        )
+        put_symbol = str(
+            item.get("看跌合约-看跌期权合约")
+            or item.get("看跌合约-标识")
+            or item.get("看跌合约代码")
+            or ""
+        )
+        rows.append(
+            {
+                "strike": strike,
+                "call_symbol": call_symbol,
+                "put_symbol": put_symbol,
+                "call_last": call_last,
+                "put_last": put_last,
+                "call_bid": call_bid,
+                "call_ask": call_ask,
+                "put_bid": put_bid,
+                "put_ask": put_ask,
+                "call_mid": _mid(call_bid, call_ask, call_last),
+                "put_mid": _mid(put_bid, put_ask, put_last),
+                "call_oi": _safe_float(item.get("看涨合约-持仓量")),
+                "put_oi": _safe_float(item.get("看跌合约-持仓量")),
+                "call_change": _safe_float(item.get("看涨合约-涨跌")),
+                "put_change": _safe_float(item.get("看跌合约-涨跌")),
+            }
+        )
+    rows.sort(key=lambda row: row["strike"])
+    return rows
+
+
 def _option_chain_table(root: str, month_contract: str) -> List[Dict[str, Any]]:
-    name = SINA_OPTION_NAME.get(str(root or "").upper())
+    root_u = str(root or "").upper()
     contract = str(month_contract or "").strip().lower()
-    if not name or not contract:
+    if not contract:
+        return []
+    if root_u in CFFEX_OPTION_SPOT_FN:
+        return _cffex_option_chain_table(root_u, contract)
+    name = SINA_OPTION_NAME.get(root_u)
+    if not name:
         return []
     try:
         frame = _ak().option_commodity_contract_table_sina(symbol=name, contract=contract)
-        if frame is None or getattr(frame, "empty", True):
-            return []
-        rows: List[Dict[str, Any]] = []
-        for _, item in frame.iterrows():
-            strike = _safe_float(item.get("行权价"))
-            if strike <= 0:
-                continue
-            call_last = _safe_float(item.get("看涨合约-最新价"))
-            put_last = _safe_float(item.get("看跌合约-最新价"))
-            call_bid = _safe_float(item.get("看涨合约-买价"))
-            call_ask = _safe_float(item.get("看涨合约-卖价"))
-            put_bid = _safe_float(item.get("看跌合约-买价"))
-            put_ask = _safe_float(item.get("看跌合约-卖价"))
-            rows.append(
-                {
-                    "strike": strike,
-                    "call_symbol": str(item.get("看涨合约-看涨期权合约") or ""),
-                    "put_symbol": str(item.get("看跌合约-看跌期权合约") or ""),
-                    "call_last": call_last,
-                    "put_last": put_last,
-                    "call_bid": call_bid,
-                    "call_ask": call_ask,
-                    "put_bid": put_bid,
-                    "put_ask": put_ask,
-                    "call_mid": _mid(call_bid, call_ask, call_last),
-                    "put_mid": _mid(put_bid, put_ask, put_last),
-                    "call_oi": _safe_float(item.get("看涨合约-持仓量")),
-                    "put_oi": _safe_float(item.get("看跌合约-持仓量")),
-                    "call_change": _safe_float(item.get("看涨合约-涨跌")),
-                    "put_change": _safe_float(item.get("看跌合约-涨跌")),
-                }
-            )
-        rows.sort(key=lambda row: row["strike"])
-        return rows
+        return _parse_option_chain_frame(frame)
     except Exception as exc:
         logger.warning("option chain %s/%s failed: %s", root, contract, exc)
         return []
 
+
+def _cffex_option_chain_table(root: str, month_contract: str) -> List[Dict[str, Any]]:
+    root_u = str(root or "").upper()
+    contract = str(month_contract or "").strip().lower()
+    fn_name = CFFEX_OPTION_SPOT_FN.get(root_u)
+    if not fn_name or not contract:
+        return []
+    try:
+        ak = _ak()
+        fn = getattr(ak, fn_name, None)
+        if not callable(fn):
+            return []
+        frame = fn(symbol=contract)
+        return _parse_option_chain_frame(frame)
+    except Exception as exc:
+        logger.warning("cffex option chain %s/%s failed: %s", root_u, contract, exc)
+        return []
+
+
+def _underlying_futures_symbol(root: str, month_contract: Optional[str] = None) -> str:
+    """Map option root/month onto the futures quote symbol used for underlying."""
+    root_u = str(root or "").upper()
+    fut_root = INDEX_OPTION_UNDERLYING.get(root_u, root_u)
+    month = str(month_contract or "").strip().lower()
+    if not month:
+        return f"{fut_root}0"
+    digits = "".join(ch for ch in month if ch.isdigit())
+    if not digits:
+        return f"{fut_root}0"
+    return f"{fut_root.lower()}{digits}"
 
 def _norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
@@ -606,7 +744,7 @@ def build_spot_panel(root: str) -> Dict[str, Any]:
     root_u = str(root or "").upper()
     product = _product_payload(root_u)
     board = _spot_board_row(root_u)
-    continuous = _futures_zh_spot(f"{root_u}0")
+    continuous = _futures_zh_spot(str(product.get("continuous_symbol") or f"{root_u}0"))
     analysis: List[str] = []
     if board:
         basis = board.get("dom_basis") or 0.0
@@ -654,7 +792,10 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
             if sym:
                 candidates.append(sym)
     candidates.extend(months)
-    candidates.append(f"{root_u.lower()}0")
+    if root_u in INDEX_OPTION_UNDERLYING:
+        for m in months:
+            candidates.append(_underlying_futures_symbol(root_u, m))
+    candidates.append(str(product.get("continuous_symbol") or f"{root_u.lower()}0"))
 
     seen = set()
     symbols: List[str] = []
@@ -815,13 +956,24 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
     product = _product_payload(root_u)
     months = _option_months(root_u)
     if not months:
+        listed = bool(product.get("has_options"))
+        if listed and not product.get("has_option_chain"):
+            message = (
+                "该品种已上市期权，但公开新浪期权链暂未覆盖；"
+                "可在合约搜索中查看 CTP 挂牌合约，链截面分析待接入本地快照。"
+            )
+        elif root_u in {"IO", "HO", "MO"}:
+            message = "股指期权链暂时不可用，请稍后重试。"
+        else:
+            message = "该品种暂无可用的公开期权链数据（未上市或新浪未覆盖）。"
         return {
             "root": root_u,
             "name_cn": product.get("name_cn") or root_u,
             "months": [],
             "month": None,
             "available": False,
-            "message": "该品种暂无新浪商品期权链数据（股指期权或未上市品种）。",
+            "has_option_chain": False,
+            "message": message,
             "asof": datetime.now().isoformat(timespec="seconds"),
         }
 
@@ -836,7 +988,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             selected_months = [next(m for m in months if m.lower() == selected_months[0])]
 
     board = _spot_board_row(root_u)
-    continuous = _futures_zh_spot(f"{root_u}0")
+    continuous = _futures_zh_spot(str(product.get("continuous_symbol") or f"{root_u}0"))
     fallback_underlying = (
         (continuous or {}).get("price")
         or (board or {}).get("dominant_contract_price")
@@ -855,7 +1007,8 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
         chain = _option_chain_table(root_u, m)
         if not chain:
             continue
-        fut = _futures_zh_spot(m) or continuous
+        fut_symbol = _underlying_futures_symbol(root_u, m)
+        fut = _futures_zh_spot(fut_symbol) or continuous
         underlying = (fut or {}).get("price") or fallback_underlying
         T = _year_fraction_to_month(m)
         underlyings.append(float(underlying or 0.0))
@@ -894,6 +1047,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             "root": root_u,
             "name_cn": product.get("name_cn") or root_u,
             "available": True,
+            "has_option_chain": True,
             "months": months,
             "month": "all" if select_all else (selected_months[0] if selected_months else None),
             "underlying": fallback_underlying,
@@ -952,6 +1106,8 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
         "root": root_u,
         "name_cn": product.get("name_cn") or root_u,
         "available": True,
+        "has_option_chain": True,
+        "option_feed": product.get("option_feed"),
         "months": months,
         "month": selected_label,
         "underlying": underlying,
@@ -1246,7 +1402,7 @@ def build_chart_history(
 
     # Fallback: continuous daily series (legacy line mode)
     product = _product_payload(root_u)
-    symbol = f"{root_u}0"
+    symbol = str(product.get("continuous_symbol") or f"{root_u}0")
     points = []
     try:
         frame = _ak().futures_zh_daily_sina(symbol=symbol)

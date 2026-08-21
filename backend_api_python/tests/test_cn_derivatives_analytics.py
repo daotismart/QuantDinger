@@ -201,6 +201,80 @@ def test_build_options_panel_defaults_to_all(monkeypatch):
     assert 3000.0 in strikes and 3100.0 in strikes
 
 
+def test_sina_option_names_match_live_aliases():
+    # Critical renames that previously 404'd on Sina
+    assert svc.SINA_OPTION_NAME["CU"] == "沪铜期权"
+    assert svc.SINA_OPTION_NAME["AL"] == "沪铝期权"
+    assert svc.SINA_OPTION_NAME["RM"] == "菜籽粕期权"
+    assert svc.SINA_OPTION_NAME["BR"] == "丁二烯橡胶期权"
+    assert svc.SINA_OPTION_NAME["SH"] == "烧碱期权"
+    assert svc.SINA_OPTION_NAME["PX"] == "二甲苯期权"
+    assert svc.SINA_OPTION_NAME["ZC"] == "动力煤期权"
+    assert "IO" not in svc.SINA_OPTION_NAME
+    assert "IO" in svc.CFFEX_OPTION_LIST_FN
+    assert len(svc.CN_NAME) >= 80
+
+
+def test_underlying_futures_symbol_for_index_options():
+    assert svc._underlying_futures_symbol("IO", "io2609") == "if2609"
+    assert svc._underlying_futures_symbol("HO", None) == "IH0"
+    assert svc._underlying_futures_symbol("M", "m2505") == "m2505"
+
+
+def test_cffex_option_months(monkeypatch):
+    class _Ak:
+        def option_cffex_hs300_list_sina(self):
+            return {"沪深300指数": ["io2609", "io2612"]}
+
+    monkeypatch.setattr(svc, "_ak", lambda: _Ak())
+    assert svc._option_months("IO") == ["io2609", "io2612"]
+
+
+def test_cffex_option_chain_table(monkeypatch):
+    import pandas as pd
+
+    class _Ak:
+        def option_cffex_hs300_spot_sina(self, symbol="io2609"):
+            return pd.DataFrame(
+                [
+                    {
+                        "行权价": 4000,
+                        "看涨合约-最新价": 100,
+                        "看涨合约-买价": 99,
+                        "看涨合约-卖价": 101,
+                        "看涨合约-持仓量": 10,
+                        "看涨合约-涨跌": 1,
+                        "看涨合约-标识": "io2609C4000",
+                        "看跌合约-最新价": 20,
+                        "看跌合约-买价": 19,
+                        "看跌合约-卖价": 21,
+                        "看跌合约-持仓量": 8,
+                        "看跌合约-涨跌": -1,
+                        "看跌合约-标识": "io2609P4000",
+                    }
+                ]
+            )
+
+    monkeypatch.setattr(svc, "_ak", lambda: _Ak())
+    rows = svc._option_chain_table("IO", "io2609")
+    assert len(rows) == 1
+    assert rows[0]["strike"] == 4000
+    assert rows[0]["call_symbol"] == "io2609C4000"
+    assert rows[0]["call_mid"] == 100
+
+
+def test_product_payload_marks_chain_feed():
+    payload = svc._product_payload("IO")
+    assert payload["has_option_chain"] is True
+    assert payload["option_feed"] == "cffex_sina"
+    assert payload["continuous_symbol"] == "IF0"
+    assert payload["name_cn"] == "沪深300股指期权"
+
+    cu = svc._product_payload("CU")
+    assert cu["option_sina_name"] == "沪铜期权"
+    assert cu["option_feed"] == "commodity_sina"
+
+
 def test_resample_slice_dates_week_and_month():
     dates = [
         "2026-01-02",
@@ -215,6 +289,7 @@ def test_resample_slice_dates_week_and_month():
     assert weekly == ["2026-01-02", "2026-01-06", "2026-01-12", "2026-02-03", "2026-02-27"]
     assert monthly == ["2026-01-12", "2026-02-27"]
     assert svc._resample_slice_dates(dates, "day") == dates
+
 
 def test_build_futures_cross_section_slices(monkeypatch):
     daily = {
