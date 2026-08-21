@@ -199,3 +199,119 @@ def test_build_options_panel_defaults_to_all(monkeypatch):
     # aggregated should include both strikes
     strikes = {p["strike"] for p in data["gex_distribution"]}
     assert 3000.0 in strikes and 3100.0 in strikes
+
+
+def test_resample_slice_dates_week_and_month():
+    dates = [
+        "2026-01-02",
+        "2026-01-05",
+        "2026-01-06",
+        "2026-01-12",
+        "2026-02-03",
+        "2026-02-27",
+    ]
+    weekly = svc._resample_slice_dates(dates, "week")
+    monthly = svc._resample_slice_dates(dates, "month")
+    assert weekly == ["2026-01-02", "2026-01-06", "2026-01-12", "2026-02-03", "2026-02-27"]
+    assert monthly == ["2026-01-12", "2026-02-27"]
+    assert svc._resample_slice_dates(dates, "day") == dates
+
+def test_build_futures_cross_section_slices(monkeypatch):
+    daily = {
+        "m2505": {
+            "2026-03-01": {"price": 2800.0, "volume": 10.0, "open_interest": 100.0},
+            "2026-03-02": {"price": 2810.0, "volume": 12.0, "open_interest": 110.0},
+            "2026-03-09": {"price": 2820.0, "volume": 15.0, "open_interest": 120.0},
+        },
+        "m2509": {
+            "2026-03-01": {"price": 2900.0, "volume": 20.0, "open_interest": 200.0},
+            "2026-03-02": {"price": 2910.0, "volume": 22.0, "open_interest": 210.0},
+            "2026-03-09": {"price": 2920.0, "volume": 25.0, "open_interest": 220.0},
+        },
+    }
+
+    monkeypatch.setattr(svc, "_history_month_symbols", lambda root: ["m2505", "m2509"])
+    monkeypatch.setattr(svc, "_futures_daily_by_date", lambda symbol: daily[symbol.lower()])
+    monkeypatch.setattr(svc, "_spot_board_row", lambda root: {"spot_price": 2790.0})
+    monkeypatch.setattr(
+        svc,
+        "_product_payload",
+        lambda root: {"root": "M", "multiplier": 10.0, "option_multiplier": 10.0},
+    )
+
+    slices = svc._build_futures_cross_section_slices("M", days=30, frequency="week")
+    assert len(slices) >= 2
+    latest = slices[-1]
+    assert latest["date"] == "2026-03-09"
+    assert len(latest["term_structure"]) == 2
+    assert latest["term_structure"][0]["price"] == 2820.0
+    assert latest["monthly_activity"][0]["futures_capital"] == pytest.approx(2820.0 * 120.0 * 10.0)
+
+
+def test_build_chart_history_futures_slices(monkeypatch):
+    fake_slices = [
+        {
+            "date": "2026-03-01",
+            "label": "2026-03-01",
+            "term_structure": [{"symbol": "m2505", "price": 2800, "label": "m2505"}],
+            "monthly_activity": [],
+            "options_settled_capital": [],
+        },
+        {
+            "date": "2026-03-09",
+            "label": "2026-03-09",
+            "term_structure": [{"symbol": "m2505", "price": 2820, "label": "m2505"}],
+            "monthly_activity": [
+                {
+                    "symbol": "m2505",
+                    "month_code": "2505",
+                    "futures_capital": 100.0,
+                    "option_notional": None,
+                }
+            ],
+            "options_settled_capital": [],
+        },
+    ]
+    monkeypatch.setattr(
+        svc,
+        "_build_futures_cross_section_slices",
+        lambda root, days, frequency: fake_slices,
+    )
+    monkeypatch.setattr(
+        svc,
+        "build_futures_panel",
+        lambda root: {
+            "options_settled_capital": [{"month": "m2505", "call_notional": 1, "put_notional": 2}],
+            "monthly_activity": [
+                {
+                    "month_code": "2505",
+                    "option_notional": 50.0,
+                    "option_premium": 5.0,
+                    "option_call_notional": 30.0,
+                    "option_put_notional": 20.0,
+                }
+            ],
+        },
+    )
+    data = svc.build_chart_history("M", chart_key="futures.term", days=30, frequency="week")
+    assert data["mode"] == "slices"
+    assert data["frequency"] == "week"
+    assert len(data["slices"]) == 2
+
+
+def test_build_chart_history_options_single_slice(monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "build_options_panel",
+        lambda root, month="all": {
+            "current_price": 3000,
+            "month": "all",
+            "gex_distribution": [{"strike": 3000, "call_oi": 1, "put_oi": 2}],
+            "gex_summary": {},
+            "month_series": [{"month": "m2505"}],
+        },
+    )
+    data = svc.build_chart_history("M", chart_key="options.gex", days=30, frequency="day")
+    assert data["mode"] == "slices"
+    assert len(data["slices"]) == 1
+    assert data["slices"][0]["gex_distribution"][0]["strike"] == 3000

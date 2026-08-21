@@ -971,74 +971,312 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
     }
 
 
+def _normalize_history_date(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    text = text.replace("/", "-")
+    if " " in text:
+        text = text.split(" ", 1)[0]
+    if len(text) == 8 and text.isdigit():
+        return f"{text[0:4]}-{text[4:6]}-{text[6:8]}"
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    return None
+
+
+def _parse_history_date(value: str) -> Optional[date]:
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _futures_daily_by_date(symbol: str) -> Dict[str, Dict[str, float]]:
+    """Map YYYY-MM-DD -> {price, volume, open_interest} for a futures symbol."""
+    code = str(symbol or "").strip()
+    if not code:
+        return {}
+    out: Dict[str, Dict[str, float]] = {}
+    queries = [code.lower(), code.upper()]
+    for query in queries:
+        try:
+            frame = _ak().futures_zh_daily_sina(symbol=query)
+            if frame is None or getattr(frame, "empty", True):
+                continue
+            for _, row in frame.iterrows():
+                date_v = _normalize_history_date(row.get("date") or row.get("datetime"))
+                if not date_v:
+                    continue
+                price = _safe_float(row.get("close") or row.get("settle"))
+                oi = _safe_float(row.get("hold") or row.get("open_interest") or row.get("oi"))
+                volume = _safe_float(row.get("volume") or row.get("vol"))
+                if price <= 0 and oi <= 0 and volume <= 0:
+                    continue
+                out[date_v] = {"price": price, "volume": volume, "open_interest": oi}
+            if out:
+                return out
+        except Exception as exc:
+            logger.debug("futures daily history %s failed: %s", query, exc)
+    return out
+
+
+def _history_month_symbols(root: str) -> List[str]:
+    """Prefer listed option months; fall back to spot board contracts."""
+    root_u = str(root or "").upper()
+    months = [m for m in (_option_months(root_u) or []) if m]
+    if months:
+        return months[:8]
+    board = _spot_board_row(root_u) or {}
+    out: List[str] = []
+    for key in ("near_contract", "dominant_contract"):
+        sym = str(board.get(key) or "").strip().lower()
+        if sym and sym not in out:
+            out.append(sym)
+    return out[:8]
+
+
+def _resample_slice_dates(dates: List[str], frequency: str) -> List[str]:
+    """Keep last trading day in each day/week/month bucket (ascending)."""
+    freq = str(frequency or "day").lower()
+    if freq in {"d", "1d", "day", "daily"}:
+        return list(dates)
+    buckets: Dict[str, str] = {}
+    for date_v in dates:
+        parsed = _parse_history_date(date_v)
+        if not parsed:
+            continue
+        if freq in {"w", "1w", "week", "weekly"}:
+            iso = parsed.isocalendar()
+            key = f"{iso[0]}-W{iso[1]:02d}"
+        else:
+            key = f"{parsed.year:04d}-{parsed.month:02d}"
+        # dates are ascending; last write wins within bucket
+        buckets[key] = date_v
+    return list(buckets.values())
+
+
+def _build_futures_cross_section_slices(
+    root: str,
+    *,
+    days: int,
+    frequency: str,
+) -> List[Dict[str, Any]]:
+    """Rebuild historical term / activity cross-sections from per-month daily bars."""
+    root_u = str(root or "").upper()
+    product = _product_payload(root_u)
+    fut_mult = float(product.get("multiplier") or 1)
+    months = _history_month_symbols(root_u)
+    if not months:
+        return []
+
+    series_by_symbol: Dict[str, Dict[str, Dict[str, float]]] = {}
+    all_dates: set = set()
+    for symbol in months:
+        series = _futures_daily_by_date(symbol)
+        if not series:
+            continue
+        series_by_symbol[symbol.lower()] = series
+        all_dates.update(series.keys())
+
+    if not all_dates:
+        return []
+
+    ordered = sorted(all_dates)
+    cutoff = ordered[-1]
+    start_idx = max(0, len(ordered) - max(days, 7))
+    window = ordered[start_idx:]
+    # Prefer calendar cutoff relative to latest bar when denser history exists
+    latest = _parse_history_date(cutoff)
+    if latest:
+        min_date = (latest - timedelta(days=max(days, 7))).isoformat()
+        window = [d for d in ordered if d >= min_date] or window
+
+    sampled = _resample_slice_dates(window, frequency)
+    if not sampled:
+        return []
+
+    board = _spot_board_row(root_u) or {}
+    spot_price = float(board.get("spot_price") or 0.0)
+    slices: List[Dict[str, Any]] = []
+    for date_v in sampled:
+        term_structure = []
+        monthly_activity = []
+        for symbol, series in series_by_symbol.items():
+            bar = series.get(date_v)
+            if not bar:
+                continue
+            price = float(bar.get("price") or 0.0)
+            volume = float(bar.get("volume") or 0.0)
+            oi = float(bar.get("open_interest") or 0.0)
+            basis = (price - spot_price) if spot_price > 0 and price > 0 else None
+            point = {
+                "symbol": symbol,
+                "label": symbol,
+                "price": price,
+                "volume": volume,
+                "open_interest": oi,
+                "basis": basis,
+                "basis_rate": (basis / spot_price) if basis is not None and spot_price > 0 else None,
+                "is_continuous": False,
+            }
+            term_structure.append(point)
+            futures_capital = price * oi * fut_mult
+            monthly_activity.append(
+                {
+                    "symbol": symbol,
+                    "month_code": _month_code(symbol),
+                    "volume": volume,
+                    "open_interest": oi,
+                    "price": price,
+                    "futures_capital": futures_capital,
+                    "option_notional": None,
+                    "option_premium": None,
+                    "option_call_notional": None,
+                    "option_put_notional": None,
+                    "combined_capital": futures_capital,
+                }
+            )
+        term_structure.sort(key=lambda row: _month_code(row["symbol"]) or row["symbol"])
+        monthly_activity.sort(key=lambda row: row.get("month_code") or row["symbol"])
+        if not term_structure:
+            continue
+        slices.append(
+            {
+                "date": date_v,
+                "label": date_v,
+                "term_structure": term_structure,
+                "monthly_activity": monthly_activity,
+                "options_settled_capital": [],
+            }
+        )
+    return slices
+
+
 def build_chart_history(
     root: str,
     *,
     chart_key: str,
     days: int = 30,
     month: Optional[str] = None,
+    frequency: str = "day",
 ) -> Dict[str, Any]:
     """History view for chart drill-down.
 
-    Futures charts prefer continuous daily bars (price/OI/capital).
-    Options charts currently expose cross-month snapshots as period overlays,
-    since public Sina option chain history is limited.
+    2D charts return ``mode=slices``: time-bucketed cross-sections for a slider.
+    Frequency controls resampling (day / week / month). Options public history is
+    limited, so option charts currently expose a single live slice.
     """
     root_u = str(root or "").upper()
-    product = _product_payload(root_u)
-    days = max(7, min(int(days or 30), 180))
+    days = max(7, min(int(days or 30), 365))
     chart = str(chart_key or "").strip()
+    freq_raw = str(frequency or "day").strip().lower()
+    if freq_raw in {"w", "1w", "week", "weekly"}:
+        freq = "week"
+    elif freq_raw in {"m", "1m", "month", "monthly"}:
+        freq = "month"
+    else:
+        freq = "day"
     asof = datetime.now().isoformat(timespec="seconds")
 
-    if chart.startswith("futures"):
-        symbol = f"{root_u}0"
-        points = []
-        try:
-            frame = _ak().futures_zh_daily_sina(symbol=symbol)
-            if frame is not None and not getattr(frame, "empty", True):
-                tail = frame.tail(days)
-                mult = float(product.get("multiplier") or 1)
-                for _, row in tail.iterrows():
-                    price = _safe_float(row.get("close") or row.get("settle") or row.get("hold"))
-                    # sina daily columns vary; try common names
-                    oi = _safe_float(row.get("hold") or row.get("open_interest") or row.get("oi"))
-                    volume = _safe_float(row.get("volume") or row.get("vol"))
-                    date_v = str(row.get("date") or row.get("datetime") or "")
-                    points.append(
-                        {
-                            "date": date_v,
-                            "price": price,
-                            "open_interest": oi,
-                            "volume": volume,
-                            "futures_capital": price * oi * mult,
-                        }
-                    )
-        except Exception as exc:
-            logger.warning("chart history futures daily failed root=%s: %s", root_u, exc)
+    # Futures 2D charts: rebuild month cross-sections from daily bars
+    if chart in {"futures.term", "futures.activity", "futures.notional", "futures.premium"}:
+        slices = _build_futures_cross_section_slices(root_u, days=days, frequency=freq)
+        note = (
+            "按选定频率重建各月份合约截面；滑动进度条可查看该时刻二维图。"
+            "期权名义/权利金历史链公开数据有限，历史切片中期权字段为空。"
+        )
+        # Enrich the latest slice with live option capital when available
+        if slices and chart in {"futures.notional", "futures.premium", "futures.activity"}:
+            try:
+                live = build_futures_panel(root_u)
+                capital = live.get("options_settled_capital") or []
+                activity = live.get("monthly_activity") or []
+                if capital:
+                    slices[-1]["options_settled_capital"] = capital
+                if activity and chart == "futures.activity":
+                    # merge option notionals onto matching months of the latest slice
+                    by_code = {str(r.get("month_code") or ""): r for r in activity}
+                    for row in slices[-1].get("monthly_activity") or []:
+                        live_row = by_code.get(str(row.get("month_code") or ""))
+                        if not live_row:
+                            continue
+                        row["option_notional"] = live_row.get("option_notional")
+                        row["option_premium"] = live_row.get("option_premium")
+                        row["option_call_notional"] = live_row.get("option_call_notional")
+                        row["option_put_notional"] = live_row.get("option_put_notional")
+                        fut_cap = float(row.get("futures_capital") or 0.0)
+                        opt_n = float(live_row.get("option_notional") or 0.0)
+                        row["combined_capital"] = fut_cap + opt_n
+            except Exception as exc:
+                logger.debug("enrich latest futures slice failed: %s", exc)
         return {
             "root": root_u,
             "chart_key": chart,
-            "mode": "daily",
+            "mode": "slices",
+            "frequency": freq,
             "days": days,
-            "points": points,
-            "note": "连续合约日线沉淀资金 = 收盘价 × 持仓 × 乘数。",
+            "slices": slices,
+            "note": note,
             "asof": asof,
         }
 
-    # Options / generic: return current options panel slices by month as "periods"
-    options = build_options_panel(root_u, month=month or "all")
-    series = options.get("month_series") or []
+    # Options 2D charts: live snapshot only (no public historical option chain)
+    if chart.startswith("options"):
+        options = build_options_panel(root_u, month=month or "all")
+        slice_payload = {
+            "date": asof[:10],
+            "label": "当前",
+            "current_price": options.get("current_price"),
+            "gex_distribution": options.get("gex_distribution") or [],
+            "gex_summary": options.get("gex_summary") or {},
+            "month_series": options.get("month_series") or [],
+            "month": options.get("month"),
+        }
+        return {
+            "root": root_u,
+            "chart_key": chart,
+            "mode": "slices",
+            "frequency": freq,
+            "days": days,
+            "slices": [slice_payload],
+            "note": "期权链公开历史有限，暂仅提供当前截面；接入本地快照后可按频率滑动回放。",
+            "asof": asof,
+        }
+
+    # Fallback: continuous daily series (legacy line mode)
+    product = _product_payload(root_u)
+    symbol = f"{root_u}0"
+    points = []
+    try:
+        frame = _ak().futures_zh_daily_sina(symbol=symbol)
+        if frame is not None and not getattr(frame, "empty", True):
+            tail = frame.tail(days)
+            mult = float(product.get("multiplier") or 1)
+            for _, row in tail.iterrows():
+                price = _safe_float(row.get("close") or row.get("settle") or row.get("hold"))
+                oi = _safe_float(row.get("hold") or row.get("open_interest") or row.get("oi"))
+                volume = _safe_float(row.get("volume") or row.get("vol"))
+                date_v = _normalize_history_date(row.get("date") or row.get("datetime")) or ""
+                points.append(
+                    {
+                        "date": date_v,
+                        "price": price,
+                        "open_interest": oi,
+                        "volume": volume,
+                        "futures_capital": price * oi * mult,
+                    }
+                )
+    except Exception as exc:
+        logger.warning("chart history futures daily failed root=%s: %s", root_u, exc)
     return {
         "root": root_u,
         "chart_key": chart,
-        "mode": "by_month",
+        "mode": "daily",
+        "frequency": freq,
         "days": days,
-        "month": options.get("month"),
-        "current_price": options.get("current_price"),
-        "gex_distribution": options.get("gex_distribution") or [],
-        "gex_summary": options.get("gex_summary") or {},
-        "month_series": series,
-        "note": "期权链公开历史有限，历史趋势暂以各到期月截面叠加展示；后续可接入本地落库快照。",
+        "points": points,
+        "note": "连续合约日线沉淀资金 = 收盘价 × 持仓 × 乘数。",
         "asof": asof,
     }
 

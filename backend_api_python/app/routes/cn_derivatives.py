@@ -93,6 +93,7 @@ def chart_history():
     root = (request.args.get("root") or "").strip().upper()
     chart_key = (request.args.get("chart") or request.args.get("chart_key") or "").strip()
     month = (request.args.get("month") or "all").strip().lower() or "all"
+    frequency = (request.args.get("frequency") or request.args.get("freq") or "day").strip().lower()
     days = request.args.get("days") or 30
     if not root:
         return jsonify({"code": 0, "msg": "root is required", "data": None}), 400
@@ -103,7 +104,13 @@ def chart_history():
     except Exception:
         days_i = 30
     try:
-        data = build_chart_history(root, chart_key=chart_key, days=days_i, month=month)
+        data = build_chart_history(
+            root,
+            chart_key=chart_key,
+            days=days_i,
+            month=month,
+            frequency=frequency,
+        )
         return jsonify({"code": 1, "msg": "ok", "data": data})
     except Exception as exc:
         logger.exception("cn derivatives history failed root=%s chart=%s", root, chart_key)
