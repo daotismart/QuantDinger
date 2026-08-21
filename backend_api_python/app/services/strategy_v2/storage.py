@@ -89,6 +89,7 @@ class StrategyBacktestRepository:
         offset: int = 0,
         strategy_id: int | None = None,
         source_id: int | None = None,
+        source_name: str = "",
         symbol: str = "",
         market: str = "",
         timeframe: str = "",
@@ -97,7 +98,6 @@ class StrategyBacktestRepository:
         params: list[Any] = [int(user_id)]
         for clause, value in (
             ("strategy_id = ?", strategy_id),
-            ("source_id = ?", source_id),
             ("symbol = ?", symbol),
             ("market = ?", market),
             ("timeframe = ?", timeframe),
@@ -105,6 +105,27 @@ class StrategyBacktestRepository:
             if value not in (None, ""):
                 where.append(clause)
                 params.append(value)
+
+        # Prefer exact source_id matches. Also include legacy rows that were saved
+        # with source_id=0 but still carry the strategy source name (optionally
+        # prefixed by batch tags like [UNIFIED-...]).
+        if source_id not in (None, ""):
+            cleaned_name = str(source_name or "").strip()
+            if cleaned_name:
+                where.append(
+                    "("
+                    "source_id = ? OR ("
+                    "COALESCE(source_id, 0) = 0 AND ("
+                    "strategy_name = ? OR "
+                    "regexp_replace(strategy_name, '^\\[[^\\]]+\\]\\s*', '') = ?"
+                    "))"
+                    ")"
+                )
+                params.extend([int(source_id), cleaned_name, cleaned_name])
+            else:
+                where.append("source_id = ?")
+                params.append(int(source_id))
+
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(

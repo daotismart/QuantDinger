@@ -376,9 +376,17 @@ def tune_strategy():
 @login_required
 def list_strategy_backtests():
     try:
+        user_id = int(g.user_id)
+        source_id = _positive_int(request.args.get("sourceId"))
+        source_name = str(request.args.get("sourceName") or "").strip()
+        if source_id and not source_name:
+            source = get_script_source_service().get_source(source_id, user_id=user_id)
+            if source:
+                source_name = str(source.get("name") or "").strip()
         rows = get_strategy_backtest_repository().list_runs(
-            user_id=int(g.user_id),
-            source_id=_positive_int(request.args.get("sourceId")),
+            user_id=user_id,
+            source_id=source_id,
+            source_name=source_name,
             symbol=str(request.args.get("symbol") or "").strip(),
             market=str(request.args.get("market") or "").strip(),
             timeframe=str(request.args.get("timeframe") or "").strip(),
