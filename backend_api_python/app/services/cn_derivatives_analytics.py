@@ -143,6 +143,8 @@ def _product_payload(root: str) -> Dict[str, Any]:
             "product_class": "commodity",
             "option_sina_name": SINA_OPTION_NAME.get(root_u),
             "continuous_symbol": f"{root_u}0",
+            "long_margin_rate": 0.10,
+            "option_seller_margin_rate": 0.12,
         }
     return {
         "root": product.root,
@@ -156,7 +158,110 @@ def _product_payload(root: str) -> Dict[str, Any]:
         "option_multiplier": float(product.option_multiplier or product.multiplier or 1),
         "option_sina_name": SINA_OPTION_NAME.get(product.root),
         "continuous_symbol": f"{product.root}0",
+        "long_margin_rate": float(getattr(product, "long_margin_rate", 0.10) or 0.10),
+        "option_seller_margin_rate": float(
+            getattr(product, "option_seller_margin_rate", 0.12) or 0.12
+        ),
     }
+
+
+def _month_code(symbol: str) -> str:
+    """Extract YYMM / YMM delivery code from futures/option month symbols."""
+    digits = "".join(ch for ch in str(symbol or "") if ch.isdigit())
+    if len(digits) >= 4:
+        return digits[-4:]
+    if len(digits) == 3:
+        return digits
+    return digits
+
+
+def _option_capital_for_chain(
+    chain: List[Dict[str, Any]],
+    *,
+    underlying: float,
+    multiplier: float,
+) -> Dict[str, float]:
+    """Premium = mid*OI*mult; notional = underlying*OI*mult."""
+    call_premium = sum(float(row["call_mid"]) * float(row["call_oi"]) * multiplier for row in chain)
+    put_premium = sum(float(row["put_mid"]) * float(row["put_oi"]) * multiplier for row in chain)
+    call_oi = sum(float(row["call_oi"]) for row in chain)
+    put_oi = sum(float(row["put_oi"]) for row in chain)
+    u = float(underlying or 0.0)
+    call_notional = call_oi * u * multiplier
+    put_notional = put_oi * u * multiplier
+    return {
+        "call_oi": call_oi,
+        "put_oi": put_oi,
+        "total_oi": call_oi + put_oi,
+        "call_premium": call_premium,
+        "put_premium": put_premium,
+        "premium": call_premium + put_premium,
+        "call_notional": call_notional,
+        "put_notional": put_notional,
+        "notional": call_notional + put_notional,
+        # Backward-compatible aliases (premium / 权利金)
+        "call_settled": call_premium,
+        "put_settled": put_premium,
+        "settled_capital": call_premium + put_premium,
+    }
+
+
+def _time_value_annualized_yield(
+    chain: List[Dict[str, Any]],
+    *,
+    underlying: float,
+    multiplier: float,
+    margin_rate: float,
+    T: float,
+    month: str,
+) -> Dict[str, Any]:
+    """Annualized time-value / seller-margin yield by strike for one expiry."""
+    F = float(underlying or 0.0)
+    mult = float(multiplier or 1.0)
+    rate = float(margin_rate or 0.12)
+    t_years = max(float(T or 0.0), 1.0 / 365.0)
+    call_points = []
+    put_points = []
+    if F <= 0 or mult <= 0 or rate <= 0:
+        return {"month": month, "T": t_years, "call": [], "put": []}
+
+    for row in chain:
+        k = float(row["strike"])
+        call_mid = float(row.get("call_mid") or 0.0)
+        put_mid = float(row.get("put_mid") or 0.0)
+        call_intrinsic = max(F - k, 0.0)
+        put_intrinsic = max(k - F, 0.0)
+        call_tv = max(call_mid - call_intrinsic, 0.0)
+        put_tv = max(put_mid - put_intrinsic, 0.0)
+        # Seller margin approx: underlying * multiplier * option seller margin rate
+        margin = F * mult * rate
+        if margin <= 0:
+            continue
+        if call_mid > 0:
+            call_points.append(
+                {
+                    "strike": k,
+                    "time_value": call_tv,
+                    "premium": call_mid,
+                    "margin": margin,
+                    "yield": (call_tv * mult / margin) / t_years,
+                    "side": "call",
+                    "month": month,
+                }
+            )
+        if put_mid > 0:
+            put_points.append(
+                {
+                    "strike": k,
+                    "time_value": put_tv,
+                    "premium": put_mid,
+                    "margin": margin,
+                    "yield": (put_tv * mult / margin) / t_years,
+                    "side": "put",
+                    "month": month,
+                }
+            )
+    return {"month": month, "T": t_years, "call": call_points, "put": put_points}
 
 
 def list_derivative_products() -> List[Dict[str, Any]]:
@@ -450,6 +555,7 @@ def compute_gex(
                 "strike": k,
                 "call_oi": call_oi,
                 "put_oi": put_oi,
+                "total_oi": call_oi + put_oi,
                 "net_oi": call_oi - put_oi,
                 "call_gex": call_gex,
                 "put_gex": put_gex,
@@ -587,24 +693,46 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
             point["basis_rate"] = None
 
     options_capital = []
+    capital_by_month: Dict[str, Dict[str, float]] = {}
     mult = float(product.get("option_multiplier") or product.get("multiplier") or 1)
     for month in months[:6]:
         chain = _option_chain_table(root_u, month)
         if not chain:
             continue
-        call_oi = sum(row["call_oi"] for row in chain)
-        put_oi = sum(row["put_oi"] for row in chain)
-        call_settled = sum(float(row["call_mid"]) * float(row["call_oi"]) * mult for row in chain)
-        put_settled = sum(float(row["put_mid"]) * float(row["put_oi"]) * mult for row in chain)
-        options_capital.append(
+        month_quote = _futures_zh_spot(month)
+        month_underlying = (
+            (month_quote or {}).get("price")
+            or next((p["price"] for p in curve if _month_code(p["symbol"]) == _month_code(month)), 0.0)
+            or spot_price
+            or 0.0
+        )
+        capital = _option_capital_for_chain(chain, underlying=month_underlying, multiplier=mult)
+        row = {
+            "month": month,
+            "month_code": _month_code(month),
+            "underlying": month_underlying,
+            **capital,
+        }
+        options_capital.append(row)
+        capital_by_month[_month_code(month)] = capital
+
+    monthly_activity = []
+    for point in curve:
+        if point["is_continuous"]:
+            continue
+        code = _month_code(point["symbol"])
+        opt = capital_by_month.get(code) or {}
+        monthly_activity.append(
             {
-                "month": month,
-                "call_oi": call_oi,
-                "put_oi": put_oi,
-                "total_oi": call_oi + put_oi,
-                "call_settled": call_settled,
-                "put_settled": put_settled,
-                "settled_capital": call_settled + put_settled,
+                "symbol": point["symbol"],
+                "month_code": code,
+                "volume": point["volume"],
+                "open_interest": point["open_interest"],
+                "price": point["price"],
+                "option_notional": opt.get("notional"),
+                "option_premium": opt.get("premium"),
+                "option_call_notional": opt.get("call_notional"),
+                "option_put_notional": opt.get("put_notional"),
             }
         )
 
@@ -620,16 +748,7 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
             "dom_basis_rate": (board or {}).get("dom_basis_rate"),
             "spot_price": spot_price,
         },
-        "monthly_activity": [
-            {
-                "symbol": p["symbol"],
-                "volume": p["volume"],
-                "open_interest": p["open_interest"],
-                "price": p["price"],
-            }
-            for p in curve
-            if not p["is_continuous"]
-        ],
+        "monthly_activity": monthly_activity,
         "options_settled_capital": options_capital,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
@@ -663,12 +782,22 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
     )
     T = _year_fraction_to_month(selected)
     mult = float(product.get("option_multiplier") or product.get("multiplier") or 1)
+    margin_rate = float(product.get("option_seller_margin_rate") or 0.12)
     if chain and underlying > 0:
         gex = compute_gex(chain, underlying=underlying, multiplier=mult, T=T)
         max_pain = compute_max_pain(chain)
+        tv_yield = _time_value_annualized_yield(
+            chain,
+            underlying=underlying,
+            multiplier=mult,
+            margin_rate=margin_rate,
+            T=T,
+            month=selected,
+        )
     else:
         gex = {"points": [], "summary": {}, "portfolio_greeks": {}, "iv_smile": []}
         max_pain = None
+        tv_yield = {"month": selected, "T": T, "call": [], "put": []}
     return {
         "root": root_u,
         "name_cn": product.get("name_cn") or root_u,
@@ -676,13 +805,17 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
         "months": months,
         "month": selected,
         "underlying": underlying,
+        "current_price": underlying,
         "multiplier": mult,
+        "margin_rate": margin_rate,
+        "T": T,
         "chain": chain,
         "greeks": gex.get("portfolio_greeks") or {},
         "gex_summary": gex.get("summary") or {},
         "gex_distribution": gex.get("points") or [],
         "iv_smile": gex.get("iv_smile") or [],
         "max_pain": max_pain,
+        "time_value_yield": tv_yield,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
 

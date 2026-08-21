@@ -111,3 +111,46 @@ def test_build_options_panel_unavailable_without_months():
         data = svc.build_options_panel("IF")
     assert data["available"] is False
     assert data["months"] == []
+
+
+def test_option_capital_splits_notional_and_premium():
+    chain = [
+        _chain_row(3000, 50, 20, 10, 5),
+        _chain_row(3100, 30, 40, 8, 12),
+    ]
+    capital = svc._option_capital_for_chain(chain, underlying=3050.0, multiplier=10.0)
+    assert capital["call_premium"] == pytest.approx(50 * 10 * 10 + 30 * 8 * 10)
+    assert capital["put_premium"] == pytest.approx(20 * 5 * 10 + 40 * 12 * 10)
+    assert capital["call_notional"] == pytest.approx((10 + 8) * 3050 * 10)
+    assert capital["put_notional"] == pytest.approx((5 + 12) * 3050 * 10)
+    assert capital["notional"] == capital["call_notional"] + capital["put_notional"]
+    assert capital["premium"] == capital["call_premium"] + capital["put_premium"]
+
+
+def test_time_value_annualized_yield_shape():
+    chain = [
+        _chain_row(2900, 120, 10, 1, 1),  # ITM call -> smaller time value
+        _chain_row(3000, 80, 80, 1, 1),   # ATM
+        _chain_row(3100, 10, 120, 1, 1),  # ITM put
+    ]
+    result = svc._time_value_annualized_yield(
+        chain,
+        underlying=3000.0,
+        multiplier=10.0,
+        margin_rate=0.12,
+        T=0.25,
+        month="m2505",
+    )
+    assert result["month"] == "m2505"
+    assert len(result["call"]) == 3
+    assert len(result["put"]) == 3
+    assert all(p["yield"] >= 0 for p in result["call"] + result["put"])
+    atm_call = next(p for p in result["call"] if p["strike"] == 3000)
+    # ATM call time value ~= 80, margin = 3000*10*0.12=3600, yield=(800/3600)/0.25
+    assert atm_call["yield"] == pytest.approx((80 * 10 / 3600) / 0.25, rel=1e-6)
+
+
+def test_gex_points_include_total_oi():
+    chain = [_chain_row(3000, 40, 40, 30, 20)]
+    gex = svc.compute_gex(chain, underlying=3000.0, multiplier=10.0, T=0.2)
+    assert gex["points"][0]["total_oi"] == 50.0
