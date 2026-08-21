@@ -1,0 +1,688 @@
+From ab77c165096a600f9f7b0e57052d30e3fc4e6614 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 21 Aug 2026 03:08:41 +0000
+Subject: [PATCH] fix: show CNFutures market labels instead of raw i18n keys
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+CN futures/options markets were added to the product but locale packs still
+only covered the original markets. Indicator IDE add-watchlist tabs called
+$t('dashboard.indicator.market.' + m) directly, so missing keys rendered as
+dashboard.indicator.market.CNFutures. A production zh-CN hotfix sometimes
+supplied 国内期货, which made the label look intermittent.
+
+- Add CNFutures / CNFuturesOptions / CNIndexFutures / CNIndexOptions labels
+  (and settings descriptions) across locale files
+- Add resolveMarketLabel() with static zh/en fallbacks
+- Use it for indicator IDE tabs, AI analysis, settings, and strategy IDE
+---
+ src/locales/lang/ar-SA.js                     | 12 +++++
+ src/locales/lang/de-DE.js                     | 12 +++++
+ src/locales/lang/en-US.js                     | 12 +++++
+ src/locales/lang/fr-FR.js                     | 12 +++++
+ src/locales/lang/ja-JP.js                     | 12 +++++
+ src/locales/lang/ko-KR.js                     | 12 +++++
+ src/locales/lang/ru-RU.js                     | 12 +++++
+ src/locales/lang/th-TH.js                     | 12 +++++
+ src/locales/lang/vi-VN.js                     | 12 +++++
+ src/locales/lang/zh-CN.js                     | 12 +++++
+ src/locales/lang/zh-TW.js                     | 12 +++++
+ src/utils/marketModules.js                    | 49 +++++++++++++++++++
+ .../components/CopilotWorkbench.vue           | 12 ++---
+ src/views/ai-analysis/index.vue               | 12 +++--
+ src/views/indicator-ide/index.vue             | 16 +++---
+ src/views/settings/index.vue                  |  8 +--
+ src/views/strategy-ide/index.vue              |  7 +--
+ 17 files changed, 214 insertions(+), 22 deletions(-)
+
+diff --git a/src/locales/lang/ar-SA.js b/src/locales/lang/ar-SA.js
+index dfaaec8..350556a 100644
+--- a/src/locales/lang/ar-SA.js
++++ b/src/locales/lang/ar-SA.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "أسهم هونغ كونغ",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "مخزون الولايات المتحدة",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "فشل في الإضافة",
+   "dashboard.analysis.message.addStockSuccess": "تمت الإضافة بنجاح",
+   "dashboard.analysis.message.analysisComplete": "تحليل كامل",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "أسهم هونغ كونغ",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "مخزون الولايات المتحدة",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "أقصى انخفاض في السحب",
+   "dashboard.indicator.mfi": "مؤشر تدفق الأموال (MFI)",
+   "dashboard.indicator.obv": "حجم التوازن (OBV)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "أسهم وصناديق المؤشرات المتداولة في هونغ كونغ.",
+   "settings.market.desc.MOEX": "سوق الأبحاث في بورصة موسكو. لم يتم تفعيل التنفيذ المباشر بعد.",
+   "settings.market.desc.USStock": "الأسهم الأمريكية وصناديق المؤشرات المتداولة.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "يعيش",
+   "settings.market.researchOnly": "بحث / ورقة بحثية فقط",
+   "settings.market.source.builtin": "مدمجة",
+diff --git a/src/locales/lang/de-DE.js b/src/locales/lang/de-DE.js
+index 9c258d0..87f7289 100644
+--- a/src/locales/lang/de-DE.js
++++ b/src/locales/lang/de-DE.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "Hongkonger Aktien",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "US-Aktien",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "Hinzufügen fehlgeschlagen",
+   "dashboard.analysis.message.addStockSuccess": "Erfolgreich hinzugefügt",
+   "dashboard.analysis.message.analysisComplete": "Analyse abgeschlossen",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "Hongkonger Aktien",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "US-Aktien",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "Maximaler Drawdown",
+   "dashboard.indicator.mfi": "MFI (Geldflussindex)",
+   "dashboard.indicator.obv": "OBV (Balance Volume)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "Hongkonger Aktien und ETFs.",
+   "settings.market.desc.MOEX": "Research-Markt der Moskauer Börse. Live-Handel ist noch nicht aktiviert.",
+   "settings.market.desc.USStock": "US-Aktien und ETFs.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "Live",
+   "settings.market.researchOnly": "Nur für Forschung / Papier",
+   "settings.market.source.builtin": "Eingebaut",
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index cdabb31..73ea598 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -1935,6 +1935,10 @@ const locale = {
+   "dashboard.analysis.market.Crypto": "Cryptocurrency",
+   "dashboard.analysis.market.Forex": "Forex",
+   "dashboard.analysis.market.Futures": "Futures",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.modal.history.title": "Analysis History",
+   "dashboard.analysis.modal.history.viewResult": "View Result",
+   "dashboard.analysis.modal.history.completeTime": "Complete Time",
+@@ -2120,6 +2124,10 @@ const locale = {
+   "dashboard.indicator.market.Crypto": "Cryptocurrency",
+   "dashboard.indicator.market.Forex": "Forex",
+   "dashboard.indicator.market.Futures": "Futures",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.create": "Create Indicator",
+   "dashboard.indicator.editor.title": "Create/Edit Indicator",
+   "dashboard.indicator.editor.name": "Indicator Name",
+@@ -3789,6 +3797,10 @@ const locale = {
+   "settings.market.desc.Forex": "FX pairs and precious metals routed through FX data sources and IB Gateway.",
+   "settings.market.desc.Futures": "Generic futures research market. Live execution is not enabled yet.",
+   "settings.market.desc.MOEX": "Moscow Exchange research market. Live execution is not enabled yet.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.sourceLabel.ccxt": "CCXT exchange",
+   "settings.market.sourceLabel.coinglass": "Coinglass",
+   "settings.market.sourceLabel.cryptoquant": "CryptoQuant",
+diff --git a/src/locales/lang/fr-FR.js b/src/locales/lang/fr-FR.js
+index 1cf1e9c..38ff29f 100644
+--- a/src/locales/lang/fr-FR.js
++++ b/src/locales/lang/fr-FR.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "Actions de Hong Kong",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "Stock américain",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "Échec de l'ajout",
+   "dashboard.analysis.message.addStockSuccess": "Ajouté avec succès",
+   "dashboard.analysis.message.analysisComplete": "Analyse complète",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "Actions de Hong Kong",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "Stock américain",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "Drawdown maximal",
+   "dashboard.indicator.mfi": "Indice des flux monétaires (IFM)",
+   "dashboard.indicator.obv": "OBV (Volume d'équilibre)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "Actions et ETF de Hong Kong.",
+   "settings.market.desc.MOEX": "Marché de recherche de la Bourse de Moscou. L'exécution en direct n'est pas encore activée.",
+   "settings.market.desc.USStock": "Actions et ETF américains.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "En direct",
+   "settings.market.researchOnly": "Recherche / article uniquement",
+   "settings.market.source.builtin": "Intégré",
+diff --git a/src/locales/lang/ja-JP.js b/src/locales/lang/ja-JP.js
+index b85de66..5f9359c 100644
+--- a/src/locales/lang/ja-JP.js
++++ b/src/locales/lang/ja-JP.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "香港株",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "米国株",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "追加に失敗しました",
+   "dashboard.analysis.message.addStockSuccess": "正常に追加されました",
+   "dashboard.analysis.message.analysisComplete": "分析完了",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "香港株",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "米国株",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "最大ドローダウン",
+   "dashboard.indicator.mfi": "MFI（マネーフローインデックス）",
+   "dashboard.indicator.obv": "OBV（オンバランスボリューム）",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "香港の株式およびETF。",
+   "settings.market.desc.MOEX": "モスクワ証券取引所の調査市場。ライブ取引はまだ利用できません。",
+   "settings.market.desc.USStock": "米国株式およびETF。",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "ライブ",
+   "settings.market.researchOnly": "研究論文のみ",
+   "settings.market.source.builtin": "内蔵",
+diff --git a/src/locales/lang/ko-KR.js b/src/locales/lang/ko-KR.js
+index b443fbe..f011e90 100644
+--- a/src/locales/lang/ko-KR.js
++++ b/src/locales/lang/ko-KR.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "홍콩 주식",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "미국 주식",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "추가에 실패했습니다",
+   "dashboard.analysis.message.addStockSuccess": "성공적으로 추가되었습니다",
+   "dashboard.analysis.message.analysisComplete": "분석 완료",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "홍콩 주식",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "미국 주식",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "최대 인출액",
+   "dashboard.indicator.mfi": "MFI(자금흐름지수)",
+   "dashboard.indicator.obv": "OBV(온 밸런스 볼륨)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "홍콩 주식 및 ETF.",
+   "settings.market.desc.MOEX": "모스크바 증권거래소 리서치 시장입니다. 실시간 거래는 아직 지원되지 않습니다.",
+   "settings.market.desc.USStock": "미국 주식 및 ETF.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "살다",
+   "settings.market.researchOnly": "연구/논문 전용",
+   "settings.market.source.builtin": "내장형",
+diff --git a/src/locales/lang/ru-RU.js b/src/locales/lang/ru-RU.js
+index f10f298..4e5b76b 100644
+--- a/src/locales/lang/ru-RU.js
++++ b/src/locales/lang/ru-RU.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "Гонконгские акции",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "Акции США",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "Не удалось добавить",
+   "dashboard.analysis.message.addStockSuccess": "Добавлено успешно",
+   "dashboard.analysis.message.analysisComplete": "Анализ завершен",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "Гонконгские акции",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "Акции США",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "Максимальная просадка",
+   "dashboard.indicator.mfi": "МФИ (Индекс денежных потоков)",
+   "dashboard.indicator.obv": "OBV (Объем баланса)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "Гонконгские акции и ETF.",
+   "settings.market.desc.MOEX": "Аналитический обзор Московской биржи. Исполнение ордеров в режиме реального времени пока недоступно.",
+   "settings.market.desc.USStock": "Американские акции и ETF.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "Жить",
+   "settings.market.researchOnly": "Только исследовательская работа / научная статья",
+   "settings.market.source.builtin": "встроенный",
+diff --git a/src/locales/lang/th-TH.js b/src/locales/lang/th-TH.js
+index 2b27c4f..12f29e6 100644
+--- a/src/locales/lang/th-TH.js
++++ b/src/locales/lang/th-TH.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "หุ้นฮ่องกง",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "หุ้นสหรัฐฯ",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "เพิ่มไม่สำเร็จ",
+   "dashboard.analysis.message.addStockSuccess": "เพิ่มสำเร็จแล้ว",
+   "dashboard.analysis.message.analysisComplete": "การวิเคราะห์เสร็จสมบูรณ์",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "หุ้นฮ่องกง",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "หุ้นสหรัฐฯ",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "การลดระดับสูงสุด",
+   "dashboard.indicator.mfi": "ดัชนีกระแสเงินสด (MFI)",
+   "dashboard.indicator.obv": "OBV (ปริมาตรสมดุล)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "หุ้นและกองทุน ETF ของฮ่องกง",
+   "settings.market.desc.MOEX": "ตลาดวิจัยตลาดหลักทรัพย์มอสโก การซื้อขายแบบเรียลไทม์ยังไม่เปิดใช้งานในขณะนี้",
+   "settings.market.desc.USStock": "หุ้นและกองทุน ETF ของสหรัฐอเมริกา",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "สด",
+   "settings.market.researchOnly": "งานวิจัย / บทความเท่านั้น",
+   "settings.market.source.builtin": "ฝังในตัว",
+diff --git a/src/locales/lang/vi-VN.js b/src/locales/lang/vi-VN.js
+index f6a5334..9046b5a 100644
+--- a/src/locales/lang/vi-VN.js
++++ b/src/locales/lang/vi-VN.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "Cổ phiếu Hồng Kông",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "Cổ phiếu Mỹ",
++  "dashboard.analysis.market.CNFutures": "China Futures",
++  "dashboard.analysis.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.analysis.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.analysis.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.analysis.message.addStockFailed": "Không thể thêm",
+   "dashboard.analysis.message.addStockSuccess": "Đã thêm thành công",
+   "dashboard.analysis.message.analysisComplete": "Phân tích hoàn tất",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "Cổ phiếu Hồng Kông",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "Cổ phiếu Mỹ",
++  "dashboard.indicator.market.CNFutures": "China Futures",
++  "dashboard.indicator.market.CNFuturesOptions": "China Futures Options",
++  "dashboard.indicator.market.CNIndexFutures": "CFFEX Index Futures",
++  "dashboard.indicator.market.CNIndexOptions": "CFFEX Index Options",
+   "dashboard.indicator.maxDrawdown": "Mức giảm tối đa",
+   "dashboard.indicator.mfi": "Chỉ số dòng tiền (MFI)",
+   "dashboard.indicator.obv": "OBV (Thể tích cân bằng)",
+@@ -4827,6 +4835,10 @@ const locale = {
+   "settings.market.desc.HKStock": "Cổ phiếu và quỹ ETF Hồng Kông.",
+   "settings.market.desc.MOEX": "Thị trường nghiên cứu của Sở giao dịch Moscow. Chức năng giao dịch trực tiếp chưa được kích hoạt.",
+   "settings.market.desc.USStock": "Cổ phiếu và quỹ ETF của Mỹ.",
++  "settings.market.desc.CNFutures": "Mainland China commodity and financial futures (CFFEX/SHFE/DCE/CZCE/INE/GFEX).",
++  "settings.market.desc.CNFuturesOptions": "Mainland China futures options listed on commodity exchanges and CFFEX.",
++  "settings.market.desc.CNIndexFutures": "CFFEX equity-index futures (IF/IH/IC/IM).",
++  "settings.market.desc.CNIndexOptions": "CFFEX equity-index options.",
+   "settings.market.livePrefix": "Sống",
+   "settings.market.researchOnly": "Chỉ dành cho nghiên cứu/bài báo",
+   "settings.market.source.builtin": "tích hợp sẵn",
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index 7102457..9818efc 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -2098,6 +2098,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "H股",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "美股",
++  "dashboard.analysis.market.CNFutures": "国内期货",
++  "dashboard.analysis.market.CNFuturesOptions": "国内期货期权",
++  "dashboard.analysis.market.CNIndexFutures": "股指期货",
++  "dashboard.analysis.market.CNIndexOptions": "股指期权",
+   "dashboard.analysis.message.addStockFailed": "添加失败",
+   "dashboard.analysis.message.addStockSuccess": "添加成功",
+   "dashboard.analysis.message.analysisComplete": "分析完成",
+@@ -2672,6 +2676,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "H股",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "美股",
++  "dashboard.indicator.market.CNFutures": "国内期货",
++  "dashboard.indicator.market.CNFuturesOptions": "国内期货期权",
++  "dashboard.indicator.market.CNIndexFutures": "股指期货",
++  "dashboard.indicator.market.CNIndexOptions": "股指期权",
+   "dashboard.indicator.maxDrawdown": "最大回撤",
+   "dashboard.indicator.mfi": "MFI (资金流量指标)",
+   "dashboard.indicator.obv": "OBV (能量潮)",
+@@ -5120,6 +5128,10 @@ const locale = {
+   "settings.market.desc.HKStock": "香港股票与 ETF 市场。",
+   "settings.market.desc.MOEX": "莫斯科交易所研究市场，暂未启用实盘执行。",
+   "settings.market.desc.USStock": "美国股票与 ETF 市场。",
++  "settings.market.desc.CNFutures": "中国大陆商品与金融期货（中金所/上期所/大商所/郑商所/能源中心/广期所）。",
++  "settings.market.desc.CNFuturesOptions": "中国大陆期货期权（商品交易所与中金所）。",
++  "settings.market.desc.CNIndexFutures": "中金所股指期货（IF/IH/IC/IM）。",
++  "settings.market.desc.CNIndexOptions": "中金所股指期权。",
+   "settings.market.livePrefix": "实盘",
+   "settings.market.researchOnly": "研究 / 模拟",
+   "settings.market.source.builtin": "内置",
+diff --git a/src/locales/lang/zh-TW.js b/src/locales/lang/zh-TW.js
+index c28c575..9492f00 100644
+--- a/src/locales/lang/zh-TW.js
++++ b/src/locales/lang/zh-TW.js
+@@ -1849,6 +1849,10 @@ const locale = {
+   "dashboard.analysis.market.HKStock": "H股",
+   "dashboard.analysis.market.MOEX": "MOEX",
+   "dashboard.analysis.market.USStock": "美股",
++  "dashboard.analysis.market.CNFutures": "國內期貨",
++  "dashboard.analysis.market.CNFuturesOptions": "國內期貨期權",
++  "dashboard.analysis.market.CNIndexFutures": "股指期貨",
++  "dashboard.analysis.market.CNIndexOptions": "股指期權",
+   "dashboard.analysis.message.addStockFailed": "新增失敗",
+   "dashboard.analysis.message.addStockSuccess": "添加成功",
+   "dashboard.analysis.message.analysisComplete": "分析完成",
+@@ -2423,6 +2427,10 @@ const locale = {
+   "dashboard.indicator.market.HKStock": "H股",
+   "dashboard.indicator.market.MOEX": "MOEX",
+   "dashboard.indicator.market.USStock": "美股",
++  "dashboard.indicator.market.CNFutures": "國內期貨",
++  "dashboard.indicator.market.CNFuturesOptions": "國內期貨期權",
++  "dashboard.indicator.market.CNIndexFutures": "股指期貨",
++  "dashboard.indicator.market.CNIndexOptions": "股指期權",
+   "dashboard.indicator.maxDrawdown": "最大回撤",
+   "dashboard.indicator.mfi": "MFI (資金流指標)",
+   "dashboard.indicator.obv": "OBV (能量潮)",
+@@ -4873,6 +4881,10 @@ const locale = {
+   "settings.market.desc.HKStock": "香港股票與 ETF 市場。",
+   "settings.market.desc.MOEX": "莫斯科交易所研究市場，暫未啟用實盤執行。",
+   "settings.market.desc.USStock": "美國股票與 ETF 市場。",
++  "settings.market.desc.CNFutures": "中國大陸商品與金融期貨（中金所/上期所/大商所/鄭商所/能源中心/廣期所）。",
++  "settings.market.desc.CNFuturesOptions": "中國大陸期貨選擇權（商品交易所與中金所）。",
++  "settings.market.desc.CNIndexFutures": "中金所股指期貨（IF/IH/IC/IM）。",
++  "settings.market.desc.CNIndexOptions": "中金所股指選擇權。",
+   "settings.market.livePrefix": "實盤",
+   "settings.market.researchOnly": "研究 / 模擬",
+   "settings.market.source.builtin": "內建",
+diff --git a/src/utils/marketModules.js b/src/utils/marketModules.js
+index c0ef612..4e499c5 100644
+--- a/src/utils/marketModules.js
++++ b/src/utils/marketModules.js
+@@ -6,6 +6,55 @@ export const FALLBACK_MARKET_MODULES = [
+   { key: 'Forex', label: 'Forex', enabled: true, features: ['research', 'backtest', 'paper', 'live'] }
+ ]
+ 
++/** Static fallbacks for markets that may lag behind locale packs (e.g. CNFutures). */
++export const MARKET_LABEL_FALLBACKS = {
++  Crypto: { en: 'Crypto', zh: '加密货币' },
++  USStock: { en: 'US Stock', zh: '美股' },
++  CNStock: { en: 'A-Shares', zh: 'A股' },
++  HKStock: { en: 'HK Stocks', zh: 'H股' },
++  Forex: { en: 'Forex', zh: '外汇' },
++  Futures: { en: 'Futures', zh: '期货' },
++  MOEX: { en: 'MOEX', zh: 'MOEX' },
++  CNFutures: { en: 'China Futures', zh: '国内期货' },
++  CNFuturesOptions: { en: 'China Futures Options', zh: '国内期货期权' },
++  CNIndexFutures: { en: 'CFFEX Index Futures', zh: '股指期货' },
++  CNIndexOptions: { en: 'CFFEX Index Options', zh: '股指期权' }
++}
++
++/**
++ * Resolve a human market label without leaking raw i18n keys like
++ * `dashboard.indicator.market.CNFutures` when a locale entry is missing.
++ *
++ * @param {(key: string) => string} t - vue-i18n `$t` (or compatible)
++ * @param {string} market
++ * @param {{ locale?: string, fallbackLabel?: string }} [opts]
++ */
++export function resolveMarketLabel (t, market, opts = {}) {
++  const code = String(market || '').trim()
++  if (!code) return ''
++  const translate = typeof t === 'function' ? t : null
++  const keys = [
++    `dashboard.indicator.market.${code}`,
++    `dashboard.analysis.market.${code}`
++  ]
++  if (translate) {
++    for (const key of keys) {
++      const translated = translate(key)
++      if (translated && translated !== key && !String(translated).startsWith('dashboard.')) {
++        return translated
++      }
++    }
++  }
++  if (opts.fallbackLabel) return String(opts.fallbackLabel)
++  const pack = MARKET_LABEL_FALLBACKS[code]
++  if (pack) {
++    const locale = String(opts.locale || '').toLowerCase()
++    if (locale.startsWith('zh')) return pack.zh
++    return pack.en
++  }
++  return code
++}
++
+ export function toMarketOption (module) {
+   const key = module && (module.key || module.value)
+   return {
+diff --git a/src/views/ai-analysis/components/CopilotWorkbench.vue b/src/views/ai-analysis/components/CopilotWorkbench.vue
+index ac979e3..ceef658 100644
+--- a/src/views/ai-analysis/components/CopilotWorkbench.vue
++++ b/src/views/ai-analysis/components/CopilotWorkbench.vue
+@@ -546,7 +546,7 @@ import { getMonitors, addMonitor, updateMonitor, deleteMonitor } from '@/api/por
+ import { fastAnalyze } from '@/api/fast-analysis'
+ import storage from 'store'
+ import { ACCESS_TOKEN } from '@/store/mutation-types'
+-import { loadEnabledMarketOptions, firstMarketValue } from '@/utils/marketModules'
++import { loadEnabledMarketOptions, firstMarketValue, resolveMarketLabel } from '@/utils/marketModules'
+ import FastAnalysisReport from './FastAnalysisReport.vue'
+ 
+ let localId = 1
+@@ -4073,11 +4073,11 @@ export default {
+       return `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
+     },
+     marketLabel (market) {
+-      const key = `dashboard.analysis.market.${market}`
+-      const translated = this.$t ? this.$t(key) : key
+-      if (translated && translated !== key) return translated
+-      const found = this.markets.find(m => m.value === market)
+-      return found ? found.label : (market || '--')
++      const found = (this.markets || []).find(m => m.value === market)
++      return resolveMarketLabel(this.$t ? this.$t.bind(this) : null, market, {
++        locale: this.$i18n && this.$i18n.locale,
++        fallbackLabel: found && found.label
++      }) || '--'
+     },
+     marketPillClass (market) {
+       return `market-${String(market || 'default').toLowerCase()}`
+diff --git a/src/views/ai-analysis/index.vue b/src/views/ai-analysis/index.vue
+index f99cb69..95f2af4 100644
+--- a/src/views/ai-analysis/index.vue
++++ b/src/views/ai-analysis/index.vue
+@@ -427,7 +427,7 @@ class="analyze-button">
+           <a-tab-pane
+             v-for="marketType in marketTypes"
+             :key="marketType.value"
+-            :tab="$t(marketType.i18nKey || `dashboard.analysis.market.${marketType.value}`)"
++            :tab="getMarketName(marketType.value)"
+           >
+           </a-tab-pane>
+         </a-tabs>
+@@ -548,7 +548,7 @@ class="analyze-button">
+             <template slot="description">
+               <div class="selected-symbol-info">
+                 <a-tag :color="getMarketColor(selectedSymbolForAdd.market)" style="margin-right: 8px;">
+-                  {{ $t(`dashboard.analysis.market.${selectedSymbolForAdd.market}`) }}
++                  {{ getMarketName(selectedSymbolForAdd.market) }}
+                 </a-tag>
+                 <strong>{{ selectedSymbolForAdd.symbol }}</strong>
+                 <span v-if="selectedSymbolForAdd.name" style="color: #999; margin-left: 8px;">{{ selectedSymbolForAdd.name }}</span>
+@@ -824,7 +824,7 @@ import { getMarketSentiment, getEconomicCalendar } from '@/api/global-market'
+ import FastAnalysisReport from './components/FastAnalysisReport.vue'
+ import CopilotWorkbench from './components/CopilotWorkbench.vue'
+ import sessionCache from '@/utils/sessionCache'
+-import { loadEnabledMarketOptions, firstMarketValue } from '@/utils/marketModules'
++import { loadEnabledMarketOptions, firstMarketValue, resolveMarketLabel } from '@/utils/marketModules'
+ import { CRYPTO_EXCHANGE_IDS } from '@/utils/marketContext'
+ 
+ // Cache only the context panels that remain on the default AI analysis screen.
+@@ -2574,7 +2574,11 @@ export default {
+       }, fallback)
+     },
+     getMarketName (market) {
+-      return this.i18nText(`dashboard.analysis.market.${market}`, market || '')
++      const found = (this.marketTypes || []).find(item => item && item.value === market)
++      return resolveMarketLabel(this.$t ? this.$t.bind(this) : null, market, {
++        locale: this.$i18n && this.$i18n.locale,
++        fallbackLabel: found && found.label
++      }) || market || ''
+     },
+     formatNumber (num) {
+       if (typeof num === 'string') return num
+diff --git a/src/views/indicator-ide/index.vue b/src/views/indicator-ide/index.vue
+index 899a4f2..6bc3a4c 100644
+--- a/src/views/indicator-ide/index.vue
++++ b/src/views/indicator-ide/index.vue
+@@ -471,7 +471,7 @@
+         <a-tab-pane
+           v-for="m in ideAddMarketKeys"
+           :key="m"
+-          :tab="$t('dashboard.indicator.market.' + m)"
++          :tab="marketLabel(m)"
+         ></a-tab-pane>
+       </a-tabs>
+       <div v-if="addMarketTab === 'Crypto'" class="ide-add-source-row">
+@@ -948,7 +948,7 @@ import storage from 'store'
+ import { ACCESS_TOKEN } from '@/store/mutation-types'
+ import { baseMixin } from '@/store/app-mixin'
+ import request from '@/utils/request'
+-import { loadEnabledMarketOptions, firstMarketValue } from '@/utils/marketModules'
++import { loadEnabledMarketOptions, firstMarketValue, resolveMarketLabel } from '@/utils/marketModules'
+ import { CRYPTO_EXCHANGE_IDS, marketContextKey, normalizeExchangeId, normalizeMarketType } from '@/utils/marketContext'
+ import { getUserInfo } from '@/api/login'
+ import { getNotificationSettings } from '@/api/user'
+@@ -1120,7 +1120,8 @@ export default {
+       codeVersionPreview: null,
+       restoringCodeVersionId: null,
+ 
+-      ideAddMarketKeys: []
++      ideAddMarketKeys: [],
++      ideAddMarketOptions: []
+ 
+     }
+   },
+@@ -1268,6 +1269,7 @@ export default {
+     },
+     async loadMarketModules () {
+       const options = await loadEnabledMarketOptions({ includeFeatures: ['research'] })
++      this.ideAddMarketOptions = options
+       this.ideAddMarketKeys = options.map(item => item.value)
+       if (!this.ideAddMarketKeys.includes(this.addMarketTab)) {
+         this.addMarketTab = firstMarketValue(options)
+@@ -3215,9 +3217,11 @@ export default {
+     },
+     marketLabel (m) {
+       if (!m) return ''
+-      const key = 'dashboard.indicator.market.' + m
+-      const t = this.$t(key)
+-      return t !== key ? t : m
++      const option = (this.ideAddMarketOptions || []).find(item => item && item.value === m)
++      return resolveMarketLabel(this.$t.bind(this), m, {
++        locale: this.$i18n && this.$i18n.locale,
++        fallbackLabel: option && option.label
++      })
+     },
+     handleCryptoExchangeChange (value) {
+       this.cryptoExchangeId = this.normalizeCryptoExchange(value)
+diff --git a/src/views/settings/index.vue b/src/views/settings/index.vue
+index 458201b..4183675 100644
+--- a/src/views/settings/index.vue
++++ b/src/views/settings/index.vue
+@@ -719,6 +719,7 @@
+ <script>
+ import { getSettingsSchema, getSettingsValues, saveSettings, getOpenRouterBalance, getMarketCatalogOverview, syncMarketCatalog } from '@/api/settings'
+ import { getMarketModules } from '@/api/marketModules'
++import { resolveMarketLabel } from '@/utils/marketModules'
+ import { getSystemUniverseOverview, syncSystemUniverses } from '@/api/universe'
+ import { baseMixin } from '@/store/app-mixin'
+ 
+@@ -1423,9 +1424,10 @@ export default {
+     marketModuleLabel (market) {
+       if (!market) return ''
+       const key = market.key || market.value
+-      const i18nKey = `dashboard.analysis.market.${key}`
+-      const translated = this.$t(i18nKey)
+-      return translated !== i18nKey ? translated : (market.label || key || '')
++      return resolveMarketLabel(this.$t.bind(this), key, {
++        locale: this.$i18n && this.$i18n.locale,
++        fallbackLabel: market.label || key
++      })
+     },
+ 
+     marketModuleDescription (market) {
+diff --git a/src/views/strategy-ide/index.vue b/src/views/strategy-ide/index.vue
+index eb77b2b..5462d6a 100644
+--- a/src/views/strategy-ide/index.vue
++++ b/src/views/strategy-ide/index.vue
+@@ -416,6 +416,7 @@ import FactorLibraryModal from './FactorLibraryModal.vue'
+ import UniverseLibraryModal from './UniverseLibraryModal.vue'
+ import ExecutorStrategies from '@/views/executor-strategies'
+ import { resolveIndicatorStrategyContext } from '@/utils/indicatorStrategyContext'
++import { resolveMarketLabel } from '@/utils/marketModules'
+ import {
+   aiGenerateStrategy,
+   createScriptSource,
+@@ -1875,9 +1876,9 @@ export default {
+     marketLabel (market) {
+       const text = String(market || '').trim()
+       if (!text) return '-'
+-      const key = `dashboard.indicator.market.${text}`
+-      const translated = this.$t(key)
+-      return translated && translated !== key ? translated : text
++      return resolveMarketLabel(this.$t.bind(this), text, {
++        locale: this.$i18n && this.$i18n.locale
++      })
+     },
+     formatTime (value) {
+       if (!value) return ''
+-- 
+2.43.0
+
