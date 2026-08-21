@@ -20,6 +20,7 @@ from app.services.backtest_execution import (
     parse_rate,
 )
 from app.services.backtest_limits import BacktestRangeLimitError
+from app.services.backtest_ranking import build_ranking
 from app.services.billing_service import get_billing_service
 from app.services.script_source import get_script_source_service
 from app.services.strategy_v2 import (
@@ -387,6 +388,26 @@ def list_strategy_backtests():
         return jsonify({"code": 1, "msg": "success", "data": rows})
     except Exception as exc:
         logger.exception("Backtest history query failed")
+        return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
+
+
+@backtest_center_blp.route("/ranking", methods=["GET"])
+@login_required
+def list_strategy_backtest_ranking():
+    """Rank the current user's successful backtests for strategy management."""
+    try:
+        dedupe_raw = str(request.args.get("dedupe") or "1").strip().lower()
+        data = build_ranking(
+            user_id=int(g.user_id),
+            market=str(request.args.get("market") or "").strip(),
+            timeframe=str(request.args.get("timeframe") or "").strip(),
+            tag=str(request.args.get("tag") or "").strip(),
+            limit=max(1, min(500, int(request.args.get("limit") or 100))),
+            dedupe=dedupe_raw not in {"0", "false", "no"},
+        )
+        return jsonify({"code": 1, "msg": "success", "data": data})
+    except Exception as exc:
+        logger.exception("Backtest ranking query failed")
         return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
 
 
