@@ -92,3 +92,18 @@ Do not reclaim those ports when redeploying QuantDinger.
 3. Change code on a feature branch locally; ship via image rebuild or controlled hotfix under `ops/hotfixes/` + `docker-compose.hotfix.yml`.
 4. Never commit host `.env`, `.deploy-credentials.txt`, or CTP credentials into git.
 5. After deploy, re-check `/api/health` and `/api/health/ready`, and note `celery-worker` health if it was previously unhealthy.
+
+## Frontend market label i18n (CNFutures)
+
+If Indicator IDE "add watchlist" tabs show raw keys like
+`dashboard.indicator.market.CNFutures` (or flip between that key and
+`国内期货`), the zh-CN locale chunk is missing CN futures/options entries.
+
+Host mitigation (already applied): bind-mount `ops/hotfixes/zh-CN.js` over
+the runtime `assets/zh-CN-*.js` hashes via `docker-compose.hotfix.yml`.
+Details: `ops/hotfixes/cnfutures-market-i18n/README.md`.
+
+Durable fix lives in the private QuantDinger-Vue repo (locale keys +
+`resolveMarketLabel`); rebuild `quantdinger-frontend:datasvc` then drop the
+locale bind-mounts.
+
