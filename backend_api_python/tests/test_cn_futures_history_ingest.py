@@ -181,3 +181,60 @@ def test_ingest_derives_intraday_from_one_minute(monkeypatch):
     assert summary["watch_written"] == 0
     assert written == ["1m", "5m", "1H"]
     assert summary["results"][0]["timeframes"]["5m"]["derived_from"] == "1m"
+
+
+def test_ingest_derive_only_from_stored_1m(monkeypatch):
+    minute = [
+        {
+            "time": 1_710_000_000 + i * 60,
+            "open": 10 + i,
+            "high": 11 + i,
+            "low": 9 + i,
+            "close": 10.5 + i,
+            "volume": 2,
+        }
+        for i in range(20)
+    ]
+
+    class FakeSrc:
+        def get_history(self, symbol, timeframe):
+            raise AssertionError("derive_only must not fetch")
+
+        def _resample(self, rows, seconds):
+            return [
+                {
+                    "time": rows[0]["time"],
+                    "open": rows[0]["open"],
+                    "high": max(r["high"] for r in rows),
+                    "low": min(r["low"] for r in rows),
+                    "close": rows[-1]["close"],
+                    "volume": sum(r["volume"] for r in rows),
+                }
+            ]
+
+    written = []
+    monkeypatch.setattr(
+        "app.services.market_data_maint.cn_futures_ingest.repository.load_bars",
+        lambda spec, limit=5000: list(minute) if spec.timeframe == "1m" else [],
+    )
+    monkeypatch.setattr(
+        "app.services.market_data_maint.cn_futures_ingest.repository.upsert_bars",
+        lambda spec, bars, *, source, quality_flags: written.append(spec.timeframe) or len(bars),
+    )
+    monkeypatch.setattr(
+        "app.services.market_data_maint.cn_futures_ingest.repository.upsert_watch_specs",
+        lambda specs: 0,
+    )
+
+    summary = ingest_cn_futures_history(
+        timeframes=["3m", "4H"],
+        persist=True,
+        symbols=["RB0"],
+        derive_only=True,
+        src=FakeSrc(),
+        sleeper=lambda _s: None,
+        register_watch=False,
+    )
+    assert summary["status"] == "success"
+    assert summary["derive_only"] is True
+    assert set(written) == {"3m", "4H"}
