@@ -717,11 +717,14 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
         capital_by_month[_month_code(month)] = capital
 
     monthly_activity = []
+    fut_mult = float(product.get("multiplier") or 1)
     for point in curve:
         if point["is_continuous"]:
             continue
         code = _month_code(point["symbol"])
         opt = capital_by_month.get(code) or {}
+        futures_capital = float(point["price"] or 0.0) * float(point["open_interest"] or 0.0) * fut_mult
+        option_notional = float(opt.get("notional") or 0.0)
         monthly_activity.append(
             {
                 "symbol": point["symbol"],
@@ -729,10 +732,12 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
                 "volume": point["volume"],
                 "open_interest": point["open_interest"],
                 "price": point["price"],
-                "option_notional": opt.get("notional"),
+                "futures_capital": futures_capital,
+                "option_notional": option_notional or None,
                 "option_premium": opt.get("premium"),
                 "option_call_notional": opt.get("call_notional"),
                 "option_put_notional": opt.get("put_notional"),
+                "combined_capital": futures_capital + option_notional,
             }
         )
 
@@ -754,6 +759,57 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
     }
 
 
+def _aggregate_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Merge option chains across months: sum OI, OI-weighted mids."""
+    bucket: Dict[float, Dict[str, float]] = {}
+    for chain in chains:
+        for row in chain:
+            k = float(row["strike"])
+            item = bucket.setdefault(
+                k,
+                {
+                    "strike": k,
+                    "call_oi": 0.0,
+                    "put_oi": 0.0,
+                    "call_mid_w": 0.0,
+                    "put_mid_w": 0.0,
+                    "call_mid_n": 0.0,
+                    "put_mid_n": 0.0,
+                },
+            )
+            call_oi = float(row.get("call_oi") or 0.0)
+            put_oi = float(row.get("put_oi") or 0.0)
+            call_mid = float(row.get("call_mid") or 0.0)
+            put_mid = float(row.get("put_mid") or 0.0)
+            item["call_oi"] += call_oi
+            item["put_oi"] += put_oi
+            if call_oi > 0 and call_mid > 0:
+                item["call_mid_w"] += call_mid * call_oi
+                item["call_mid_n"] += call_oi
+            if put_oi > 0 and put_mid > 0:
+                item["put_mid_w"] += put_mid * put_oi
+                item["put_mid_n"] += put_oi
+    rows: List[Dict[str, Any]] = []
+    for item in bucket.values():
+        rows.append(
+            {
+                "strike": item["strike"],
+                "call_oi": item["call_oi"],
+                "put_oi": item["put_oi"],
+                "call_mid": (item["call_mid_w"] / item["call_mid_n"]) if item["call_mid_n"] > 0 else 0.0,
+                "put_mid": (item["put_mid_w"] / item["put_mid_n"]) if item["put_mid_n"] > 0 else 0.0,
+                "call_last": 0.0,
+                "put_last": 0.0,
+                "call_bid": 0.0,
+                "call_ask": 0.0,
+                "put_bid": 0.0,
+                "put_ask": 0.0,
+            }
+        )
+    rows.sort(key=lambda row: row["strike"])
+    return rows
+
+
 def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any]:
     root_u = str(root or "").upper()
     product = _product_payload(root_u)
@@ -768,55 +824,222 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             "message": "该品种暂无新浪商品期权链数据（股指期权或未上市品种）。",
             "asof": datetime.now().isoformat(timespec="seconds"),
         }
-    selected = (month or months[0]).lower()
-    if selected not in {m.lower() for m in months}:
-        selected = months[0].lower()
-    chain = _option_chain_table(root_u, selected)
+
+    month_raw = (month or "all").strip().lower()
+    select_all = month_raw in {"", "all", "*", "全部"}
+    selected_months = months[:6] if select_all else [month_raw]
+    if not select_all:
+        if selected_months[0] not in {m.lower() for m in months}:
+            selected_months = [months[0].lower()]
+        else:
+            # keep original casing from catalog when possible
+            selected_months = [next(m for m in months if m.lower() == selected_months[0])]
+
     board = _spot_board_row(root_u)
-    fut = _futures_zh_spot(selected) or _futures_zh_spot(f"{root_u}0")
-    underlying = (
-        (fut or {}).get("price")
+    continuous = _futures_zh_spot(f"{root_u}0")
+    fallback_underlying = (
+        (continuous or {}).get("price")
         or (board or {}).get("dominant_contract_price")
         or (board or {}).get("spot_price")
         or 0.0
     )
-    T = _year_fraction_to_month(selected)
     mult = float(product.get("option_multiplier") or product.get("multiplier") or 1)
     margin_rate = float(product.get("option_seller_margin_rate") or 0.12)
-    if chain and underlying > 0:
-        gex = compute_gex(chain, underlying=underlying, multiplier=mult, T=T)
-        max_pain = compute_max_pain(chain)
+
+    month_series: List[Dict[str, Any]] = []
+    chains_for_agg: List[List[Dict[str, Any]]] = []
+    underlyings: List[float] = []
+    Ts: List[float] = []
+
+    for m in selected_months:
+        chain = _option_chain_table(root_u, m)
+        if not chain:
+            continue
+        fut = _futures_zh_spot(m) or continuous
+        underlying = (fut or {}).get("price") or fallback_underlying
+        T = _year_fraction_to_month(m)
+        underlyings.append(float(underlying or 0.0))
+        Ts.append(float(T))
+        chains_for_agg.append(chain)
+        gex = (
+            compute_gex(chain, underlying=float(underlying or 0.0), multiplier=mult, T=T)
+            if underlying and chain
+            else {"points": [], "summary": {}, "portfolio_greeks": {}, "iv_smile": []}
+        )
+        max_pain = compute_max_pain(chain) if chain else None
         tv_yield = _time_value_annualized_yield(
             chain,
-            underlying=underlying,
+            underlying=float(underlying or 0.0),
             multiplier=mult,
             margin_rate=margin_rate,
             T=T,
-            month=selected,
+            month=m,
         )
+        month_series.append(
+            {
+                "month": m,
+                "underlying": underlying,
+                "T": T,
+                "gex_distribution": gex.get("points") or [],
+                "gex_summary": gex.get("summary") or {},
+                "greeks": gex.get("portfolio_greeks") or {},
+                "iv_smile": gex.get("iv_smile") or [],
+                "max_pain": max_pain,
+                "time_value_yield": tv_yield,
+            }
+        )
+
+    if not month_series:
+        return {
+            "root": root_u,
+            "name_cn": product.get("name_cn") or root_u,
+            "available": True,
+            "months": months,
+            "month": "all" if select_all else (selected_months[0] if selected_months else None),
+            "underlying": fallback_underlying,
+            "current_price": fallback_underlying,
+            "multiplier": mult,
+            "margin_rate": margin_rate,
+            "chain": [],
+            "greeks": {},
+            "gex_summary": {},
+            "gex_distribution": [],
+            "iv_smile": [],
+            "max_pain": None,
+            "time_value_yield": {"month": None, "T": 0, "call": [], "put": []},
+            "month_series": [],
+            "asof": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    if select_all:
+        agg_chain = _aggregate_chains_by_strike(chains_for_agg)
+        underlying = next((u for u in underlyings if u > 0), fallback_underlying)
+        T = (sum(Ts) / len(Ts)) if Ts else 30 / 365.0
+        gex = compute_gex(agg_chain, underlying=float(underlying or 0.0), multiplier=mult, T=T) if agg_chain and underlying else {
+            "points": [],
+            "summary": {},
+            "portfolio_greeks": {},
+            "iv_smile": [],
+        }
+        # Max pain on aggregated OI
+        max_pain = compute_max_pain(agg_chain) if agg_chain else None
+        selected_label = "all"
+        # Overlay series for non-GEX charts come from month_series
+        iv_smile = []
+        for item in month_series:
+            for point in item.get("iv_smile") or []:
+                iv_smile.append({**point, "month": item["month"]})
+        # Flatten TV for convenience; frontend mainly uses month_series
+        tv_yield = {"month": "all", "T": T, "call": [], "put": [], "by_month": [m["time_value_yield"] for m in month_series]}
+        chain = agg_chain
+        greeks = gex.get("portfolio_greeks") or {}
+        gex_summary = gex.get("summary") or {}
+        gex_distribution = gex.get("points") or []
     else:
-        gex = {"points": [], "summary": {}, "portfolio_greeks": {}, "iv_smile": []}
-        max_pain = None
-        tv_yield = {"month": selected, "T": T, "call": [], "put": []}
+        primary = month_series[0]
+        selected_label = primary["month"]
+        underlying = primary["underlying"]
+        T = primary["T"]
+        chain = chains_for_agg[0]
+        greeks = primary["greeks"]
+        gex_summary = primary["gex_summary"]
+        gex_distribution = primary["gex_distribution"]
+        iv_smile = primary["iv_smile"]
+        max_pain = primary["max_pain"]
+        tv_yield = primary["time_value_yield"]
+
     return {
         "root": root_u,
         "name_cn": product.get("name_cn") or root_u,
         "available": True,
         "months": months,
-        "month": selected,
+        "month": selected_label,
         "underlying": underlying,
         "current_price": underlying,
         "multiplier": mult,
         "margin_rate": margin_rate,
         "T": T,
         "chain": chain,
-        "greeks": gex.get("portfolio_greeks") or {},
-        "gex_summary": gex.get("summary") or {},
-        "gex_distribution": gex.get("points") or [],
-        "iv_smile": gex.get("iv_smile") or [],
+        "greeks": greeks,
+        "gex_summary": gex_summary,
+        "gex_distribution": gex_distribution,
+        "iv_smile": iv_smile,
         "max_pain": max_pain,
         "time_value_yield": tv_yield,
+        "month_series": month_series,
         "asof": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def build_chart_history(
+    root: str,
+    *,
+    chart_key: str,
+    days: int = 30,
+    month: Optional[str] = None,
+) -> Dict[str, Any]:
+    """History view for chart drill-down.
+
+    Futures charts prefer continuous daily bars (price/OI/capital).
+    Options charts currently expose cross-month snapshots as period overlays,
+    since public Sina option chain history is limited.
+    """
+    root_u = str(root or "").upper()
+    product = _product_payload(root_u)
+    days = max(7, min(int(days or 30), 180))
+    chart = str(chart_key or "").strip()
+    asof = datetime.now().isoformat(timespec="seconds")
+
+    if chart.startswith("futures"):
+        symbol = f"{root_u}0"
+        points = []
+        try:
+            frame = _ak().futures_zh_daily_sina(symbol=symbol)
+            if frame is not None and not getattr(frame, "empty", True):
+                tail = frame.tail(days)
+                mult = float(product.get("multiplier") or 1)
+                for _, row in tail.iterrows():
+                    price = _safe_float(row.get("close") or row.get("settle") or row.get("hold"))
+                    # sina daily columns vary; try common names
+                    oi = _safe_float(row.get("hold") or row.get("open_interest") or row.get("oi"))
+                    volume = _safe_float(row.get("volume") or row.get("vol"))
+                    date_v = str(row.get("date") or row.get("datetime") or "")
+                    points.append(
+                        {
+                            "date": date_v,
+                            "price": price,
+                            "open_interest": oi,
+                            "volume": volume,
+                            "futures_capital": price * oi * mult,
+                        }
+                    )
+        except Exception as exc:
+            logger.warning("chart history futures daily failed root=%s: %s", root_u, exc)
+        return {
+            "root": root_u,
+            "chart_key": chart,
+            "mode": "daily",
+            "days": days,
+            "points": points,
+            "note": "连续合约日线沉淀资金 = 收盘价 × 持仓 × 乘数。",
+            "asof": asof,
+        }
+
+    # Options / generic: return current options panel slices by month as "periods"
+    options = build_options_panel(root_u, month=month or "all")
+    series = options.get("month_series") or []
+    return {
+        "root": root_u,
+        "chart_key": chart,
+        "mode": "by_month",
+        "days": days,
+        "month": options.get("month"),
+        "current_price": options.get("current_price"),
+        "gex_distribution": options.get("gex_distribution") or [],
+        "gex_summary": options.get("gex_summary") or {},
+        "month_series": series,
+        "note": "期权链公开历史有限，历史趋势暂以各到期月截面叠加展示；后续可接入本地落库快照。",
+        "asof": asof,
     }
 
 

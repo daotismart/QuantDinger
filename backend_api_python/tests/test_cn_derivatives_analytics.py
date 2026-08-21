@@ -154,3 +154,48 @@ def test_gex_points_include_total_oi():
     chain = [_chain_row(3000, 40, 40, 30, 20)]
     gex = svc.compute_gex(chain, underlying=3000.0, multiplier=10.0, T=0.2)
     assert gex["points"][0]["total_oi"] == 50.0
+
+
+def test_aggregate_chains_sums_oi_and_weights_mid():
+    chains = [
+        [_chain_row(3000, 40, 20, 10, 5)],
+        [_chain_row(3000, 60, 30, 30, 15)],
+    ]
+    rows = svc._aggregate_chains_by_strike(chains)
+    assert len(rows) == 1
+    assert rows[0]["call_oi"] == 40.0
+    assert rows[0]["put_oi"] == 20.0
+    assert rows[0]["call_mid"] == pytest.approx((40 * 10 + 60 * 30) / 40)
+    assert rows[0]["put_mid"] == pytest.approx((20 * 5 + 30 * 15) / 20)
+
+
+def test_build_options_panel_defaults_to_all(monkeypatch):
+    chain_a = [_chain_row(3000, 40, 20, 10, 5)]
+    chain_b = [_chain_row(3100, 20, 40, 8, 12)]
+
+    monkeypatch.setattr(svc, "_option_months", lambda root: ["m2505", "m2509"])
+    monkeypatch.setattr(
+        svc,
+        "_option_chain_table",
+        lambda root, month: chain_a if "05" in month else chain_b,
+    )
+    monkeypatch.setattr(svc, "_spot_board_row", lambda root: {"spot_price": 3000, "dominant_contract_price": 3010})
+    monkeypatch.setattr(svc, "_futures_zh_spot", lambda symbol: {"price": 3020})
+    monkeypatch.setattr(
+        svc,
+        "_product_payload",
+        lambda root: {
+            "root": "M",
+            "name_cn": "豆粕",
+            "multiplier": 10,
+            "option_multiplier": 10,
+            "option_seller_margin_rate": 0.12,
+        },
+    )
+    data = svc.build_options_panel("M", month="all")
+    assert data["month"] == "all"
+    assert len(data["month_series"]) == 2
+    assert data["gex_distribution"]
+    # aggregated should include both strikes
+    strikes = {p["strike"] for p in data["gex_distribution"]}
+    assert 3000.0 in strikes and 3100.0 in strikes
