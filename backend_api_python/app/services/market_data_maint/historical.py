@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Optional
 
 from app.data_sources import DataSourceFactory
@@ -114,28 +115,73 @@ def run_historical_maintenance(
     *,
     settings: Optional[MarketDataMaintSettings] = None,
     trigger: str = "manual",
+    on_progress=None,
 ) -> Dict[str, Any]:
     settings = settings or MarketDataMaintSettings.load()
     if not settings.enabled or not settings.historical_enabled:
         return {"skipped": True, "reason": "disabled"}
+
     run_id = repository.claim_run(run_kind="historical", trigger_type=trigger)
-    results = []
-    errors = []
-    for spec in specs:
+    if run_id is None:
+        return {"skipped": True, "reason": "already_running"}
+
+    results: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    timed_out = False
+
+    try:
+        SoftTimeLimitExceeded = Exception
         try:
-            results.append(maintain_symbol(spec, settings=settings))
-        except Exception as exc:
-            logger.exception("historical maintain failed %s", spec.key())
-            errors.append({"symbol": spec.key(), "error": str(exc)})
+            from celery.exceptions import SoftTimeLimitExceeded as _Soft
+
+            SoftTimeLimitExceeded = _Soft
+        except Exception:
+            pass
+
+        for index, spec in enumerate(specs):
+            if callable(on_progress):
+                try:
+                    on_progress(index, len(specs), spec)
+                except Exception:
+                    logger.debug("historical on_progress callback failed", exc_info=True)
+            try:
+                results.append(maintain_symbol(spec, settings=settings))
+            except SoftTimeLimitExceeded:
+                timed_out = True
+                errors.append({"symbol": spec.key(), "error": "soft_time_limit"})
+                logger.warning(
+                    "historical maintenance soft-timeout after %s/%s symbols",
+                    index,
+                    len(specs),
+                )
+                break
+            except Exception as exc:
+                logger.exception("historical maintain failed %s", spec.key())
+                errors.append({"symbol": spec.key(), "error": str(exc)})
+    except Exception as exc:
+        # Ensure the run row never stays stuck in running.
+        payload = {
+            "symbols": len(specs),
+            "processed": len(results),
+            "errors": errors + [{"symbol": "*", "error": str(exc)}],
+            "results": results,
+            "timed_out": timed_out,
+        }
+        repository.finish_run(run_id, "failed", payload)
+        raise
+
     continuity_ok = sum(1 for item in results if item.get("continuity_ok"))
     accuracy_ok = sum(1 for item in results if item.get("accuracy_ok"))
     status = "success"
-    if errors and results:
+    if timed_out:
+        status = "partial"
+    elif errors and results:
         status = "partial"
     elif errors and not results:
         status = "failed"
     elif results and continuity_ok < len(results):
         status = "partial"
+
     payload = {
         "symbols": len(specs),
         "processed": len(results),
@@ -143,9 +189,10 @@ def run_historical_maintenance(
         "accuracy_ok": accuracy_ok,
         "errors": errors,
         "results": results,
+        "timed_out": timed_out,
+        "batch_size_env": int(os.getenv("MARKET_DATA_MAINT_HISTORICAL_BATCH_SIZE", "40") or 40),
     }
-    if run_id is not None:
-        repository.finish_run(run_id, status, payload)
+    repository.finish_run(run_id, status, payload)
     payload["status"] = status
     payload["run_id"] = run_id
     return payload

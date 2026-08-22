@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.market_data_maint.config import parse_watch_csv
+from app.services.market_data_maint.config import WatchSpec, parse_watch_csv
 from app.services.market_data_maint.validators import (
     align_bar_time,
     detect_gaps,
@@ -13,6 +13,25 @@ from app.services.market_data_maint.validators import (
 from app.services.ctp_md.models import tick_from_depth_market_data
 from app.services.market_data_maint.realtime import RealtimeMaintainer
 from app.services.market_data_maint.config import MarketDataMaintSettings
+from app.services.market_data_maint.service import normalize_watch_spec, resolve_cn_market
+
+
+def test_normalize_legacy_futures_to_cn_markets():
+    assert resolve_cn_market("rb2505", "Futures") == "CNFutures"
+    assert resolve_cn_market("IF2509", "Futures") == "CNIndexFutures"
+    normalized = normalize_watch_spec(
+        WatchSpec(
+            market="Futures",
+            symbol="rb2505",
+            timeframe="1m",
+            exchange_id="ctp",
+            market_type="futures",
+            lookback_bars=1500,
+        )
+    )
+    assert normalized.market == "CNFutures"
+    assert normalized.exchange_id == ""
+    assert normalized.market_type == "futures"
 
 
 def test_parse_watch_csv_variants():

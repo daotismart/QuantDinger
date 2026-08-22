@@ -13,20 +13,37 @@ logger = get_logger(__name__)
 
 
 def claim_run(*, run_kind: str, trigger_type: str) -> Optional[int]:
+    """Claim a maintenance run, or return None if one is already active."""
     with get_db_connection() as db:
         cur = db.cursor()
         try:
+            # Only reap truly stale runners (worker crash / lost finish_run).
             cur.execute(
                 """
                 UPDATE qd_market_data_maint_runs
                    SET status = 'failed', finished_at = NOW(),
-                       result = '{"error":"interrupted"}'::jsonb
+                       result = '{"error":"stale_running_reaped"}'::jsonb
                  WHERE status = 'running'
                    AND run_kind = ?
-                   AND started_at < NOW() - INTERVAL '2 hours'
+                   AND started_at < NOW() - INTERVAL '3 hours'
                 """,
                 (run_kind,),
             )
+            cur.execute(
+                """
+                SELECT id
+                  FROM qd_market_data_maint_runs
+                 WHERE status = 'running'
+                   AND run_kind = ?
+                 ORDER BY id DESC
+                 LIMIT 1
+                """,
+                (run_kind,),
+            )
+            active = cur.fetchone()
+            if active:
+                db.commit()
+                return None
             cur.execute(
                 """
                 INSERT INTO qd_market_data_maint_runs (run_kind, trigger_type, status)
@@ -401,3 +418,64 @@ def latest_runs(limit: int = 20) -> List[Dict[str, Any]]:
                 item[key] = value.isoformat()
         out.append(item)
     return out
+
+
+def latest_bar_ts(spec: WatchSpec) -> int:
+    """Return latest bar_time for a watch spec, or 0 when missing."""
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT MAX(bar_time) AS max_ts
+                  FROM qd_market_bars
+                 WHERE market = ?
+                   AND symbol = ?
+                   AND timeframe = ?
+                   AND exchange_id = ?
+                   AND market_type = ?
+                """,
+                (
+                    spec.market,
+                    spec.symbol,
+                    spec.timeframe,
+                    spec.exchange_id or "",
+                    spec.market_type or "",
+                ),
+            )
+            row = cur.fetchone() or {}
+            return int(row.get("max_ts") or 0)
+        except Exception as exc:
+            logger.debug("latest_bar_ts failed %s: %s", spec.key(), exc)
+            return 0
+        finally:
+            cur.close()
+
+
+def disable_markets(markets: Sequence[str]) -> int:
+    """Disable watch rows for the given market labels."""
+    labels = [str(item).strip() for item in (markets or []) if str(item).strip()]
+    if not labels:
+        return 0
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            placeholders = ",".join(["?"] * len(labels))
+            cur.execute(
+                f"""
+                UPDATE qd_market_data_watch
+                   SET enabled = FALSE, updated_at = NOW()
+                 WHERE market IN ({placeholders})
+                   AND enabled = TRUE
+                """,
+                tuple(labels),
+            )
+            count = int(cur.rowcount or 0)
+            db.commit()
+            return count
+        except Exception as exc:
+            db.rollback()
+            logger.debug("disable_markets failed: %s", exc)
+            return 0
+        finally:
+            cur.close()

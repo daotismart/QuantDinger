@@ -101,10 +101,9 @@ def run_market_catalog_sync(self):
 @celery_app.task(
     bind=True,
     name="quantdinger.tasks.market_data_historical_maint",
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_jitter=True,
-    max_retries=3,
+    soft_time_limit=max(600, int(__import__("os").getenv("MARKET_DATA_MAINT_SOFT_TIME_LIMIT", "5400") or 5400)),
+    time_limit=max(900, int(__import__("os").getenv("MARKET_DATA_MAINT_TIME_LIMIT", "5700") or 5700)),
+    max_retries=0,
 )
 def run_market_data_historical_maint(self):
     del self
@@ -113,8 +112,21 @@ def run_market_data_historical_maint(self):
     if not _enabled("MARKET_DATA_MAINT_HISTORICAL_ENABLED", "true"):
         return {"skipped": True, "reason": "historical_disabled"}
     from app.services.market_data_maint import run_historical_cycle
+    from celery.exceptions import SoftTimeLimitExceeded
 
-    return run_historical_cycle(trigger="celery-beat")
+    # Long historical cycles can monopolize a concurrency=1 worker. Emit
+    # heartbeats between symbols so container health checks stay green.
+    def _heartbeat(_index=None, _total=None, _spec=None):
+        try:
+            record_worker_heartbeat()
+        except Exception:
+            pass
+
+    _heartbeat()
+    try:
+        return run_historical_cycle(trigger="celery-beat", on_progress=_heartbeat)
+    except SoftTimeLimitExceeded:
+        return {"status": "partial", "reason": "soft_time_limit"}
 
 
 @celery_app.task(
