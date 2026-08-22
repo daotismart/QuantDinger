@@ -552,6 +552,13 @@ def _index_row_from_spot(frame: Any, index_code: str, safe_float) -> Optional[Di
     return None
 
 
+def _etf_option_exchange(code6: str) -> str:
+    from app.markets.cn_options import infer_cn_etf_board
+
+    board = infer_cn_etf_board(code6)
+    return "SZSE" if board == "SZ" else "SSE"
+
+
 def _etf_sse_list_symbol(code6: str) -> str:
     return ETF_SSE_LIST_NAME.get(code6, "50ETF")
 
@@ -590,16 +597,77 @@ def _etf_option_T_from_month(month_yyyymm: str) -> float:
     return 30 / 365.0
 
 
+def _etf_option_T_from_expiry_key(expiry_key: str) -> Optional[float]:
+    digits = re.sub(r"\D", "", str(expiry_key or ""))
+    if len(digits) < 8:
+        return None
+    try:
+        expiry = date(int(digits[:4]), int(digits[4:6]), int(digits[6:8]))
+        return max((expiry - date.today()).days / 365.0, 1 / 365.0)
+    except ValueError:
+        return None
+
+
 def _etf_option_T_from_row(row: Any, month_yyyymm: str, safe_float) -> float:
-    for key in ("期权行权日", "到期日"):
-        raw = str(row.get(key) or "").strip()
-        if len(raw) == 8 and raw.isdigit():
-            try:
-                expiry = date(int(raw[:4]), int(raw[4:6]), int(raw[6:8]))
-                return max((expiry - date.today()).days / 365.0, 1 / 365.0)
-            except ValueError:
-                continue
+    for key in ("期权行权日", "到期日", "行权日"):
+        raw = row.get(key)
+        if raw is None:
+            continue
+        if hasattr(raw, "strftime"):
+            expiry_key = raw.strftime("%Y%m%d")
+        else:
+            expiry_key = str(raw)
+        t_val = _etf_option_T_from_expiry_key(expiry_key)
+        if t_val is not None:
+            return t_val
     return _etf_option_T_from_month(month_yyyymm)
+
+
+def _load_option_current_day_frame(ak_fn, exchange: str) -> Any:
+    fn_name = "option_current_day_szse" if exchange == "SZSE" else "option_current_day_sse"
+    for attempt in range(3):
+        try:
+            fn = getattr(ak_fn(), fn_name, None)
+            if not callable(fn):
+                return None
+            return fn()
+        except Exception as exc:
+            if attempt + 1 >= 3:
+                logger.warning("%s failed: %s", fn_name, exc)
+            else:
+                time.sleep(0.35 * (attempt + 1))
+    return None
+
+
+def _normalize_option_listing_row(row: Any, exchange: str) -> Dict[str, Any]:
+    if exchange == "SZSE":
+        expiry = row.get("行权日")
+        if hasattr(expiry, "strftime"):
+            expiry_key = expiry.strftime("%Y%m%d")
+        else:
+            expiry_key = str(expiry or "")
+        return {
+            "underlying_col": str(row.get("标的证券简称(代码)") or ""),
+            "contract_id": str(row.get("合约代码") or ""),
+            "code": str(row.get("合约编码") or "").strip(),
+            "strike": row.get("行权价"),
+            "opt_type": str(row.get("合约类型") or "").strip(),
+            "contract_unit": row.get("合约单位"),
+            "expiry_row": row,
+            "listing_oi": row.get("合约总持仓"),
+            "prev_settle": row.get("前结算价"),
+        }
+    return {
+        "underlying_col": str(row.get("标的券名称及代码") or ""),
+        "contract_id": str(row.get("合约交易代码") or ""),
+        "code": str(row.get("合约编码") or "").strip(),
+        "strike": row.get("行权价"),
+        "opt_type": str(row.get("类型") or "").strip(),
+        "contract_unit": row.get("合约单位"),
+        "expiry_row": row,
+        "listing_oi": None,
+        "prev_settle": None,
+    }
 
 
 def _normalize_sse_option_month_key(month_yyyymm: str) -> str:
@@ -653,12 +721,21 @@ def _apply_sse_option_quote(
     bucket: Dict[str, Any],
     opt_type: str,
     quote: Dict[str, float],
+    *,
+    listing_oi: float = 0.0,
+    prev_settle: float = 0.0,
 ) -> None:
     bid = float(quote.get("bid") or 0.0)
     ask = float(quote.get("ask") or 0.0)
     last = float(quote.get("last") or 0.0)
     mid = float(quote.get("mid") or 0.0)
     oi = float(quote.get("oi") or 0.0)
+    if oi <= 0 and listing_oi > 0:
+        oi = float(listing_oi)
+    if mid <= 0 and prev_settle > 0:
+        mid = float(prev_settle)
+        if last <= 0:
+            last = mid
     if opt_type == "认购":
         bucket["call_bid"] = bid
         bucket["call_ask"] = ask
@@ -703,6 +780,26 @@ def _fetch_sse_option_quote(
     return {}
 
 
+def _apply_listing_fallback_quote(
+    bucket: Dict[str, Any],
+    opt_type: str,
+    listing_oi: float,
+    prev_settle: float,
+    safe_float,
+) -> None:
+    oi = safe_float(listing_oi)
+    mid = safe_float(prev_settle)
+    if oi <= 0 and mid <= 0:
+        return
+    _apply_sse_option_quote(
+        bucket,
+        opt_type,
+        {"bid": 0.0, "ask": 0.0, "last": mid, "mid": mid, "oi": oi},
+        listing_oi=oi,
+        prev_settle=mid,
+    )
+
+
 def _etf_option_chain_from_current_day(
     code6: str,
     month_yyyymm: str,
@@ -710,15 +807,13 @@ def _etf_option_chain_from_current_day(
     mid_fn,
     safe_float,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    exchange = _etf_option_exchange(code6)
     meta: Dict[str, Any] = {
         "multiplier": 10000.0,
         "T": _etf_option_T_from_month(month_yyyymm),
+        "exchange": exchange,
     }
-    try:
-        frame = ak_fn().option_current_day_sse()
-    except Exception as exc:
-        logger.warning("option_current_day_sse failed for %s: %s", code6, exc)
-        return [], meta
+    frame = _load_option_current_day_frame(ak_fn, exchange)
     if frame is None or getattr(frame, "empty", True):
         return [], meta
 
@@ -726,25 +821,38 @@ def _etf_option_chain_from_current_day(
     pending: List[Dict[str, Any]] = []
     strikes: Dict[float, Dict[str, Any]] = {}
     for _, row in frame.iterrows():
-        underlying_col = str(row.get("标的券名称及代码") or "")
-        if not _etf_underlying_col_matches(underlying_col, code6):
+        norm = _normalize_option_listing_row(row, exchange)
+        if not _etf_underlying_col_matches(norm["underlying_col"], code6):
             continue
-        contract_id = str(row.get("合约交易代码") or "")
+        contract_id = norm["contract_id"]
         if month_key and month_key not in contract_id:
             continue
-        strike = safe_float(row.get("行权价"))
+        strike = safe_float(norm["strike"])
         if strike <= 0:
             continue
-        opt_type = str(row.get("类型") or "").strip()
-        contract_unit = safe_float(row.get("合约单位"))
+        opt_type = norm["opt_type"]
+        contract_unit = safe_float(norm["contract_unit"])
         if contract_unit > 0:
             meta["multiplier"] = contract_unit
-        meta["T"] = _etf_option_T_from_row(row, month_yyyymm, safe_float)
+        expiry_row = norm.get("expiry_row")
+        if expiry_row is not None:
+            meta["T"] = _etf_option_T_from_row(expiry_row, month_yyyymm, safe_float)
         bucket = strikes.setdefault(strike, _empty_etf_option_chain_bucket(strike))
-        code = str(row.get("合约编码") or "").strip()
+        code = norm["code"]
         if not code:
             continue
-        pending.append({"code": code, "strike": strike, "opt_type": opt_type, "bucket": bucket})
+        listing_oi = safe_float(norm.get("listing_oi"))
+        prev_settle = safe_float(norm.get("prev_settle"))
+        pending.append(
+            {
+                "code": code,
+                "strike": strike,
+                "opt_type": opt_type,
+                "bucket": bucket,
+                "listing_oi": listing_oi,
+                "prev_settle": prev_settle,
+            }
+        )
 
     if not pending:
         return [], meta
@@ -776,7 +884,21 @@ def _etf_option_chain_from_current_day(
     for item in pending:
         quote = quote_by_code.get(item["code"])
         if quote:
-            _apply_sse_option_quote(item["bucket"], item["opt_type"], quote)
+            _apply_sse_option_quote(
+                item["bucket"],
+                item["opt_type"],
+                quote,
+                listing_oi=item.get("listing_oi") or 0.0,
+                prev_settle=item.get("prev_settle") or 0.0,
+            )
+        else:
+            _apply_listing_fallback_quote(
+                item["bucket"],
+                item["opt_type"],
+                item.get("listing_oi") or 0.0,
+                item.get("prev_settle") or 0.0,
+                safe_float,
+            )
 
     rows = list(strikes.values())
     rows.sort(key=lambda item: item["strike"])
