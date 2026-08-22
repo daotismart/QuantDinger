@@ -54,6 +54,15 @@ SPOT_INDEX_CN_NAMES: Dict[str, str] = {
     "399905.SZ": "中证500指数",
 }
 
+# ETF underlying -> related CFFEX index-futures root (if any).
+ETF_INDEX_FUTURES_ROOT: Dict[str, str] = {
+    "510050": "IH",
+    "510300": "IF",
+    "510500": "IC",
+    "159919": "IF",
+    "159922": "IC",
+}
+
 
 def _cn_display_name(symbol: str, fallback: str = "") -> str:
     sym = str(symbol or "").strip().upper()
@@ -86,115 +95,58 @@ def _product_row(
     return row
 
 
-def list_etf_derivative_products(tab: str) -> List[Dict[str, Any]]:
-    from app.services.cn_derivatives_analytics import _product_payload
-    from app.services.cn_options_chain import (
-        listed_etf_index_catalog,
-        listed_etf_underlying_catalog,
+def _etf_picker_row(item: Dict[str, Any]) -> Dict[str, Any]:
+    """One shared picker row for an ETF option underlying (used by all tabs)."""
+    from app.markets.cn_options import etf_benchmark_display_name, etf_benchmark_symbol
+
+    sym = str(item.get("symbol") or "").strip().upper()
+    code6 = _etf_code6(sym)
+    name = _cn_display_name(code6, str(item.get("name") or sym))
+    index_symbol = etf_benchmark_symbol(code6) or ""
+    index_name = (
+        _cn_display_name(index_symbol, etf_benchmark_display_name(code6))
+        if index_symbol
+        else ""
+    )
+    futures_root = ETF_INDEX_FUTURES_ROOT.get(code6, "")
+    return _product_row(
+        root=sym or code6,
+        name_cn=name,
+        picker_kind="cn_etf",
+        market="CNStock",
+        underlying_code=code6,
+        product_class="etf",
+        stock_symbol=sym or code6,
+        exchange=str(item.get("exchange") or "CN").upper(),
+        multiplier=10000.0,
+        option_multiplier=10000.0,
+        has_options=True,
+        has_option_chain=True,
+        index_symbol=index_symbol,
+        index_name=index_name,
+        index_futures_root=futures_root,
     )
 
-    tab_key = str(tab or "index").strip().lower()
+
+def list_etf_derivative_products(tab: str = "") -> List[Dict[str, Any]]:
+    """Return the shared ETF picker list.
+
+    The ETF workbench selects an ETF once; index / ETF / options tabs all reuse
+    the same underlying. ``tab`` is kept for API compatibility but ignored.
+    """
+    from app.services.cn_options_chain import listed_etf_underlying_catalog
+
+    _ = str(tab or "").strip().lower()
     rows: List[Dict[str, Any]] = []
-
-    if tab_key == "index":
-        for root in ETF_INDEX_ROOTS:
-            payload = _product_payload(root)
-            payload["picker_kind"] = "index_futures"
-            payload["market"] = "CNIndexFutures"
-            payload["name_cn"] = payload.get("name_cn") or payload.get("name") or root
-            rows.append(payload)
-        for item in listed_etf_index_catalog():
-            sym = str(item.get("symbol") or "").strip().upper()
-            if not sym:
-                continue
-            name = _cn_display_name(sym, str(item.get("name") or sym))
-            rows.append(
-                _product_row(
-                    root=sym,
-                    name_cn=name,
-                    picker_kind="spot_index",
-                    market="CNStock",
-                    product_class="index",
-                    stock_symbol=sym,
-                )
-            )
-        rows.sort(key=lambda r: (0 if r.get("picker_kind") == "index_futures" else 1, r["root"]))
-        return rows
-
-    if tab_key == "etf":
-        seen_cn: set[str] = set()
-        for item in listed_etf_underlying_catalog():
-            sym = str(item.get("symbol") or "").strip().upper()
-            code6 = _etf_code6(sym)
-            if not sym or sym in seen_cn:
-                continue
-            seen_cn.add(sym)
-            name = _cn_display_name(code6, str(item.get("name") or sym))
-            rows.append(
-                _product_row(
-                    root=sym,
-                    name_cn=name,
-                    picker_kind="cn_etf",
-                    market="CNStock",
-                    underlying_code=code6,
-                    product_class="etf",
-                    stock_symbol=sym,
-                    exchange=str(item.get("exchange") or "CN").upper(),
-                    multiplier=10000.0,
-                    option_multiplier=10000.0,
-                )
-            )
-        try:
-            from app.data.market_symbols_seed import get_hot_symbols
-
-            for market in ("USStock", "HKStock"):
-                for item in get_hot_symbols(market, limit=40, asset_class="etf"):
-                    sym = str(item.get("symbol") or "").strip().upper()
-                    if not sym:
-                        continue
-                    name = str(item.get("name") or sym).strip()
-                    rows.append(
-                        _product_row(
-                            root=sym,
-                            name_cn=name,
-                            picker_kind="us_hk_etf",
-                            market=market,
-                            product_class="etf",
-                            stock_symbol=sym,
-                        )
-                    )
-        except Exception as exc:
-            logger.warning("us/hk etf catalog failed: %s", exc)
-        rows.sort(key=lambda r: (r.get("market") or "", r["root"]))
-        return rows
-
-    if tab_key == "etfoptions":
-        seen: set[str] = set()
-        for item in listed_etf_underlying_catalog():
-            sym = str(item.get("symbol") or "").strip().upper()
-            code6 = _etf_code6(sym)
-            if not code6 or code6 in seen:
-                continue
-            seen.add(code6)
-            name = _cn_display_name(code6, str(item.get("name") or sym))
-            rows.append(
-                _product_row(
-                    root=code6,
-                    name_cn=f"{name}（{sym}）",
-                    picker_kind="etf_options",
-                    market="CNIndexOptions",
-                    underlying_code=code6,
-                    stock_symbol=sym,
-                    has_options=True,
-                    has_option_chain=True,
-                    option_multiplier=10000.0,
-                    exchange=str(item.get("exchange") or "CN").upper(),
-                )
-            )
-        rows.sort(key=lambda r: r["root"])
-        return rows
-
-    return list_etf_derivative_products("index")
+    seen: set[str] = set()
+    for item in listed_etf_underlying_catalog():
+        code6 = _etf_code6(item.get("symbol"))
+        if not code6 or code6 in seen:
+            continue
+        seen.add(code6)
+        rows.append(_etf_picker_row(item))
+    rows.sort(key=lambda r: r.get("underlying_code") or r["root"])
+    return rows
 
 
 def _etf_product_payload(code6: str) -> Dict[str, Any]:
