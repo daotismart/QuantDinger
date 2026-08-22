@@ -71,7 +71,19 @@ def test_apply_sse_option_quote_populates_call_and_put_fields():
     assert bucket["put_mid"] == 0.015
 
 
-def test_etf_option_chain_from_current_day_merges_quotes_per_strike():
+def test_etf_sse_list_symbol_for_star50():
+    from app.services.cn_derivatives_etf import _etf_sse_list_symbol
+
+    assert _etf_sse_list_symbol("588000") == "科创50ETF"
+    assert _etf_sse_list_symbol("588080") == "科创50ETF"
+
+
+def test_etf_underlying_col_matches_star50():
+    from app.services.cn_derivatives_etf import _etf_underlying_col_matches
+
+    assert _etf_underlying_col_matches("科创50(588000)", "588000")
+    assert _etf_underlying_col_matches("科创板50(588080)", "588080")
+    assert not _etf_underlying_col_matches("50ETF(510050)", "588000")
     current_day = pd.DataFrame(
         [
             {
@@ -115,7 +127,7 @@ def test_etf_option_chain_from_current_day_merges_quotes_per_strike():
         def option_sse_spot_price_sina(self, symbol=""):
             return make_spot(symbol)
 
-    chain = _etf_option_chain_from_current_day(
+    chain, _meta = _etf_option_chain_from_current_day(
         "510050",
         "202608",
         lambda: FakeAk(),

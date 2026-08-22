@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.utils.logger import get_logger
 
@@ -21,6 +23,8 @@ ETF_SSE_LIST_NAME: Dict[str, str] = {
     "510050": "50ETF",
     "510300": "300ETF",
     "510500": "500ETF",
+    "588000": "科创50ETF",
+    "588080": "科创50ETF",
     "159901": "100ETF",
     "159915": "创业板ETF",
     "159919": "300ETF",
@@ -420,17 +424,11 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
     Ts: List[float] = []
 
     for m in selected_months:
-        chain = _etf_option_chain_from_current_day(code6, m, _ak, _mid, _safe_float)
+        chain, chain_meta = _etf_option_chain_from_current_day(code6, m, _ak, _mid, _safe_float)
         if not chain:
             continue
-        month_digits = "".join(ch for ch in m if ch.isdigit())
-        if len(month_digits) == 4:
-            yy = int(month_digits[:2])
-            mm = int(month_digits[2:])
-            expiry = date(2000 + yy, mm, 25)
-            T = max((expiry - date.today()).days / 365.0, 1 / 365.0)
-        else:
-            T = 30 / 365.0
+        mult = float(chain_meta.get("multiplier") or mult)
+        T = float(chain_meta.get("T") or (30 / 365.0))
         underlyings.append(underlying)
         Ts.append(T)
         chains_for_agg.append(chain)
@@ -554,14 +552,54 @@ def _index_row_from_spot(frame: Any, index_code: str, safe_float) -> Optional[Di
     return None
 
 
+def _etf_sse_list_symbol(code6: str) -> str:
+    return ETF_SSE_LIST_NAME.get(code6, "50ETF")
+
+
+def _etf_underlying_col_matches(underlying_col: str, code6: str) -> bool:
+    col = str(underlying_col or "")
+    if not col or not code6:
+        return False
+    if re.search(rf"(?:^|\D){re.escape(code6)}(?:\D|$)", col):
+        return True
+    return code6 in col
+
+
 def _etf_option_months(code6: str, ak_fn) -> List[str]:
-    list_symbol = ETF_SSE_LIST_NAME.get(code6, "50ETF")
+    list_symbol = _etf_sse_list_symbol(code6)
     try:
         months = ak_fn().option_sse_list_sina(symbol=list_symbol)
         return [str(m).strip().lower() for m in (months or []) if str(m).strip()]
     except Exception as exc:
         logger.warning("etf option months %s failed: %s", code6, exc)
         return []
+
+
+def _etf_option_T_from_month(month_yyyymm: str) -> float:
+    month_digits = "".join(ch for ch in str(month_yyyymm or "") if ch.isdigit())
+    if len(month_digits) == 4:
+        yy = int(month_digits[:2])
+        mm = int(month_digits[2:])
+        expiry = date(2000 + yy, mm, 25)
+        return max((expiry - date.today()).days / 365.0, 1 / 365.0)
+    if len(month_digits) == 6:
+        yy = int(month_digits[:4])
+        mm = int(month_digits[4:6])
+        expiry = date(yy, max(1, min(mm, 12)), 25)
+        return max((expiry - date.today()).days / 365.0, 1 / 365.0)
+    return 30 / 365.0
+
+
+def _etf_option_T_from_row(row: Any, month_yyyymm: str, safe_float) -> float:
+    for key in ("期权行权日", "到期日"):
+        raw = str(row.get(key) or "").strip()
+        if len(raw) == 8 and raw.isdigit():
+            try:
+                expiry = date(int(raw[:4]), int(raw[4:6]), int(raw[6:8]))
+                return max((expiry - date.today()).days / 365.0, 1 / 365.0)
+            except ValueError:
+                continue
+    return _etf_option_T_from_month(month_yyyymm)
 
 
 def _normalize_sse_option_month_key(month_yyyymm: str) -> str:
@@ -600,7 +638,15 @@ def _sse_option_spot_values(spot_frame: Any, safe_float, mid_fn) -> Dict[str, fl
     last = safe_float(values.get("最新价"))
     oi = safe_float(values.get("持仓量"))
     mid = mid_fn(bid, ask, last)
-    return {"bid": bid, "ask": ask, "last": last, "mid": mid, "oi": oi}
+    underlying = str(values.get("标的股票") or values.get("标的证券") or "").strip()
+    return {
+        "bid": bid,
+        "ask": ask,
+        "last": last,
+        "mid": mid,
+        "oi": oi,
+        "underlying": underlying,
+    }
 
 
 def _apply_sse_option_quote(
@@ -627,26 +673,61 @@ def _apply_sse_option_quote(
         bucket["put_oi"] = oi
 
 
+def _fetch_sse_option_quote(
+    ak_fn,
+    contract_code: str,
+    code6: str,
+    safe_float,
+    mid_fn,
+    *,
+    retries: int = 3,
+) -> Dict[str, float]:
+    code = str(contract_code or "").strip()
+    if not code:
+        return {}
+    for attempt in range(max(1, retries)):
+        try:
+            spot = ak_fn().option_sse_spot_price_sina(symbol=code)
+            quote = _sse_option_spot_values(spot, safe_float, mid_fn)
+            if not quote:
+                continue
+            underlying = _etf_code6(quote.get("underlying") or "")
+            if underlying and underlying != code6:
+                return {}
+            return quote
+        except Exception as exc:
+            if attempt + 1 >= retries:
+                logger.debug("etf option quote %s failed: %s", code, exc)
+            else:
+                time.sleep(0.12 * (attempt + 1))
+    return {}
+
+
 def _etf_option_chain_from_current_day(
     code6: str,
     month_yyyymm: str,
     ak_fn,
     mid_fn,
     safe_float,
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    meta: Dict[str, Any] = {
+        "multiplier": 10000.0,
+        "T": _etf_option_T_from_month(month_yyyymm),
+    }
     try:
         frame = ak_fn().option_current_day_sse()
     except Exception as exc:
-        logger.warning("option_current_day_sse failed: %s", exc)
-        return []
+        logger.warning("option_current_day_sse failed for %s: %s", code6, exc)
+        return [], meta
     if frame is None or getattr(frame, "empty", True):
-        return []
+        return [], meta
 
     month_key = _normalize_sse_option_month_key(month_yyyymm)
+    pending: List[Dict[str, Any]] = []
     strikes: Dict[float, Dict[str, Any]] = {}
     for _, row in frame.iterrows():
         underlying_col = str(row.get("标的券名称及代码") or "")
-        if code6 not in underlying_col:
+        if not _etf_underlying_col_matches(underlying_col, code6):
             continue
         contract_id = str(row.get("合约交易代码") or "")
         if month_key and month_key not in contract_id:
@@ -655,17 +736,48 @@ def _etf_option_chain_from_current_day(
         if strike <= 0:
             continue
         opt_type = str(row.get("类型") or "").strip()
+        contract_unit = safe_float(row.get("合约单位"))
+        if contract_unit > 0:
+            meta["multiplier"] = contract_unit
+        meta["T"] = _etf_option_T_from_row(row, month_yyyymm, safe_float)
         bucket = strikes.setdefault(strike, _empty_etf_option_chain_bucket(strike))
         code = str(row.get("合约编码") or "").strip()
         if not code:
             continue
-        try:
-            spot = ak_fn().option_sse_spot_price_sina(symbol=code)
-            quote = _sse_option_spot_values(spot, safe_float, mid_fn)
+        pending.append({"code": code, "strike": strike, "opt_type": opt_type, "bucket": bucket})
+
+    if not pending:
+        return [], meta
+
+    quote_by_code: Dict[str, Dict[str, float]] = {}
+    max_workers = min(8, len(pending))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(
+                _fetch_sse_option_quote,
+                ak_fn,
+                item["code"],
+                code6,
+                safe_float,
+                mid_fn,
+            ): item["code"]
+            for item in pending
+        }
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                quote = future.result()
+            except Exception as exc:
+                logger.debug("etf option quote task %s failed: %s", code, exc)
+                quote = {}
             if quote:
-                _apply_sse_option_quote(bucket, opt_type, quote)
-        except Exception as exc:
-            logger.debug("etf option quote %s failed: %s", code, exc)
+                quote_by_code[code] = quote
+
+    for item in pending:
+        quote = quote_by_code.get(item["code"])
+        if quote:
+            _apply_sse_option_quote(item["bucket"], item["opt_type"], quote)
+
     rows = list(strikes.values())
     rows.sort(key=lambda item: item["strike"])
-    return rows
+    return rows, meta
