@@ -326,12 +326,8 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
         raise ValueError("ETF code is required")
 
     ak = _ak()
-    etf_frame = None
+    etf_frame = _load_etf_spot_frame_sina(ak)
     index_frame = None
-    try:
-        etf_frame = ak.fund_etf_spot_em()
-    except Exception as exc:
-        logger.warning("fund_etf_spot_em failed: %s", exc)
     try:
         index_frame = ak.stock_zh_index_spot_sina()
     except Exception as exc:
@@ -514,6 +510,15 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
     }
 
 
+def _load_etf_spot_frame_sina(ak_fn) -> Any:
+    """Load CN ETF spot quotes from Sina (no East Money)."""
+    try:
+        return ak_fn().fund_etf_category_sina(symbol="ETF基金")
+    except Exception as exc:
+        logger.warning("fund_etf_category_sina failed: %s", exc)
+        return None
+
+
 def _etf_row_from_spot(frame: Any, code6: str, safe_float) -> Optional[Dict[str, Any]]:
     if frame is None or getattr(frame, "empty", True):
         return None
@@ -530,6 +535,8 @@ def _etf_row_from_spot(frame: Any, code6: str, safe_float) -> Optional[Dict[str,
             "premium_rate": safe_float(row.get("基金折价率")),
             "volume": safe_float(row.get("成交量")),
             "amount": safe_float(row.get("成交额")),
+            "bid": safe_float(row.get("买入")),
+            "ask": safe_float(row.get("卖出")),
         }
     return None
 

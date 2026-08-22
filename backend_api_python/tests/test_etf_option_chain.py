@@ -88,6 +88,36 @@ def test_apply_sse_option_quote_uses_listing_oi_fallback():
     assert bucket["call_oi"] == 1784.0
 
 
+def test_etf_row_from_spot_parses_sina_symbol_codes():
+    from app.services.cn_derivatives_etf import _etf_row_from_spot
+
+    frame = pd.DataFrame(
+        [
+            {
+                "代码": "sh510050",
+                "名称": "上证50ETF华夏",
+                "最新价": 2.993,
+                "成交量": 1000,
+                "成交额": 2000,
+                "买入": 2.992,
+                "卖出": 2.993,
+            },
+            {
+                "代码": "sz159915",
+                "名称": "创业板ETF易方达",
+                "最新价": 3.56,
+                "成交量": 500,
+                "成交额": 800,
+            },
+        ]
+    )
+    sh = _etf_row_from_spot(frame, "510050", _safe_float)
+    sz = _etf_row_from_spot(frame, "159915", _safe_float)
+    assert sh["price"] == 2.993
+    assert sh["bid"] == 2.992
+    assert sz["price"] == 3.56
+
+
 def test_etf_option_chain_from_current_day_merges_sse_quotes_per_strike():
     current_day = pd.DataFrame(
         [
