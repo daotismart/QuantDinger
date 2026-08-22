@@ -357,7 +357,9 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
 
     month_raw = (month or "all").strip().lower()
     select_all = month_raw in {"", "all", "*", "全部"}
-    selected_months = months[:2] if select_all else [month_raw]
+    # Include all listed expiries when "全部" so the GEX chart can stack by month.
+    # Cap at 8 to keep Sina/SSE fetches bounded on low-RAM hosts.
+    selected_months = months[:8] if select_all else [month_raw]
     if not select_all and selected_months[0] not in months:
         selected_months = [months[0]]
 
@@ -399,7 +401,6 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
                 "month": m,
                 "underlying": underlying,
                 "T": T,
-                "chain": chain,
                 "gex_distribution": gex.get("points") or [],
                 "gex_summary": gex.get("summary") or {},
                 "greeks": gex.get("portfolio_greeks") or {},
@@ -433,12 +434,25 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         }
 
     primary = month_series[0]
-    agg_chain: List[Dict[str, Any]] = []
-    for chain in chains_for_agg:
-        agg_chain.extend(chain)
     u_avg = sum(underlyings) / len(underlyings) if underlyings else underlying
     t_avg = sum(Ts) / len(Ts) if Ts else 30 / 365.0
-    agg_gex = compute_gex(agg_chain, underlying=u_avg, multiplier=mult, T=t_avg) if agg_chain else {}
+    if select_all and len(chains_for_agg) > 1:
+        agg_chain = _aggregate_etf_chains_by_strike(chains_for_agg)
+        agg_gex = (
+            compute_gex(agg_chain, underlying=u_avg, multiplier=mult, T=t_avg) if agg_chain else {}
+        )
+        chain_out = agg_chain
+        greeks = agg_gex.get("portfolio_greeks") or primary.get("greeks") or {}
+        gex_summary = agg_gex.get("summary") or primary.get("gex_summary") or {}
+        # Aggregated distribution for mark lines / Net GEX; per-month stacks come from month_series.
+        gex_distribution = agg_gex.get("points") or primary.get("gex_distribution") or []
+        max_pain = compute_max_pain(agg_chain) if agg_chain else primary.get("max_pain")
+    else:
+        chain_out = chains_for_agg[0] if chains_for_agg else []
+        greeks = primary.get("greeks") or {}
+        gex_summary = primary.get("gex_summary") or {}
+        gex_distribution = primary.get("gex_distribution") or []
+        max_pain = primary.get("max_pain")
     return {
         "root": code6,
         "name_cn": etf_underlying_display_name(code6),
@@ -450,16 +464,66 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         "current_price": underlying,
         "multiplier": mult,
         "margin_rate": margin_rate,
-        "chain": primary.get("chain") or [],
-        "greeks": primary.get("greeks") or {},
-        "gex_summary": (agg_gex.get("summary") or primary.get("gex_summary") or {}),
-        "gex_distribution": primary.get("gex_distribution") or [],
+        "chain": chain_out,
+        "greeks": greeks,
+        "gex_summary": gex_summary,
+        "gex_distribution": gex_distribution,
         "iv_smile": primary.get("iv_smile") or [],
-        "max_pain": primary.get("max_pain"),
+        "max_pain": max_pain,
         "time_value_yield": primary.get("time_value_yield") or [],
         "month_series": month_series,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
+
+
+def _aggregate_etf_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Merge option chains across months: sum OI, OI-weighted mids."""
+    bucket: Dict[float, Dict[str, float]] = {}
+    for chain in chains:
+        for row in chain:
+            k = float(row["strike"])
+            item = bucket.setdefault(
+                k,
+                {
+                    "strike": k,
+                    "call_oi": 0.0,
+                    "put_oi": 0.0,
+                    "call_mid_w": 0.0,
+                    "put_mid_w": 0.0,
+                    "call_mid_n": 0.0,
+                    "put_mid_n": 0.0,
+                },
+            )
+            call_oi = float(row.get("call_oi") or 0.0)
+            put_oi = float(row.get("put_oi") or 0.0)
+            call_mid = float(row.get("call_mid") or 0.0)
+            put_mid = float(row.get("put_mid") or 0.0)
+            item["call_oi"] += call_oi
+            item["put_oi"] += put_oi
+            if call_oi > 0 and call_mid > 0:
+                item["call_mid_w"] += call_mid * call_oi
+                item["call_mid_n"] += call_oi
+            if put_oi > 0 and put_mid > 0:
+                item["put_mid_w"] += put_mid * put_oi
+                item["put_mid_n"] += put_oi
+    rows: List[Dict[str, Any]] = []
+    for item in sorted(bucket.values(), key=lambda x: x["strike"]):
+        rows.append(
+            {
+                "strike": item["strike"],
+                "call_oi": item["call_oi"],
+                "put_oi": item["put_oi"],
+                "call_mid": (item["call_mid_w"] / item["call_mid_n"]) if item["call_mid_n"] > 0 else 0.0,
+                "put_mid": (item["put_mid_w"] / item["put_mid_n"]) if item["put_mid_n"] > 0 else 0.0,
+                "call_last": 0.0,
+                "put_last": 0.0,
+                "call_bid": 0.0,
+                "call_ask": 0.0,
+                "put_bid": 0.0,
+                "put_ask": 0.0,
+            }
+        )
+    return rows
 
 
 def _load_etf_spot_frame_sina(ak_fn) -> Any:
