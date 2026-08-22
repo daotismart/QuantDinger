@@ -12,6 +12,12 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from app.services.strategy_display_names import (
+    compose_strategy_display_name,
+    extract_code_doc_title,
+    is_auto_generated_strategy_name,
+    resolve_template_title,
+)
 from app.utils.db import get_db_connection
 from app.utils.logger import get_logger
 
@@ -144,12 +150,72 @@ class ScriptSourceService:
         )
         return version_no
 
-    def _row(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _template_titles(self) -> Dict[str, str]:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT template_key, title
+                FROM qd_script_templates
+                WHERE is_active = TRUE
+                """
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+        return {
+            str(row.get("template_key") or "").strip(): str(row.get("title") or "").strip()
+            for row in rows
+            if str(row.get("template_key") or "").strip()
+        }
+
+    def _resolve_source_name(
+        self,
+        *,
+        name: str,
+        code: str,
+        template_key: str,
+        metadata: Dict[str, Any],
+        template_titles: Dict[str, str],
+    ) -> str:
+        template_title = resolve_template_title(template_key, template_titles)
+        if not template_key and code:
+            doc_title = extract_code_doc_title(code)
+            if doc_title:
+                for key, title in template_titles.items():
+                    if title == doc_title:
+                        template_key = key
+                        template_title = title
+                        break
+        return compose_strategy_display_name(
+            name=name,
+            code=code,
+            template_title=template_title,
+            template_key=template_key,
+            metadata=metadata,
+        )
+
+    def _row(
+        self,
+        row: Optional[Dict[str, Any]],
+        *,
+        template_titles: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, Any]]:
         if not row:
             return None
         item = dict(row)
         item["param_schema"] = _json_dict(item.get("param_schema"))
         item["metadata"] = _json_dict(item.get("metadata"))
+        titles = template_titles if template_titles is not None else self._template_titles()
+        display_name = self._resolve_source_name(
+            name=str(item.get("name") or ""),
+            code=str(item.get("code") or ""),
+            template_key=str(item.get("template_key") or ""),
+            metadata=item["metadata"],
+            template_titles=titles,
+        )
+        item["display_name"] = display_name
+        if is_auto_generated_strategy_name(str(item.get("name") or "")):
+            item["name"] = display_name
         return item
 
     def _version_row(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -172,6 +238,7 @@ class ScriptSourceService:
         item["tags"] = _json_list(item.get("tags"))
         item["metadata"] = _json_dict(item.get("metadata"))
         item["key"] = item.get("template_key") or ""
+        item["name"] = item.get("title") or item["key"]
         item["desc"] = item.get("description") or ""
         item["code"] = _ensure_script_metadata_header(
             item.get("code") or "",
@@ -196,7 +263,28 @@ class ScriptSourceService:
             cur.close()
         return [self._template_row(row) for row in rows if row]
 
+    def get_template_by_key(self, template_key: str) -> Optional[Dict[str, Any]]:
+        key = str(template_key or "").strip()
+        if not key:
+            return None
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT id, template_key, asset_type, title, description, code, param_schema, tags,
+                       icon, accent, sort_order, is_active, metadata, created_at, updated_at
+                FROM qd_script_templates
+                WHERE is_active = TRUE AND template_key = ?
+                LIMIT 1
+                """,
+                (key,),
+            )
+            row = cur.fetchone()
+            cur.close()
+        return self._template_row(row)
+
     def list_sources(self, user_id: int) -> List[Dict[str, Any]]:
+        template_titles = self._template_titles()
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
@@ -212,9 +300,10 @@ class ScriptSourceService:
             )
             rows = cur.fetchall()
             cur.close()
-        return [self._row(row) for row in rows if row]
+        return [self._row(row, template_titles=template_titles) for row in rows if row]
 
     def get_source(self, source_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        template_titles = self._template_titles()
         with get_db_connection() as db:
             cur = db.cursor()
             if user_id is None:
@@ -241,16 +330,24 @@ class ScriptSourceService:
                 )
             row = cur.fetchone()
             cur.close()
-        return self._row(row)
+        return self._row(row, template_titles=template_titles)
 
     def create_source(self, payload: Dict[str, Any]) -> int:
         user_id = int(payload.get("user_id") or 1)
-        name = str(payload.get("name") or payload.get("strategy_name") or "Untitled Script").strip() or "Untitled Script"
-        code = str(payload.get("code") or "")
-        description = str(payload.get("description") or "")
+        template_titles = self._template_titles()
         template_key = str(payload.get("template_key") or payload.get("templateKey") or "")
-        param_schema = payload.get("param_schema") or payload.get("paramSchema") or {}
+        code = str(payload.get("code") or "")
         metadata = payload.get("metadata") or {}
+        raw_name = str(payload.get("name") or payload.get("strategy_name") or "").strip()
+        name = self._resolve_source_name(
+            name=raw_name or "Untitled Script",
+            code=code,
+            template_key=template_key,
+            metadata=_json_dict(metadata),
+            template_titles=template_titles,
+        )
+        description = str(payload.get("description") or "")
+        param_schema = payload.get("param_schema") or payload.get("paramSchema") or {}
         asset_type = _source_asset_type(payload.get("asset_type") or payload.get("assetType"))
         source_marketplace_indicator_id = payload.get("source_marketplace_indicator_id") or payload.get("sourceMarketplaceIndicatorId")
         source_script_source_id = payload.get("source_script_source_id")

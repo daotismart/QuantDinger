@@ -8,9 +8,70 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.utils.db import get_db_connection
+from app.services.strategy_display_names import (
+    compose_strategy_display_name,
+    format_universe_symbol,
+    is_auto_generated_strategy_name,
+    resolve_template_title,
+)
 
 
 class StrategyBacktestRepository:
+    @staticmethod
+    def _template_titles() -> dict[str, str]:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT template_key, title
+                FROM qd_script_templates
+                WHERE is_active = TRUE
+                """
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+        return {
+            str(row.get("template_key") or "").strip(): str(row.get("title") or "").strip()
+            for row in rows
+            if str(row.get("template_key") or "").strip()
+        }
+
+    @staticmethod
+    def _source_context(source_ids: set[int]) -> dict[int, dict[str, str]]:
+        if not source_ids:
+            return {}
+        placeholders = ",".join("?" for _ in source_ids)
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                f"""
+                SELECT id, name, template_key, code
+                FROM qd_script_sources
+                WHERE id IN ({placeholders})
+                """,
+                tuple(sorted(source_ids)),
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+        template_titles = StrategyBacktestRepository._template_titles()
+        output: dict[int, dict[str, str]] = {}
+        for row in rows:
+            source_id = int(row.get("id") or 0)
+            if not source_id:
+                continue
+            template_key = str(row.get("template_key") or "").strip()
+            output[source_id] = {
+                "name": compose_strategy_display_name(
+                    name=str(row.get("name") or ""),
+                    code=str(row.get("code") or ""),
+                    template_title=resolve_template_title(template_key, template_titles),
+                    template_key=template_key,
+                ),
+                "template_key": template_key,
+                "code": str(row.get("code") or ""),
+            }
+        return output
+
     def persist_run(
         self,
         *,
@@ -121,7 +182,15 @@ class StrategyBacktestRepository:
             )
             rows = cur.fetchall() or []
             cur.close()
-        return [self._hydrate(row, include_result=False) for row in rows]
+        source_context = self._source_context({
+            int(row.get("source_id") or 0)
+            for row in rows
+            if int(row.get("source_id") or 0) > 0
+        })
+        return [
+            self._hydrate(row, include_result=False, source_context=source_context)
+            for row in rows
+        ]
 
     def get_run(self, *, user_id: int, run_id: int) -> Optional[dict[str, Any]]:
         with get_db_connection() as db:
@@ -138,7 +207,15 @@ class StrategyBacktestRepository:
             )
             row = cur.fetchone()
             cur.close()
-        return self._hydrate(row, include_result=True) if row else None
+        if not row:
+            return None
+        source_id = int(row.get("source_id") or 0)
+        source_context = self._source_context({source_id}) if source_id > 0 else {}
+        return self._hydrate(
+            row,
+            include_result=True,
+            source_context=source_context,
+        )
 
     @staticmethod
     def _persist_details(cur, run_id: int, user_id: int, strategy_id: int | None, result: dict[str, Any]) -> None:
@@ -191,7 +268,12 @@ class StrategyBacktestRepository:
             )
 
     @staticmethod
-    def _hydrate(row: dict[str, Any], *, include_result: bool) -> dict[str, Any]:
+    def _hydrate(
+        row: dict[str, Any],
+        *,
+        include_result: bool,
+        source_context: dict[int, dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         item = dict(row)
         try:
             result = json.loads(item.pop("result_json", "") or "{}")
@@ -205,6 +287,43 @@ class StrategyBacktestRepository:
             item["manifest"] = json.loads(item.pop("manifest_json", "") or "{}")
         except (TypeError, ValueError):
             item["manifest"] = {}
+        manifest = item.get("manifest") if isinstance(item.get("manifest"), dict) else {}
+        universe = manifest.get("universe") if isinstance(manifest.get("universe"), dict) else {}
+        instruments = [
+            inst for inst in (universe.get("instruments") or []) if isinstance(inst, dict)
+        ]
+        source_id = int(item.get("source_id") or 0)
+        source_info = (source_context or {}).get(source_id, {})
+        source_name = str(source_info.get("name") or "")
+        template_key = str(source_info.get("template_key") or "").strip()
+        template = None
+        if template_key:
+            from app.services.script_source import get_script_source_service
+
+            template = get_script_source_service().get_template_by_key(template_key)
+        template_metadata = template.get("metadata") if isinstance(template, dict) and isinstance(template.get("metadata"), dict) else {}
+        display_name = compose_strategy_display_name(
+            name=str(item.get("strategy_name") or source_name or ""),
+            code=str(source_info.get("code") or ""),
+            template_title=str(template.get("title") or source_name) if isinstance(template, dict) else source_name,
+            template_key=template_key,
+            params=item.get("params") if isinstance(item.get("params"), dict) else {},
+            metadata=template_metadata,
+            symbol=str(item.get("symbol") or ""),
+            instruments=instruments,
+            universe_reference=str(universe.get("reference") or ""),
+        )
+        symbol_label = format_universe_symbol(
+            instruments=instruments,
+            fallback_symbol=str(item.get("symbol") or ""),
+            universe_reference=str(universe.get("reference") or ""),
+        )
+        item["display_name"] = display_name
+        item["symbol_label"] = symbol_label
+        if is_auto_generated_strategy_name(str(item.get("strategy_name") or "")):
+            item["strategy_name"] = display_name
+        if str(item.get("symbol") or "").startswith(("basket:", "universe:")):
+            item["symbol"] = symbol_label
         item["total_return"] = result.get("totalReturn")
         item["win_rate"] = result.get("winRate")
         item["total_trades"] = result.get("totalTrades")
