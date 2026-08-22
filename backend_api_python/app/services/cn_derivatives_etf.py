@@ -564,13 +564,75 @@ def _etf_option_months(code6: str, ak_fn) -> List[str]:
         return []
 
 
+def _normalize_sse_option_month_key(month_yyyymm: str) -> str:
+    month_key = str(month_yyyymm or "").strip().lower()
+    if len(month_key) == 6 and month_key.isdigit():
+        return month_key[2:]
+    return month_key
+
+
+def _empty_etf_option_chain_bucket(strike: float) -> Dict[str, Any]:
+    return {
+        "strike": strike,
+        "call_mid": 0.0,
+        "put_mid": 0.0,
+        "call_oi": 0.0,
+        "put_oi": 0.0,
+        "call_last": 0.0,
+        "put_last": 0.0,
+        "call_bid": 0.0,
+        "call_ask": 0.0,
+        "put_bid": 0.0,
+        "put_ask": 0.0,
+    }
+
+
+def _sse_option_spot_values(spot_frame: Any, safe_float, mid_fn) -> Dict[str, float]:
+    """Parse akshare option_sse_spot_price_sina key/value frame into quote fields."""
+    if spot_frame is None or getattr(spot_frame, "empty", True):
+        return {}
+    values = {
+        str(row.get("字段") or "").strip(): str(row.get("值") or "").strip()
+        for _, row in spot_frame.iterrows()
+    }
+    bid = safe_float(values.get("买价") or values.get("申买价一"))
+    ask = safe_float(values.get("卖价") or values.get("申卖价一"))
+    last = safe_float(values.get("最新价"))
+    oi = safe_float(values.get("持仓量"))
+    mid = mid_fn(bid, ask, last)
+    return {"bid": bid, "ask": ask, "last": last, "mid": mid, "oi": oi}
+
+
+def _apply_sse_option_quote(
+    bucket: Dict[str, Any],
+    opt_type: str,
+    quote: Dict[str, float],
+) -> None:
+    bid = float(quote.get("bid") or 0.0)
+    ask = float(quote.get("ask") or 0.0)
+    last = float(quote.get("last") or 0.0)
+    mid = float(quote.get("mid") or 0.0)
+    oi = float(quote.get("oi") or 0.0)
+    if opt_type == "认购":
+        bucket["call_bid"] = bid
+        bucket["call_ask"] = ask
+        bucket["call_last"] = last if last > 0 else mid
+        bucket["call_mid"] = mid
+        bucket["call_oi"] = oi
+    elif opt_type == "认沽":
+        bucket["put_bid"] = bid
+        bucket["put_ask"] = ask
+        bucket["put_last"] = last if last > 0 else mid
+        bucket["put_mid"] = mid
+        bucket["put_oi"] = oi
+
+
 def _etf_option_chain_from_current_day(
     code6: str,
     month_yyyymm: str,
     ak_fn,
     mid_fn,
     safe_float,
-    max_quotes: int = 24,
 ) -> List[Dict[str, Any]]:
     try:
         frame = ak_fn().option_current_day_sse()
@@ -580,11 +642,8 @@ def _etf_option_chain_from_current_day(
     if frame is None or getattr(frame, "empty", True):
         return []
 
-    month_key = str(month_yyyymm or "").strip()
-    if len(month_key) == 6:
-        month_key = month_key[2:]
+    month_key = _normalize_sse_option_month_key(month_yyyymm)
     strikes: Dict[float, Dict[str, Any]] = {}
-    quote_count = 0
     for _, row in frame.iterrows():
         underlying_col = str(row.get("标的券名称及代码") or "")
         if code6 not in underlying_col:
@@ -596,42 +655,17 @@ def _etf_option_chain_from_current_day(
         if strike <= 0:
             continue
         opt_type = str(row.get("类型") or "").strip()
-        bucket = strikes.setdefault(
-            strike,
-            {
-                "strike": strike,
-                "call_mid": 0.0,
-                "put_mid": 0.0,
-                "call_oi": 0.0,
-                "put_oi": 0.0,
-                "call_last": 0.0,
-                "put_last": 0.0,
-                "call_bid": 0.0,
-                "call_ask": 0.0,
-                "put_bid": 0.0,
-                "put_ask": 0.0,
-            },
-        )
+        bucket = strikes.setdefault(strike, _empty_etf_option_chain_bucket(strike))
         code = str(row.get("合约编码") or "").strip()
-        mid = 0.0
-        if code and quote_count < max_quotes:
-            try:
-                spot = ak_fn().option_sse_spot_price_sina(symbol=code)
-                quote_count += 1
-                if spot is not None and not getattr(spot, "empty", True):
-                    values = {str(r.get("字段")): str(r.get("值") or "") for _, r in spot.iterrows()}
-                    bid = safe_float(values.get("买价"))
-                    ask = safe_float(values.get("卖价"))
-                    last = safe_float(values.get("最新价"))
-                    mid = mid_fn(bid, ask, last)
-            except Exception:
-                mid = 0.0
-        if opt_type == "认购":
-            bucket["call_mid"] = mid
-            bucket["call_last"] = mid
-        elif opt_type == "认沽":
-            bucket["put_mid"] = mid
-            bucket["put_last"] = mid
+        if not code:
+            continue
+        try:
+            spot = ak_fn().option_sse_spot_price_sina(symbol=code)
+            quote = _sse_option_spot_values(spot, safe_float, mid_fn)
+            if quote:
+                _apply_sse_option_quote(bucket, opt_type, quote)
+        except Exception as exc:
+            logger.debug("etf option quote %s failed: %s", code, exc)
     rows = list(strikes.values())
     rows.sort(key=lambda item: item["strike"])
     return rows
