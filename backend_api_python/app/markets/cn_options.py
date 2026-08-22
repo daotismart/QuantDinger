@@ -16,12 +16,16 @@ from typing import Any
 CTP_COL_INSTRUMENT = "合约ID"
 CTP_COL_NAME = "合约名称"
 CTP_COL_EXCHANGE = "交易所代码"
+CTP_COL_EXCHANGE_ALT = "交易所ID"
 CTP_COL_PRODUCT = "品种ID"
 CTP_COL_ASSET_CLASS = "商品类别"
 CTP_COL_STATUS = "合约状态"
 CTP_COL_UNDERLYING = "标的合约"
+CTP_COL_UNDERLYING_ALT = "标的合约ID"
 CTP_COL_STRIKE = "执行价"
+CTP_COL_STRIKE_ALT = "行权价"
 CTP_COL_CALL_PUT = "看涨看跌"
+CTP_COL_CALL_PUT_ALT = "期权类型"
 CTP_COL_MULTIPLE = "合约乘数"
 CTP_COL_TICK = "最小变动价位"
 CTP_COL_EXPIRE = "到期日"
@@ -157,6 +161,41 @@ def _row_get(row: Any, key: str) -> Any:
     return getattr(row, key, None)
 
 
+def _row_get_first(row: Any, *keys: str) -> Any:
+    for key in keys:
+        value = _row_get(row, key)
+        if value is not None and str(value).strip() != "":
+            return value
+    return None
+
+
+def _row_exchange(row: Any) -> str:
+    return str(_row_get_first(row, CTP_COL_EXCHANGE, CTP_COL_EXCHANGE_ALT) or "").strip().upper()
+
+
+def _row_underlying(row: Any) -> str:
+    return str(_row_get_first(row, CTP_COL_UNDERLYING, CTP_COL_UNDERLYING_ALT) or "").strip()
+
+
+# Mainland ETF option underlyings (SSE/SZSE six-digit codes).
+KNOWN_ETF_UNDERLYINGS: dict[str, str] = {
+    "510050": "SSE 50 ETF",
+    "510300": "CSI 300 ETF",
+    "510500": "CSI 500 ETF",
+    "588000": "STAR 50 ETF",
+    "588080": "STAR 50 ETF",
+    "159901": "SZSE 100 ETF",
+    "159915": "ChiNext ETF",
+    "159919": "CSI 300 ETF",
+    "159922": "CSI 500 ETF",
+}
+
+
+def etf_underlying_display_name(code: str) -> str:
+    key = str(code or "").strip()
+    return KNOWN_ETF_UNDERLYINGS.get(key, f"ETF {key}")
+
+
 def _safe_int(value: Any) -> int:
     try:
         return int(float(value))
@@ -181,10 +220,10 @@ def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
     if _safe_int(_row_get(row, CTP_COL_STATUS)) != CTP_STATUS_LISTED:
         return None
 
-    exchange = str(_row_get(row, CTP_COL_EXCHANGE) or "").strip().upper()
+    exchange = _row_exchange(row)
     name = str(_row_get(row, CTP_COL_NAME) or "").strip()
     product_id = str(_row_get(row, CTP_COL_PRODUCT) or "").strip()
-    underlying = str(_row_get(row, CTP_COL_UNDERLYING) or "").strip()
+    underlying = _row_underlying(row)
 
     if is_etf_option_code(instrument) or exchange in {"SSE", "SZSE"}:
         display = name or instrument
@@ -203,6 +242,8 @@ def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
             "lot_size": _safe_float(_row_get(row, CTP_COL_MULTIPLE)) or 10000.0,
             "is_active": True,
             "kind": "etf",
+            "product_id": product_id or "ETF_O",
+            "underlying": underlying or None,
         }
 
     parsed = parse_cn_option_instrument(instrument)

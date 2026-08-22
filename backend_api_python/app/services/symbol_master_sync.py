@@ -609,6 +609,33 @@ def fetch_cn_index_options_symbols() -> List[SymbolMasterRow]:
     return _unique_rows(rows)
 
 
+def fetch_etf_option_underlying_symbols() -> List[SymbolMasterRow]:
+    """Return CNStock rows for ETFs that back listed SSE/SZSE options."""
+    from app.services.cn_options_chain import listed_etf_underlying_catalog
+
+    rows: List[SymbolMasterRow] = []
+    try:
+        for item in listed_etf_underlying_catalog():
+            symbol = str(item.get("symbol") or "").strip()
+            name = str(item.get("name") or symbol).strip()
+            if not symbol or not name:
+                continue
+            rows.append(
+                SymbolMasterRow(
+                    market="CNStock",
+                    symbol=symbol,
+                    name=name[:255],
+                    exchange=str(item.get("exchange") or "CN"),
+                    currency="CNY",
+                    market_type="spot",
+                    asset_class="etf",
+                )
+            )
+    except Exception as exc:
+        logger.warning("ETF option underlying catalog unavailable: %s", exc)
+    return _unique_rows(rows)
+
+
 def fetch_moex_symbols() -> List[SymbolMasterRow]:
     """Fetch MOEX TQBR shares, with a static blue-chip fallback."""
     rows = _static_rows("MOEX")

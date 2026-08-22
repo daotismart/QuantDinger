@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from app.markets.cn_options import (
@@ -59,6 +60,54 @@ def listed_option_catalog(frame: Any = None) -> List[Dict[str, Any]]:
         sum(1 for item in records if item.get("kind") == "etf"),
     )
     return records
+
+
+def listed_etf_underlying_codes(records: Optional[List[Dict[str, Any]]] = None) -> List[str]:
+    """Unique six-digit ETF codes referenced by listed SSE/SZSE ETF options."""
+    rows = records if records is not None else listed_option_catalog()
+    codes: List[str] = []
+    seen = set()
+    for item in rows:
+        if item.get("kind") != "etf":
+            continue
+        code = str(item.get("underlying") or "").strip()
+        if not re.fullmatch(r"\d{6}", code):
+            continue
+        if code in seen:
+            continue
+        seen.add(code)
+        codes.append(code)
+    return codes
+
+
+def listed_etf_underlying_catalog(records: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Catalog dicts for underlying ETFs (CNStock rows)."""
+    from app.markets.cn_options import etf_underlying_display_name
+
+    rows = records if records is not None else listed_option_catalog()
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for item in rows:
+        if item.get("kind") != "etf":
+            continue
+        code = str(item.get("underlying") or "").strip()
+        if not re.fullmatch(r"\d{6}", code) or code in seen:
+            continue
+        seen.add(code)
+        exchange = str(item.get("exchange") or "").upper()
+        stock_exchange = "SZ" if exchange == "SZSE" or code.startswith(("15", "16")) else "CN"
+        out.append(
+            {
+                "market": "CNStock",
+                "symbol": code,
+                "name": etf_underlying_display_name(code),
+                "exchange": stock_exchange,
+                "currency": "CNY",
+                "market_type": "spot",
+                "asset_class": "etf",
+            }
+        )
+    return out
 
 
 def catalog_stats(records: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:

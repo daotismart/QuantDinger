@@ -129,11 +129,14 @@ def resolve_history_symbol(symbol: str) -> Tuple[str, str]:
     opt = parse_cn_option_symbol(code)
     if opt:
         from app.markets.cn_options import (
+            is_etf_option_code,
             option_underlying_continuous,
             parse_cn_option_instrument,
             sina_option_symbol,
         )
 
+        if is_etf_option_code(code):
+            return code, "etf_option"
         instrument = parse_cn_option_instrument(code)
         if instrument is not None:
             return sina_option_symbol(instrument), "option"
@@ -653,6 +656,83 @@ class CnFuturesDataSource(BaseDataSource):
             buckets[key]["volume"],
         ) for key in order]
 
+    def _load_etf_option_daily_frame(self, ak: Any, instrument: str):
+        """Load SSE/SZSE ETF option daily series (Sina via akshare)."""
+        try:
+            frame = ak.option_sse_daily_sina(symbol=str(instrument).strip())
+            if frame is not None and not getattr(frame, "empty", True):
+                return frame
+        except Exception as exc:
+            logger.debug("option_sse_daily_sina failed for %s: %s", instrument, exc)
+        return None
+
+    def _load_etf_option_minute_rows(self, ak: Any, instrument: str) -> List[Dict[str, Any]]:
+        """Load intraday ETF option ticks; Sina returns one session (~1023 bars)."""
+        try:
+            frame = ak.option_sse_minute_sina(symbol=str(instrument).strip())
+        except Exception as exc:
+            logger.debug("option_sse_minute_sina failed for %s: %s", instrument, exc)
+            return []
+        if frame is None or getattr(frame, "empty", True):
+            return []
+        rows: List[Dict[str, Any]] = []
+        for _, item in frame.iterrows():
+            day = item.get("日期") or item.get("date")
+            clock = item.get("时间") or item.get("time")
+            if day is not None and clock is not None:
+                ts = _to_cst_ts(f"{day} {clock}")
+            else:
+                ts = _to_cst_ts(item.get("datetime") or item.get("date"))
+            if ts is None:
+                continue
+            price = float(item.get("价格") or item.get("price") or item.get("收盘") or 0)
+            if price <= 0:
+                avg = float(item.get("均价") or item.get("avg") or 0)
+                price = avg if avg > 0 else 0
+            if price <= 0:
+                continue
+            volume = float(item.get("成交") or item.get("volume") or item.get("成交量") or 0)
+            rows.append(self.format_kline(ts, price, price, price, price, volume))
+        rows.sort(key=lambda r: r["time"])
+        return rows
+
+    def _get_etf_option_history_akshare(
+        self,
+        ak: Any,
+        symbol: str,
+        timeframe: str,
+        *,
+        prefer_full: bool,
+        after_time: Optional[int],
+    ) -> List[Dict[str, Any]]:
+        tf = self._normalize_tf(timeframe)
+        code = normalize_cn_symbol(symbol)
+
+        if tf in ("1m", "3m", "5m", "15m", "30m", "1H", "4H"):
+            rows = self._load_etf_option_minute_rows(ak, code)
+            if not rows:
+                raise ValueError(
+                    f"ETF option minute history unavailable for {code!r}; "
+                    "Sina returns only the current session."
+                )
+            if tf == "1m":
+                return rows
+            if tf == "3m":
+                return self._resample(rows, 180)
+            if tf == "4H":
+                hour_rows = self._resample(rows, TIMEFRAME_SECONDS["1H"])
+                return self._resample(hour_rows, TIMEFRAME_SECONDS["4H"])
+            seconds = TIMEFRAME_SECONDS.get(tf)
+            return self._resample(rows, seconds) if seconds else rows
+
+        frame = self._load_etf_option_daily_frame(ak, code)
+        if frame is None or getattr(frame, "empty", True):
+            return []
+        rows = self._frame_to_daily_rows(frame)
+        if tf in ("1W", "1w"):
+            return self._resample(rows, TIMEFRAME_SECONDS["1W"])
+        return rows
+
     def _load_option_daily_frame(self, ak: Any, sina_symbol: str):
         """Load a listed option's daily series (Sina commodity option history)."""
         try:
@@ -680,6 +760,17 @@ class CnFuturesDataSource(BaseDataSource):
         prefer_full: bool,
     ) -> List[Dict[str, Any]]:
         ak = self._import_akshare()
+        from app.markets.cn_options import is_etf_option_code
+
+        code = normalize_cn_symbol(symbol)
+        if is_etf_option_code(code):
+            return self._get_etf_option_history_akshare(
+                ak,
+                code,
+                timeframe,
+                prefer_full=prefer_full,
+                after_time=after_time,
+            )
         tf = self._normalize_tf(timeframe)
         fetch_symbol, mode = resolve_history_symbol(symbol)
         option_contract = is_cn_futures_option(symbol) and not is_cn_future(symbol)

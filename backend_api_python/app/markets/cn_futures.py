@@ -112,6 +112,18 @@ def _p(
     )
 
 
+# Synthetic product for SSE/SZSE ETF listed options (not in the futures catalog).
+_ETF_OPTIONS_PRODUCT = _p(
+    "ETFO",
+    "China ETF Options",
+    "SSE",
+    10000,
+    0.0001,
+    product_class="index",
+    has_options=True,
+    base_price=0.35,
+)
+
 # Approximate published-style specs for mainstream products. Brokers may raise
 # margins; operators can override via exchange_config at order time.
 _PRODUCTS: Tuple[CnFutureProduct, ...] = (
@@ -328,6 +340,19 @@ def parse_cn_future_symbol(symbol: str) -> Optional[Dict[str, str]]:
 
 def parse_cn_option_symbol(symbol: str) -> Optional[Dict[str, Any]]:
     value = normalize_cn_symbol(symbol)
+    from app.markets.cn_options import is_etf_option_code
+
+    if is_etf_option_code(value):
+        return {
+            "root": "ETFO",
+            "month": "",
+            "option_type": "",
+            "strike": None,
+            "symbol": value,
+            "instrument_id": value,
+            "exchange": "SSE",
+            "kind": "etf",
+        }
     if value in _INDEX_OPTION_ONLY:
         product = CN_FUTURE_PRODUCTS[value]
         return {
@@ -386,7 +411,9 @@ def is_cn_future(symbol: str) -> bool:
 
 
 def is_cn_futures_option(symbol: str) -> bool:
-    return parse_cn_option_symbol(symbol) is not None
+    from app.markets.cn_options import is_etf_option_code
+
+    return parse_cn_option_symbol(symbol) is not None or is_etf_option_code(normalize_cn_symbol(symbol))
 
 
 def is_cn_derivative(symbol: str) -> bool:
@@ -394,6 +421,10 @@ def is_cn_derivative(symbol: str) -> bool:
 
 
 def get_future_product(symbol: str) -> CnFutureProduct:
+    from app.markets.cn_options import is_etf_option_code
+
+    if is_etf_option_code(normalize_cn_symbol(symbol)):
+        return _ETF_OPTIONS_PRODUCT
     parsed = parse_cn_future_symbol(symbol)
     if parsed:
         return CN_FUTURE_PRODUCTS[parsed["root"]]
