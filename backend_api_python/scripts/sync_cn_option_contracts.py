@@ -43,6 +43,7 @@ def main() -> None:
     from app.services.symbol_master_sync import (
         fetch_cn_futures_options_symbols,
         fetch_cn_index_options_symbols,
+        fetch_etf_option_index_symbols,
         fetch_etf_option_underlying_symbols,
         sync_symbol_master,
         upsert_symbol_master,
@@ -51,7 +52,9 @@ def main() -> None:
 
     stats = sync_symbol_master(["CNFutures", "CNFuturesOptions", "CNIndexFutures", "CNIndexOptions"])
     underlying_rows = fetch_etf_option_underlying_symbols()
+    index_rows = fetch_etf_option_index_symbols()
     underlying_upserted = upsert_symbol_master(underlying_rows) if underlying_rows else 0
+    index_upserted = upsert_symbol_master(index_rows) if index_rows else 0
     listed_opt = [row for row in fetch_cn_futures_options_symbols() if row.instrument_id]
     listed_idx = [row for row in fetch_cn_index_options_symbols() if row.instrument_id]
     summary = {
@@ -60,6 +63,8 @@ def main() -> None:
         "listed_index_options": len(listed_idx),
         "etf_underlyings": len(underlying_rows),
         "etf_underlyings_upserted": underlying_upserted,
+        "etf_indices": len(index_rows),
+        "etf_indices_upserted": index_upserted,
         "listed_stats": catalog_stats(
             [
                 {"market": row.market, "exchange": row.exchange}

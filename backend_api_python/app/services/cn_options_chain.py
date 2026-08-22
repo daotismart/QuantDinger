@@ -7,6 +7,11 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.markets.cn_options import (
+    cn_etf_stock_symbol,
+    etf_benchmark_index,
+    etf_benchmark_symbol,
+    etf_underlying_display_name,
+    infer_cn_etf_board,
     is_etf_option_code,
     normalize_ctp_option_row,
 )
@@ -95,16 +100,50 @@ def listed_etf_underlying_catalog(records: Optional[List[Dict[str, Any]]] = None
             continue
         seen.add(code)
         exchange = str(item.get("exchange") or "").upper()
-        stock_exchange = "SZ" if exchange == "SZSE" or code.startswith(("15", "16")) else "CN"
+        stock_exchange = infer_cn_etf_board(code)
         out.append(
             {
                 "market": "CNStock",
-                "symbol": code,
+                "symbol": cn_etf_stock_symbol(code),
                 "name": etf_underlying_display_name(code),
                 "exchange": stock_exchange,
                 "currency": "CNY",
                 "market_type": "spot",
                 "asset_class": "etf",
+            }
+        )
+    return out
+
+
+def listed_etf_index_catalog(records: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Catalog dicts for spot benchmark indices tied to ETF option underlyings."""
+    rows = records if records is not None else listed_option_catalog()
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for item in rows:
+        if item.get("kind") != "etf":
+            continue
+        underlying = str(item.get("underlying") or "").strip()
+        if not re.fullmatch(r"\d{6}", underlying):
+            continue
+        bench = etf_benchmark_index(underlying)
+        if not bench:
+            continue
+        index_code, board, name = bench
+        symbol = etf_benchmark_symbol(underlying)
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        out.append(
+            {
+                "market": "CNStock",
+                "symbol": symbol,
+                "name": name,
+                "exchange": board,
+                "currency": "CNY",
+                "market_type": "index",
+                "asset_class": "index",
+                "underlying_etf": underlying,
             }
         )
     return out

@@ -10,7 +10,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 from app.data_sources.base import TIMEFRAME_SECONDS
 from app.data_sources.cn_futures import CnFuturesDataSource
 from app.data_sources.cn_stock import CNStockDataSource
-from app.services.cn_options_chain import listed_option_catalog
+from app.markets.cn_options import cn_etf_stock_symbol, infer_cn_etf_board
+from app.services.cn_options_chain import listed_etf_index_catalog, listed_option_catalog
 from app.services.market_data_maint import repository
 from app.services.market_data_maint.config import WatchSpec
 from app.services.market_data_maint.validators import sanitize_bars
@@ -105,20 +106,64 @@ def select_etf_underlying_targets(
     seen = set()
     for item in targets:
         code = str(item.get("underlying") or "").strip()
-        if not code or code in seen:
+        if not code:
             continue
-        if wanted and code not in wanted:
+        stock_symbol = cn_etf_stock_symbol(code)
+        if stock_symbol in seen:
             continue
-        seen.add(code)
-        exchange = "SZ" if code.startswith(("15", "16")) else "CN"
+        plain = code
+        dotted = stock_symbol.split(".", 1)[0]
+        if wanted and plain not in wanted and dotted not in wanted and stock_symbol not in wanted:
+            continue
+        seen.add(stock_symbol)
         out.append(
             {
                 "market": "CNStock",
-                "symbol": code,
-                "name": f"ETF underlying {code}",
-                "exchange": exchange,
+                "symbol": stock_symbol,
+                "name": str(item.get("name") or f"ETF {code}"),
+                "exchange": infer_cn_etf_board(code),
                 "market_type": "spot",
                 "kind": "etf_underlying",
+            }
+        )
+    return out
+
+
+def select_etf_index_targets(
+    option_targets: Sequence[Dict[str, Any]],
+    *,
+    symbols: Optional[Sequence[str]] = None,
+    catalog: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    wanted = {str(s).strip().upper() for s in (symbols or []) if str(s).strip()}
+    rows = catalog if catalog is not None else listed_etf_index_catalog()
+    etf_codes = {
+        str(item.get("underlying") or "").strip()
+        for item in option_targets
+        if str(item.get("underlying") or "").strip()
+    }
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for item in rows:
+        symbol = str(item.get("symbol") or "").strip().upper()
+        if not symbol or symbol in seen:
+            continue
+        underlying_etf = str(item.get("underlying_etf") or "").strip()
+        if etf_codes and underlying_etf and underlying_etf not in etf_codes:
+            continue
+        plain = symbol.split(".", 1)[0]
+        if wanted and symbol not in wanted and plain not in wanted and underlying_etf not in wanted:
+            continue
+        seen.add(symbol)
+        out.append(
+            {
+                "market": "CNStock",
+                "symbol": symbol,
+                "name": str(item.get("name") or symbol),
+                "exchange": str(item.get("exchange") or "CN"),
+                "market_type": "index",
+                "kind": "etf_index",
+                "underlying_etf": underlying_etf,
             }
         )
     return out
@@ -176,6 +221,7 @@ def ingest_cn_etf_options_history(
     symbols: Optional[Sequence[str]] = None,
     exchanges: Optional[Sequence[str]] = None,
     include_underlyings: bool = True,
+    include_indices: bool = True,
     register_watch: bool = True,
     watch_intraday: bool = False,
     src: Optional[CnFuturesDataSource] = None,
@@ -197,7 +243,12 @@ def ingest_cn_etf_options_history(
     underlying_targets = (
         select_etf_underlying_targets(option_targets, symbols=symbols) if include_underlyings else []
     )
-    all_targets = list(option_targets) + list(underlying_targets)
+    index_targets = (
+        select_etf_index_targets(option_targets, symbols=symbols, catalog=listed_etf_index_catalog(catalog))
+        if include_indices
+        else []
+    )
+    all_targets = list(option_targets) + list(underlying_targets) + list(index_targets)
     started = time.time()
     results: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
@@ -369,6 +420,7 @@ def ingest_cn_etf_options_history(
         "timeframes": tfs,
         "option_targets": len(option_targets),
         "underlying_targets": len(underlying_targets),
+        "index_targets": len(index_targets),
         "targets": len(all_targets),
         "ok_symbols": ok_symbols,
         "failed_symbols": len({e["symbol"] for e in errors if e.get("symbol") and e["symbol"] != "*"}),
@@ -380,10 +432,11 @@ def ingest_cn_etf_options_history(
         "results": results,
     }
     logger.info(
-        "ETF options history ingest status=%s options=%s underlyings=%s ok=%s upserted=%s",
+        "ETF options history ingest status=%s options=%s underlyings=%s indices=%s ok=%s upserted=%s",
         status,
         len(option_targets),
         len(underlying_targets),
+        len(index_targets),
         ok_symbols,
         upserted_total,
     )

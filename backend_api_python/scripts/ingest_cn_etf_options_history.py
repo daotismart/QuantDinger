@@ -38,6 +38,7 @@ def main() -> int:
     parser.add_argument("--persist", action="store_true", help="Upsert bars into qd_market_bars")
     parser.add_argument("--dry-run", action="store_true", help="Fetch only; do not write the database")
     parser.add_argument("--no-underlyings", action="store_true", help="Skip underlying ETF bars")
+    parser.add_argument("--no-indices", action="store_true", help="Skip benchmark index bars")
     parser.add_argument("--no-watch", action="store_true", help="Do not register watchlist rows")
     parser.add_argument("--watch-intraday", action="store_true", help="Also register minute watchlist rows")
     parser.add_argument("-o", "--output", default="", help="Write JSON summary to this path")
@@ -57,6 +58,7 @@ def main() -> int:
         symbols=_split_csv(args.symbols) or None,
         exchanges=_split_csv(args.exchanges) or None,
         include_underlyings=not args.no_underlyings,
+        include_indices=not args.no_indices,
         register_watch=not args.no_watch,
         watch_intraday=bool(args.watch_intraday),
     )

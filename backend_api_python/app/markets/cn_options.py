@@ -190,10 +190,73 @@ KNOWN_ETF_UNDERLYINGS: dict[str, str] = {
     "159922": "CSI 500 ETF",
 }
 
+# ETF underlyings -> spot benchmark index (code, board, display name).
+ETF_BENCHMARK_INDEX: dict[str, tuple[str, str, str]] = {
+    "510050": ("000016", "SH", "SSE 50 Index"),
+    "510300": ("000300", "SH", "CSI 300 Index"),
+    "510500": ("000905", "SH", "CSI 500 Index"),
+    "588000": ("000688", "SH", "STAR 50 Index"),
+    "588080": ("000688", "SH", "STAR 50 Index"),
+    "159901": ("399330", "SZ", "SZSE 100 Index"),
+    "159915": ("399006", "SZ", "ChiNext Index"),
+    "159919": ("399300", "SZ", "CSI 300 Index (SZ)"),
+    "159922": ("399905", "SZ", "CSI 500 Index (SZ)"),
+}
+
 
 def etf_underlying_display_name(code: str) -> str:
     key = str(code or "").strip()
     return KNOWN_ETF_UNDERLYINGS.get(key, f"ETF {key}")
+
+
+def cn_symbol_with_board(code: str, board: str) -> str:
+    """Return canonical CN symbol with board suffix, e.g. ``000300.SH``."""
+    raw = str(code or "").strip().upper()
+    if not raw:
+        return raw
+    if "." in raw:
+        return raw
+    return f"{raw}.{str(board or '').strip().upper()}"
+
+
+def infer_cn_etf_board(code: str) -> str:
+    """Infer SSE/SZSE board for a six-digit ETF code."""
+    key = str(code or "").strip()
+    if key.startswith(("15", "16")):
+        return "SZ"
+    if key.startswith(("51", "56", "58")):
+        return "SH"
+    return "SH" if key.startswith("6") else "SZ"
+
+
+def cn_etf_stock_symbol(etf_code: str) -> str:
+    """Canonical CNStock symbol for an ETF underlying (``510050.SH``)."""
+    code = str(etf_code or "").strip()
+    if not code:
+        return code
+    if "." in code:
+        return code.upper()
+    return cn_symbol_with_board(code, infer_cn_etf_board(code))
+
+
+def etf_benchmark_index(etf_code: str) -> tuple[str, str, str] | None:
+    return ETF_BENCHMARK_INDEX.get(str(etf_code or "").strip())
+
+
+def etf_benchmark_symbol(etf_code: str) -> str | None:
+    item = etf_benchmark_index(etf_code)
+    if not item:
+        return None
+    code, board, _name = item
+    return cn_symbol_with_board(code, board)
+
+
+def etf_benchmark_display_name(etf_code: str) -> str:
+    item = etf_benchmark_index(etf_code)
+    if item:
+        return item[2]
+    sym = etf_benchmark_symbol(etf_code)
+    return f"Index {sym}" if sym else f"Index {etf_code}"
 
 
 def _safe_int(value: Any) -> int:
