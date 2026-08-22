@@ -71,9 +71,9 @@ python run.py
 
 The dev server starts on `http://localhost:5000` with auto-reload.
 
-## Frontend (private Vue repository)
+## Frontend (QuantDinger-Vue)
 
-The open-source tree **does not** contain Vue source or build artefacts. UI work happens in the private **QuantDinger-Vue** repo. Releases are fully automated:
+The open-source backend tree **does not** contain Vue source or build artefacts. UI work happens in **[daotismart/QuantDinger-Vue](https://github.com/daotismart/QuantDinger-Vue)**. Releases can publish a frontend image to GHCR:
 
 ```bash
 # In QuantDinger-Vue
@@ -81,9 +81,9 @@ git tag v5.0.1
 git push origin v5.0.1
 ```
 
-The `release-frontend.yml` workflow there builds `linux/amd64 + linux/arm64` images via buildx and pushes them to `ghcr.io/openbyteinc/quantdinger-frontend`, tagged with the semver value, `{major}.{minor}`, and `latest`.
+The `release-frontend.yml` workflow there builds `linux/amd64 + linux/arm64` images via buildx and can push them to GHCR (for example `ghcr.io/openbyteinc/quantdinger-frontend` or your org's equivalent), tagged with the semver value, `{major}.{minor}`, and `latest`.
 
-This repo's `docker-compose.yml` (and `docker-compose.ghcr.yml`) references that image by default. To pin a version while testing:
+This repo's `docker-compose.yml` (and `docker-compose.ghcr.yml`) references a frontend image by default. To pin a version while testing:
 
 ```bash
 # Project-root .env (sibling of docker-compose.yml)
@@ -113,7 +113,7 @@ For iterating on Vue source (theme tweaks, debugging, customised UI), drop the s
 #     docker-compose.yml
 #     docker-compose.build.yml        <- enables local frontend build
 
-git clone https://github.com/OpenByteInc/QuantDinger-Vue.git QuantDinger-Vue
+git clone https://github.com/daotismart/QuantDinger-Vue.git QuantDinger-Vue
 
 # Build frontend from ./QuantDinger-Vue, pull everything else:
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build

@@ -102,7 +102,7 @@ This repository contains:
 - `backend_api_python/`: Flask backend + strategy runtime
 - `docker-compose.yml` / `docker-compose.ghcr.yml`: deployment stacks
 
-The web UI source lives in the separate private **QuantDinger-Vue** repo, which publishes `ghcr.io/openbyteinc/quantdinger-frontend` to GHCR on every `v*` tag — both Compose files pull that image directly.
+The web UI source lives in **[daotismart/QuantDinger-Vue](https://github.com/daotismart/QuantDinger-Vue)**, which can publish `ghcr.io/.../quantdinger-frontend` to GHCR on every `v*` tag — Compose files pull a frontend image by default.
 
 ### Backend (Python)
 
@@ -115,9 +115,13 @@ python run.py
 
 ### Frontend
 
-The SPA lives in the private **QuantDinger-Vue** repo. Tagging a release there (`git tag vX.Y.Z && git push --tags`) triggers `.github/workflows/release-frontend.yml`, which builds a multi-arch image and pushes it to `ghcr.io/openbyteinc/quantdinger-frontend`. No frontend artefacts are committed here — pin the consumed tag via `IMAGE_TAG` (or `FRONTEND_TAG` for a per-side override) in a root-level `.env`.
+The SPA lives in **[daotismart/QuantDinger-Vue](https://github.com/daotismart/QuantDinger-Vue)**. Tagging a release there (`git tag vX.Y.Z && git push --tags`) can trigger its frontend release workflow to push a multi-arch image. No frontend artefacts are committed in this backend repo — pin the consumed tag via `IMAGE_TAG` (or `FRONTEND_TAG` for a per-side override) in a root-level `.env`.
 
 For local iteration without publishing, clone the Vue repo into `./QuantDinger-Vue/` (gitignored) and run `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build` — see **DEVELOPMENT.md → Building frontend from local source**.
+
+```bash
+git clone https://github.com/daotismart/QuantDinger-Vue.git QuantDinger-Vue
+```
 
 ---
 
