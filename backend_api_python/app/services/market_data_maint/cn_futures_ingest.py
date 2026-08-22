@@ -58,6 +58,7 @@ MINUTE_LOOKBACK_BARS = 20000
 DAILY_TFS = {"1D", "1W"}
 DERIVE_FROM_1M = ("3m", "5m", "15m", "30m", "1H", "4H")
 RESUME_MIN_BARS = 200
+STORED_1M_LOAD_LIMIT = 120_000
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -149,6 +150,66 @@ def _existing_bar_count(spec: WatchSpec) -> int:
     return len(repository.load_bars(spec, limit=RESUME_MIN_BARS))
 
 
+
+
+def _resume_min_bars(override: Optional[int] = None) -> int:
+    if override is not None:
+        return max(1, int(override))
+    raw = os.getenv("CN_FUTURES_INGEST_RESUME_MIN_BARS")
+    if raw is None or str(raw).strip() == "":
+        return RESUME_MIN_BARS
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return RESUME_MIN_BARS
+
+
+def _load_stored_1m(target: Dict[str, Any], *, limit: int = STORED_1M_LOAD_LIMIT) -> List[Dict[str, Any]]:
+    rows = repository.load_bars(_watch_spec(target, "1m"), limit=max(1, int(limit)))
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        out.append(
+            {
+                "time": int(row["time"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row.get("volume") or 0),
+            }
+        )
+    return out
+
+
+def _derive_intraday_payloads(
+    source: CnFuturesDataSource,
+    minute_rows: List[Dict[str, Any]],
+    derived_tfs: Sequence[str],
+) -> Dict[str, Dict[str, Any]]:
+    """Resample stored/fetched 1m bars into higher intraday frames."""
+    payloads: Dict[str, Dict[str, Any]] = {}
+    if not minute_rows:
+        for tf in derived_tfs:
+            payloads[tf] = {"ok": False, "error": "no 1m bars to derive from"}
+        return payloads
+    for tf in derived_tfs:
+        seconds = TIMEFRAME_SECONDS.get(tf)
+        if not seconds:
+            payloads[tf] = {"ok": False, "error": f"unsupported timeframe {tf}"}
+            continue
+        resampled = source._resample(minute_rows, seconds)
+        validated = sanitize_bars(resampled)
+        payloads[tf] = {
+            "ok": True,
+            "bars": len(validated.clean_bars),
+            "rejected": len(validated.rejected_bars),
+            "derived_from": "1m",
+            "start_time": validated.clean_bars[0]["time"] if validated.clean_bars else None,
+            "end_time": validated.clean_bars[-1]["time"] if validated.clean_bars else None,
+            "bars_data": validated.clean_bars,
+        }
+    return payloads
+
 def _fetch_with_retry(
     src: CnFuturesDataSource,
     symbol: str,
@@ -195,6 +256,8 @@ def ingest_cn_futures_history(
     derive_weekly: bool = True,
     stitch_months: Optional[int] = None,
     resume: bool = True,
+    resume_min_bars: Optional[int] = None,
+    derive_only: bool = False,
     src: Optional[CnFuturesDataSource] = None,
     sleeper: Callable[[float], None] = time.sleep,
     on_progress: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -206,8 +269,12 @@ def ingest_cn_futures_history(
 
     When ``1m`` is requested, higher intraday frames (5m/15m/30m/1H/4H) are
     resampled locally so the full catalog does not hit Sina once per timeframe.
-    Minute watches are opt-in: registering 69 x 1m targets would overload the
-    historical maintainer.
+    Minute watches are opt-in: registering the full catalog on 1m would overload
+    the historical maintainer.
+
+    ``derive_only`` rebuilds 3m/5m/15m/30m/1H/4H from stored 1m bars without
+    calling Sina. Futures-options minute charts reuse the underlying continuous
+    series (no public per-strike minute feed).
     """
     tfs = _normalize_timeframes(timeframes)
     os.environ["CN_FUTURES_MARKET_DATA_PROVIDER"] = (provider or "akshare").strip() or "akshare"
@@ -223,12 +290,20 @@ def ingest_cn_futures_history(
     watch_specs: List[WatchSpec] = []
     skipped = 0
 
+    resume_floor = _resume_min_bars(resume_min_bars)
     want_weekly = "1W" in tfs
-    want_1m = "1m" in tfs
-    derived_tfs = [tf for tf in tfs if want_1m and tf in DERIVE_FROM_1M]
-    fetch_tfs = [tf for tf in tfs if tf != "1W" and tf not in derived_tfs]
-    if want_weekly and "1D" not in fetch_tfs:
-        fetch_tfs.append("1D")
+    # derive_only rebuilds higher frames from stored 1m (no Sina fetch).
+    derive_tfs_requested = [tf for tf in tfs if tf in DERIVE_FROM_1M]
+    want_1m = ("1m" in tfs) or bool(derive_only)
+    if derive_only:
+        derived_tfs = derive_tfs_requested or list(DERIVE_FROM_1M)
+        fetch_tfs = []
+        want_weekly = False
+    else:
+        derived_tfs = [tf for tf in tfs if want_1m and tf in DERIVE_FROM_1M]
+        fetch_tfs = [tf for tf in tfs if tf != "1W" and tf not in derived_tfs]
+        if want_weekly and "1D" not in fetch_tfs:
+            fetch_tfs.append("1D")
 
     def _should_watch(timeframe: str) -> bool:
         if not register_watch:
@@ -263,16 +338,61 @@ def ingest_cn_futures_history(
             "name": target["name"],
             "timeframes": {},
         }
-        if resume and persist and want_1m:
+        if derive_only:
+            logger.info("CN futures derive-only %s/%s symbol=%s tfs=%s", index, len(targets), symbol, derived_tfs)
+            print(f"derive {index}/{len(targets)} {symbol} tfs={derived_tfs}", flush=True)
+            stored = _load_stored_1m(target)
+            item["timeframes"]["1m"] = {"ok": bool(stored), "bars": len(stored), "source": "stored"}
+            if not stored:
+                errors.append({"symbol": symbol, "timeframe": "1m", "error": "no stored 1m bars"})
+                for tf in derived_tfs:
+                    item["timeframes"][tf] = {"ok": False, "error": "no stored 1m bars"}
+                results.append(item)
+                continue
+            payloads = _derive_intraday_payloads(source, stored, derived_tfs)
+            for tf, payload in payloads.items():
+                bars = payload.pop("bars_data", [])
+                if payload.get("ok"):
+                    payload["upserted"] = _persist_bars(
+                        target, tf, bars, ["validated", "resampled", "derived_from_stored_1m"]
+                    )
+                else:
+                    errors.append({"symbol": symbol, "timeframe": tf, "error": payload.get("error")})
+                item["timeframes"][tf] = payload
+            results.append(item)
+            continue
+
+        if resume and persist and want_1m and not derive_only:
             existing = _existing_bar_count(_watch_spec(target, "1m"))
-            if existing >= RESUME_MIN_BARS:
+            if existing >= resume_floor:
                 skipped += 1
                 item["skipped"] = True
                 item["timeframes"]["1m"] = {"ok": True, "bars": existing, "skipped": True}
-                for tf in derived_tfs:
-                    item["timeframes"][tf] = {"ok": True, "skipped": True, "derived_from": "1m"}
+                # Still backfill missing derived frames from stored 1m.
+                if derived_tfs:
+                    stored = _load_stored_1m(target)
+                    payloads = _derive_intraday_payloads(source, stored, derived_tfs)
+                    for tf, payload in payloads.items():
+                        bars = payload.pop("bars_data", [])
+                        if payload.get("ok"):
+                            payload["upserted"] = _persist_bars(
+                                target, tf, bars, ["validated", "resampled", "derived_from_stored_1m"]
+                            )
+                            payload["skipped_fetch"] = True
+                        item["timeframes"][tf] = payload
+                else:
+                    for tf in derived_tfs:
+                        item["timeframes"][tf] = {"ok": True, "skipped": True, "derived_from": "1m"}
                 results.append(item)
-                logger.info("skip %s 1m already has %s bars (%s/%s)", symbol, existing, index, len(targets))
+                logger.info(
+                    "skip-fetch %s 1m already has %s bars (>=%s); derived=%s (%s/%s)",
+                    symbol,
+                    existing,
+                    resume_floor,
+                    list(derived_tfs),
+                    index,
+                    len(targets),
+                )
                 continue
 
         daily_rows: List[Dict[str, Any]] = []
@@ -313,27 +433,17 @@ def ingest_cn_futures_history(
                 )
                 item["timeframes"][tf] = payload
 
-        if want_1m and minute_rows:
-            for tf in derived_tfs:
-                seconds = TIMEFRAME_SECONDS.get(tf)
-                if not seconds:
-                    continue
-                resampled = source._resample(minute_rows, seconds)
-                validated = sanitize_bars(resampled)
-                payload = {
-                    "ok": True,
-                    "bars": len(validated.clean_bars),
-                    "rejected": len(validated.rejected_bars),
-                    "derived_from": "1m",
-                    "start_time": validated.clean_bars[0]["time"] if validated.clean_bars else None,
-                    "end_time": validated.clean_bars[-1]["time"] if validated.clean_bars else None,
-                }
-                payload["upserted"] = _persist_bars(
-                    target,
-                    tf,
-                    validated.clean_bars,
-                    ["validated", "akshare", "resampled"],
-                )
+        if want_1m and minute_rows and derived_tfs:
+            payloads = _derive_intraday_payloads(source, minute_rows, derived_tfs)
+            for tf, payload in payloads.items():
+                bars = payload.pop("bars_data", [])
+                if payload.get("ok"):
+                    payload["upserted"] = _persist_bars(
+                        target,
+                        tf,
+                        bars,
+                        ["validated", "akshare", "resampled"],
+                    )
                 item["timeframes"][tf] = payload
         elif want_1m and derived_tfs and "1m" in item["timeframes"] and not item["timeframes"]["1m"].get("ok"):
             for tf in derived_tfs:
@@ -395,6 +505,8 @@ def ingest_cn_futures_history(
         "persist": bool(persist),
         "timeframes": tfs,
         "stitch_months": stitch,
+        "resume_min_bars": resume_floor,
+        "derive_only": bool(derive_only),
         "targets": len(targets),
         "ok_symbols": ok_symbols,
         "skipped_symbols": skipped,
@@ -434,4 +546,5 @@ def ingest_from_env() -> Dict[str, Any]:
         watch_intraday=_bool_env("CN_FUTURES_INGEST_WATCH_INTRADAY", False),
         stitch_months=int(stitch_raw) if stitch_raw else None,
         resume=_bool_env("CN_FUTURES_INGEST_RESUME", True),
+        derive_only=_bool_env("CN_FUTURES_INGEST_DERIVE_ONLY", False),
     )
