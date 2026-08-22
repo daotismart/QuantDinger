@@ -96,6 +96,24 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+## Historical bar backfill (local-first)
+
+Production `ds_factory` prefers `qd_market_bars` via `local_bar` when coverage is sufficient. Useful one-shots inside the backend container (`PYTHONPATH=/app`):
+
+```bash
+# CN continuous roots (day/week then minute)
+python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
+python scripts/ingest_cn_futures_history.py --persist --timeframes 1m,5m,15m,30m,1H --stitch-months 12
+
+# Pack hard-coded month codes / options
+python scripts/backfill_cn_contract_bars.py --symbols SA701,SA701-C-1000
+
+# US ETF/stocks + CNStock (Nasdaq ETF-aware; avoids yfinance rate limits)
+python scripts/backfill_us_stock_bars.py
+```
+
+Do **not** recreate the backend while a long `docker exec` ingest/backtest is running. Hotfix mounts live under `ops/hotfixes/` + `docker-compose.hotfix.yml` (includes `us_stock.py` ETF assetclass fallback).
+
 ## Agent workflow
 
 1. SSH to host (key preferred).

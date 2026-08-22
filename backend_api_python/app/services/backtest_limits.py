@@ -54,6 +54,22 @@ _DEFAULT_LIMITS: Dict[str, BacktestRangePolicy] = {
 
 
 _MARKET_LIMITS: Dict[str, Dict[str, BacktestRangePolicy]] = {
+    # Local qd_market_bars + session-aware warmup make multi-week 1m windows
+    # practical for CN futures / options packs (continuous + month codes).
+    "CNFutures": {
+        "1m": BacktestRangePolicy(90, "90 days", "CN futures local bar depth"),
+        "3m": BacktestRangePolicy(90, "90 days", "CN futures local bar depth"),
+        "5m": BacktestRangePolicy(180, "6 months", "CN futures local bar depth"),
+    },
+    "CNFuturesOptions": {
+        "1m": BacktestRangePolicy(90, "90 days", "CN futures options local bar depth"),
+        "3m": BacktestRangePolicy(90, "90 days", "CN futures options local bar depth"),
+        "5m": BacktestRangePolicy(180, "6 months", "CN futures options local bar depth"),
+    },
+    "CNStock": {
+        "1D": BacktestRangePolicy(3650, "10 years", "CN stock daily local/provider depth"),
+        "1W": BacktestRangePolicy(3650, "10 years", "CN stock weekly local/provider depth"),
+    },
     # yfinance intraday endpoints are much narrower than daily/weekly history.
     # Keep the cap below the upstream hard edge so indicator warmup does not
     # push an apparently valid user window into an upstream 400.
@@ -107,7 +123,10 @@ def backtest_warmup_calendar_days(timeframe: str, warmup_bars: int) -> int:
     normalized = normalize_backtest_timeframe(timeframe).lower()
     if normalized.endswith("m") and normalized[:-1].isdigit():
         minutes = max(1, int(normalized[:-1]))
-        return max(1, math.ceil(bars * minutes * 1.5 / 1440.0))
+        # Exchange sessions cover far fewer than 1440 minutes/day (e.g. CN futures).
+        # Without this factor, 1m warmups under-fetch and strategies never arm.
+        session_factor = 4.0
+        return max(1, math.ceil(bars * minutes * 1.5 * session_factor / 1440.0))
     if normalized.endswith("h") and normalized[:-1].isdigit():
         hours = max(1, int(normalized[:-1]))
         return max(1, math.ceil(bars * hours * 1.5 / 24.0))
