@@ -96,6 +96,21 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+## Frontend login redirect (hashed-asset hotfix)
+
+If login returns `200` but the UI never leaves the login page, check frontend
+nginx logs for `404` on hashed `/assets/*.js` immediately after login
+(historically `QuickTradePanel-B0Dq_CAe.js` → missing `index-CNkhJNEQ.js`).
+
+That pattern usually means an older Vite-hash hotfix was rolled back while
+browsers still request the old chunk names.
+
+Staged mitigation: `ops/hotfixes/fe-compat/` (+ `docker-compose.hotfix.example.yml`):
+
+- Alias old QuickTradePanel filename to the current chunk
+- HTML / SPA `Cache-Control: no-store`
+- Do **not** put `?v=` on the ESM entry script (double-loads the app module)
+
 ## Agent workflow
 
 1. SSH to host (key preferred).
