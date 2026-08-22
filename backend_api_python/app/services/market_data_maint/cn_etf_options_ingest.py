@@ -21,6 +21,9 @@ logger = get_logger(__name__)
 
 DEFAULT_TIMEFRAMES = ("1D",)
 DAILY_LOOKBACK_BARS = 10000
+# Tencent fqkline returns empty above ~640 bars for many symbols; large limits
+# fall through to rate-limited yfinance and ingest fails on production hosts.
+CN_STOCK_DAILY_FETCH_LIMIT = 2000
 MINUTE_LOOKBACK_BARS = 20000
 DAILY_TFS = {"1D", "1W"}
 DERIVE_FROM_1M = ("3m", "5m", "15m", "30m", "1H", "4H")
@@ -311,8 +314,9 @@ def ingest_cn_etf_options_history(
         for tf in fetch_tfs:
             try:
                 if market == "CNStock":
+                    lim = min(DAILY_LOOKBACK_BARS, CN_STOCK_DAILY_FETCH_LIMIT) if tf.upper() in DAILY_TFS else MINUTE_LOOKBACK_BARS
                     rows = _fetch_with_retry(
-                        lambda: stock_source.get_kline(symbol, tf, limit=DAILY_LOOKBACK_BARS),
+                        lambda: stock_source.get_kline(symbol, tf, limit=lim),
                         label=f"{market}:{symbol}:{tf}",
                         retries=retries,
                         sleeper=sleeper,
