@@ -513,7 +513,8 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
 def _load_etf_spot_frame_sina(ak_fn) -> Any:
     """Load CN ETF spot quotes from Sina (no East Money)."""
     try:
-        return ak_fn().fund_etf_category_sina(symbol="ETF基金")
+        ak = ak_fn() if callable(ak_fn) else ak_fn
+        return ak.fund_etf_category_sina(symbol="ETF基金")
     except Exception as exc:
         logger.warning("fund_etf_category_sina failed: %s", exc)
         return None
