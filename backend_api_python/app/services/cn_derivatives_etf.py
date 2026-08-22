@@ -1,0 +1,410 @@
+"""ETF derivatives analytics for the market-composite ETF page."""
+
+from __future__ import annotations
+
+import re
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+ETF_INDEX_ROOTS = ("IF", "IH", "IC", "IM")
+
+ETF_SSE_LIST_NAME: Dict[str, str] = {
+    "510050": "50ETF",
+    "510300": "300ETF",
+    "510500": "500ETF",
+    "159901": "100ETF",
+    "159915": "创业板ETF",
+    "159919": "300ETF",
+    "159922": "500ETF",
+}
+
+
+def _etf_code6(value: str) -> str:
+    digits = re.sub(r"\D", "", str(value or ""))
+    return digits[:6] if len(digits) >= 6 else digits
+
+
+def list_etf_derivative_products(tab: str) -> List[Dict[str, Any]]:
+    from app.services.cn_derivatives_analytics import _product_payload
+
+    tab_key = str(tab or "index").strip().lower()
+    if tab_key == "index":
+        rows = [_product_payload(root) for root in ETF_INDEX_ROOTS]
+    else:
+        from app.services.cn_options_chain import listed_etf_underlying_catalog
+
+        rows = []
+        for item in listed_etf_underlying_catalog():
+            code = _etf_code6(item.get("symbol") or item.get("underlying") or "")
+            if not code:
+                continue
+            name = str(item.get("name") or code).strip()
+            rows.append(
+                {
+                    "root": code,
+                    "name": name,
+                    "name_cn": name,
+                    "exchange": str(item.get("exchange") or "CN").upper(),
+                    "multiplier": 10000.0,
+                    "tick_size": 0.0001,
+                    "has_options": tab_key == "etfoptions",
+                    "has_option_chain": tab_key == "etfoptions",
+                    "product_class": "etf",
+                    "option_multiplier": 10000.0,
+                    "option_feed": "sse_sina",
+                    "continuous_symbol": code,
+                    "underlying_root": code,
+                    "long_margin_rate": 0.12,
+                    "option_seller_margin_rate": 0.12,
+                    "stock_symbol": str(item.get("symbol") or "").strip(),
+                }
+            )
+        rows.sort(key=lambda row: row["root"])
+    rows.sort(key=lambda item: (0 if item.get("has_options") else 1, item["root"]))
+    return rows
+
+
+def _etf_product_payload(code6: str) -> Dict[str, Any]:
+    for row in list_etf_derivative_products("etf"):
+        if row.get("root") == code6:
+            return row
+    from app.markets.cn_options import etf_underlying_display_name
+
+    name = etf_underlying_display_name(code6)
+    return {
+        "root": code6,
+        "name": name,
+        "name_cn": name,
+        "has_options": True,
+        "has_option_chain": True,
+        "multiplier": 10000.0,
+        "option_multiplier": 10000.0,
+    }
+
+
+def build_etf_spot_panel(code: str) -> Dict[str, Any]:
+    from app.markets.cn_options import etf_benchmark_index, etf_benchmark_symbol, etf_underlying_display_name
+    from app.services.cn_derivatives_analytics import _ak, _safe_float
+
+    code6 = _etf_code6(code)
+    if not code6:
+        raise ValueError("ETF code is required")
+
+    ak = _ak()
+    etf_frame = None
+    index_frame = None
+    try:
+        etf_frame = ak.fund_etf_spot_em()
+    except Exception as exc:
+        logger.warning("fund_etf_spot_em failed: %s", exc)
+    try:
+        index_frame = ak.stock_zh_index_spot_sina()
+    except Exception as exc:
+        logger.warning("stock_zh_index_spot_sina failed: %s", exc)
+
+    etf = _etf_row_from_spot(etf_frame, code6, _safe_float) or {
+        "code": code6,
+        "name": etf_underlying_display_name(code6),
+        "price": 0.0,
+    }
+    bench = etf_benchmark_index(code6)
+    index_symbol = etf_benchmark_symbol(code6) if bench else ""
+    index_row = None
+    if bench and index_frame is not None:
+        index_code = str(bench[0] or "").strip()
+        index_row = _index_row_from_spot(index_frame, index_code.lower(), _safe_float)
+
+    etf_price = float(etf.get("price") or 0.0)
+    index_price = float((index_row or {}).get("price") or 0.0)
+    analysis: List[str] = []
+    if etf_price > 0:
+        analysis.append(f"{etf.get('name')} 最新价 {etf_price:.4f}。")
+    if etf.get("iopv"):
+        analysis.append(
+            f"IOPV {float(etf['iopv']):.4f}，折价率 {float(etf.get('premium_rate') or 0):.2f}%。"
+        )
+    if index_row and index_price > 0:
+        analysis.append(f"基准指数 {index_row.get('name')} 最新 {index_price:.2f}。")
+    if not analysis:
+        analysis.append("暂无 ETF 现货行情，请稍后重试。")
+
+    return {
+        "root": code6,
+        "name_cn": etf.get("name") or code6,
+        "product": _etf_product_payload(code6),
+        "spot": {
+            "etf": etf,
+            "index": index_row,
+            "index_symbol": index_symbol,
+        },
+        "spot_price": etf_price,
+        "continuous": {"price": etf_price, "volume": etf.get("volume"), "open_interest": 0},
+        "analysis": analysis,
+        "asof": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str, Any]:
+    from app.markets.cn_options import etf_underlying_display_name
+    from app.services.cn_derivatives_analytics import (
+        _ak,
+        _mid,
+        _safe_float,
+        _time_value_annualized_yield,
+        compute_gex,
+        compute_max_pain,
+    )
+
+    code6 = _etf_code6(code)
+    if not code6:
+        raise ValueError("underlying ETF code is required")
+
+    months = _etf_option_months(code6, _ak)
+    if not months:
+        return {
+            "root": code6,
+            "name_cn": etf_underlying_display_name(code6),
+            "months": [],
+            "month": None,
+            "available": False,
+            "has_option_chain": False,
+            "message": "暂未获取到该 ETF 期权的到期月份列表。",
+            "asof": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    month_raw = (month or "all").strip().lower()
+    select_all = month_raw in {"", "all", "*", "全部"}
+    selected_months = months[:2] if select_all else [month_raw]
+    if not select_all and selected_months[0] not in months:
+        selected_months = [months[0]]
+
+    etf_panel = build_etf_spot_panel(code6)
+    underlying = float(etf_panel.get("spot_price") or 0.0)
+    mult = 10000.0
+    margin_rate = 0.12
+
+    month_series: List[Dict[str, Any]] = []
+    chains_for_agg: List[List[Dict[str, Any]]] = []
+    underlyings: List[float] = []
+    Ts: List[float] = []
+
+    for m in selected_months:
+        chain = _etf_option_chain_from_current_day(code6, m, _ak, _mid, _safe_float)
+        if not chain:
+            continue
+        month_digits = "".join(ch for ch in m if ch.isdigit())
+        if len(month_digits) == 4:
+            yy = int(month_digits[:2])
+            mm = int(month_digits[2:])
+            expiry = date(2000 + yy, mm, 25)
+            T = max((expiry - date.today()).days / 365.0, 1 / 365.0)
+        else:
+            T = 30 / 365.0
+        underlyings.append(underlying)
+        Ts.append(T)
+        chains_for_agg.append(chain)
+        gex = (
+            compute_gex(chain, underlying=underlying, multiplier=mult, T=T)
+            if underlying and chain
+            else {"points": [], "summary": {}, "portfolio_greeks": {}, "iv_smile": []}
+        )
+        max_pain = compute_max_pain(chain) if chain else None
+        tv_yield = _time_value_annualized_yield(
+            chain,
+            underlying=underlying,
+            multiplier=mult,
+            margin_rate=margin_rate,
+            T=T,
+            month=m,
+        )
+        month_series.append(
+            {
+                "month": m,
+                "underlying": underlying,
+                "T": T,
+                "chain": chain,
+                "gex_distribution": gex.get("points") or [],
+                "gex_summary": gex.get("summary") or {},
+                "greeks": gex.get("portfolio_greeks") or {},
+                "iv_smile": gex.get("iv_smile") or [],
+                "max_pain": max_pain,
+                "time_value_yield": tv_yield,
+            }
+        )
+
+    if not month_series:
+        return {
+            "root": code6,
+            "name_cn": etf_underlying_display_name(code6),
+            "available": True,
+            "has_option_chain": True,
+            "months": months,
+            "month": "all" if select_all else selected_months[0],
+            "underlying": underlying,
+            "current_price": underlying,
+            "multiplier": mult,
+            "margin_rate": margin_rate,
+            "chain": [],
+            "greeks": {},
+            "gex_summary": {},
+            "gex_distribution": [],
+            "iv_smile": [],
+            "max_pain": None,
+            "time_value_yield": [],
+            "message": "已连接 SSE 期权列表，但当前月份链截面为空。",
+            "asof": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    primary = month_series[0]
+    agg_chain: List[Dict[str, Any]] = []
+    for chain in chains_for_agg:
+        agg_chain.extend(chain)
+    u_avg = sum(underlyings) / len(underlyings) if underlyings else underlying
+    t_avg = sum(Ts) / len(Ts) if Ts else 30 / 365.0
+    agg_gex = compute_gex(agg_chain, underlying=u_avg, multiplier=mult, T=t_avg) if agg_chain else {}
+    return {
+        "root": code6,
+        "name_cn": etf_underlying_display_name(code6),
+        "available": True,
+        "has_option_chain": True,
+        "months": months,
+        "month": "all" if select_all else selected_months[0],
+        "underlying": underlying,
+        "current_price": underlying,
+        "multiplier": mult,
+        "margin_rate": margin_rate,
+        "chain": primary.get("chain") or [],
+        "greeks": primary.get("greeks") or {},
+        "gex_summary": (agg_gex.get("summary") or primary.get("gex_summary") or {}),
+        "gex_distribution": primary.get("gex_distribution") or [],
+        "iv_smile": primary.get("iv_smile") or [],
+        "max_pain": primary.get("max_pain"),
+        "time_value_yield": primary.get("time_value_yield") or [],
+        "month_series": month_series,
+        "asof": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def _etf_row_from_spot(frame: Any, code6: str, safe_float) -> Optional[Dict[str, Any]]:
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    code_col = "代码" if "代码" in frame.columns else "code"
+    for _, row in frame.iterrows():
+        code = _etf_code6(row.get(code_col))
+        if code != code6:
+            continue
+        return {
+            "code": code6,
+            "name": str(row.get("名称") or row.get("name") or code6),
+            "price": safe_float(row.get("最新价") or row.get("price")),
+            "iopv": safe_float(row.get("IOPV实时估值")),
+            "premium_rate": safe_float(row.get("基金折价率")),
+            "volume": safe_float(row.get("成交量")),
+            "amount": safe_float(row.get("成交额")),
+        }
+    return None
+
+
+def _index_row_from_spot(frame: Any, index_code: str, safe_float) -> Optional[Dict[str, Any]]:
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    want = str(index_code or "").strip().lower()
+    code_col = "代码" if "代码" in frame.columns else "code"
+    for _, row in frame.iterrows():
+        code = str(row.get(code_col) or "").strip().lower()
+        if not code:
+            continue
+        if code == want or code.endswith(want) or want in code:
+            return {
+                "code": index_code,
+                "name": str(row.get("名称") or row.get("name") or index_code),
+                "price": safe_float(row.get("最新价") or row.get("price")),
+            }
+    return None
+
+
+def _etf_option_months(code6: str, ak_fn) -> List[str]:
+    list_symbol = ETF_SSE_LIST_NAME.get(code6, "50ETF")
+    try:
+        months = ak_fn().option_sse_list_sina(symbol=list_symbol)
+        return [str(m).strip().lower() for m in (months or []) if str(m).strip()]
+    except Exception as exc:
+        logger.warning("etf option months %s failed: %s", code6, exc)
+        return []
+
+
+def _etf_option_chain_from_current_day(
+    code6: str,
+    month_yyyymm: str,
+    ak_fn,
+    mid_fn,
+    safe_float,
+    max_quotes: int = 24,
+) -> List[Dict[str, Any]]:
+    try:
+        frame = ak_fn().option_current_day_sse()
+    except Exception as exc:
+        logger.warning("option_current_day_sse failed: %s", exc)
+        return []
+    if frame is None or getattr(frame, "empty", True):
+        return []
+
+    month_key = str(month_yyyymm or "").strip()
+    if len(month_key) == 6:
+        month_key = month_key[2:]
+    strikes: Dict[float, Dict[str, Any]] = {}
+    quote_count = 0
+    for _, row in frame.iterrows():
+        underlying_col = str(row.get("标的券名称及代码") or "")
+        if code6 not in underlying_col:
+            continue
+        contract_id = str(row.get("合约交易代码") or "")
+        if month_key and month_key not in contract_id:
+            continue
+        strike = safe_float(row.get("行权价"))
+        if strike <= 0:
+            continue
+        opt_type = str(row.get("类型") or "").strip()
+        bucket = strikes.setdefault(
+            strike,
+            {
+                "strike": strike,
+                "call_mid": 0.0,
+                "put_mid": 0.0,
+                "call_oi": 0.0,
+                "put_oi": 0.0,
+                "call_last": 0.0,
+                "put_last": 0.0,
+                "call_bid": 0.0,
+                "call_ask": 0.0,
+                "put_bid": 0.0,
+                "put_ask": 0.0,
+            },
+        )
+        code = str(row.get("合约编码") or "").strip()
+        mid = 0.0
+        if code and quote_count < max_quotes:
+            try:
+                spot = ak_fn().option_sse_spot_price_sina(symbol=code)
+                quote_count += 1
+                if spot is not None and not getattr(spot, "empty", True):
+                    values = {str(r.get("字段")): str(r.get("值") or "") for _, r in spot.iterrows()}
+                    bid = safe_float(values.get("买价"))
+                    ask = safe_float(values.get("卖价"))
+                    last = safe_float(values.get("最新价"))
+                    mid = mid_fn(bid, ask, last)
+            except Exception:
+                mid = 0.0
+        if opt_type == "认购":
+            bucket["call_mid"] = mid
+            bucket["call_last"] = mid
+        elif opt_type == "认沽":
+            bucket["put_mid"] = mid
+            bucket["put_last"] = mid
+    rows = list(strikes.values())
+    rows.sort(key=lambda item: item["strike"])
+    return rows
