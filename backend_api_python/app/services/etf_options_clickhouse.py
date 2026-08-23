@@ -330,6 +330,55 @@ def build_strike_chains_by_month(
     return out
 
 
+
+def fetch_option_chain_rows_via_view(
+    code6: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Prefer the host view `v_opt_chain_latest` (one round-trip)."""
+    code6 = str(code6 or "").strip()
+    meta: Dict[str, Any] = {"source": "clickhouse_view", "view": "v_opt_chain_latest"}
+    if not code6:
+        return [], meta
+    sql = f"""
+    SELECT
+      contract_code, contract_id, strike, cp, expire_date, expire_ym,
+      close, open_interest, quote_ts, iv, delta, gamma, vega, theta, underlying_price
+    FROM v_opt_chain_latest
+    WHERE underlying_code = '{code6}'
+    """
+    t0 = time.perf_counter()
+    try:
+        cols, raw_rows = _ch_query(sql, timeout=20.0)
+    except Exception as exc:
+        logger.info("etf_options CH view query failed for %s: %s", code6, exc)
+        return [], meta
+    rows: List[Dict[str, Any]] = []
+    for raw in raw_rows:
+        item = dict(zip(cols, raw))
+        rows.append(
+            {
+                "contract_code": str(item.get("contract_code") or ""),
+                "contract_id": str(item.get("contract_id") or ""),
+                "strike": _to_float(item.get("strike")),
+                "cp": str(item.get("cp") or "").strip().upper(),
+                "expire_date": item.get("expire_date"),
+                "month": str(item.get("expire_ym") or _month_key_from_expire(item.get("expire_date"))),
+                "close": _to_float(item.get("close")),
+                "open_interest": _to_float(item.get("open_interest")),
+                "iv": _to_float(item.get("iv")),
+                "delta": _to_float(item.get("delta")),
+                "gamma": _to_float(item.get("gamma")),
+                "vega": _to_float(item.get("vega")),
+                "theta": _to_float(item.get("theta")),
+                "underlying_price": _to_float(item.get("underlying_price")),
+                "quote_ts": item.get("quote_ts"),
+            }
+        )
+    meta["elapsed_s"] = round(time.perf_counter() - t0, 4)
+    meta["row_count"] = len(rows)
+    return rows, meta
+
+
 def try_load_etf_option_chains(code6: str) -> Optional[Dict[str, Any]]:
     """High-level helper: months + chains + underlying from ClickHouse, or None."""
     if not etf_options_ch_enabled():
@@ -341,7 +390,9 @@ def try_load_etf_option_chains(code6: str) -> Optional[Dict[str, Any]]:
         logger.info("etf_options CH data stale for %s", code6)
         return None
 
-    flat_rows, meta = fetch_option_chain_rows(code6)
+    flat_rows, meta = fetch_option_chain_rows_via_view(code6)
+    if not flat_rows:
+        flat_rows, meta = fetch_option_chain_rows(code6)
     if not flat_rows:
         return None
 
