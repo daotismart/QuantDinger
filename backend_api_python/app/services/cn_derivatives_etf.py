@@ -365,13 +365,48 @@ def _assemble_etf_options_panel(
     time_value_fn,
     data_source: str,
 ) -> Dict[str, Any]:
-    """Shared GEX/panel assembly for ClickHouse and Sina chain inputs."""
+    """Assemble ETF options panel with GEX as a chart-style indicator.
+
+    Flow mirrors the Indicator IDE: compute indicator output
+    (plots/signals/layers/summary), then map to display fields. Legacy
+    ``gex_distribution`` / ``gex_summary`` remain for older clients.
+    """
+    from app.services.gex_indicator import (
+        panel_fields_from_gex_indicator,
+        run_gex_indicator,
+    )
+
     mult = 10000.0
     margin_rate = 0.12
     month_series: List[Dict[str, Any]] = []
     chains_for_agg: List[List[Dict[str, Any]]] = []
     underlyings: List[float] = []
     Ts: List[float] = []
+
+    def _gex_fields(chain: List[Dict[str, Any]], *, spot: float, T: float, label: str) -> Dict[str, Any]:
+        indicator = run_gex_indicator(
+            chain or [],
+            underlying=float(spot or 0.0),
+            multiplier=mult,
+            T=T,
+            name=label,
+        )
+        fields = panel_fields_from_gex_indicator(indicator)
+        # Optional injectable raw compute (tests) can override legacy arrays only.
+        if compute_gex is not None and chain and spot:
+            try:
+                raw = compute_gex(chain, underlying=spot, multiplier=mult, T=T) or {}
+            except TypeError:
+                raw = {}
+            if isinstance(raw, dict) and raw.get("points") is not None:
+                fields["gex_distribution"] = list(raw.get("points") or [])
+                if isinstance(raw.get("summary"), dict):
+                    fields["gex_summary"] = dict(raw.get("summary") or {})
+                if isinstance(raw.get("portfolio_greeks"), dict):
+                    fields["greeks"] = dict(raw.get("portfolio_greeks") or {})
+                if isinstance(raw.get("iv_smile"), list):
+                    fields["iv_smile"] = list(raw.get("iv_smile") or [])
+        return fields
 
     for m in selected_months:
         chain = chains_by_month.get(m) or []
@@ -383,11 +418,7 @@ def _assemble_etf_options_panel(
         underlyings.append(underlying)
         Ts.append(T)
         chains_for_agg.append(chain)
-        gex = (
-            compute_gex(chain, underlying=underlying, multiplier=mult, T=T)
-            if underlying and chain
-            else {"points": [], "summary": {}, "portfolio_greeks": {}, "iv_smile": []}
-        )
+        gex_fields = _gex_fields(chain, spot=underlying, T=T, label=f"GEX {m}")
         max_pain = compute_max_pain(chain) if chain else None
         tv_yield = time_value_fn(
             chain,
@@ -402,16 +433,20 @@ def _assemble_etf_options_panel(
                 "month": m,
                 "underlying": underlying,
                 "T": T,
-                "gex_distribution": gex.get("points") or [],
-                "gex_summary": gex.get("summary") or {},
-                "greeks": gex.get("portfolio_greeks") or {},
-                "iv_smile": gex.get("iv_smile") or [],
+                "gex_distribution": gex_fields.get("gex_distribution") or [],
+                "gex_summary": gex_fields.get("gex_summary") or {},
+                "greeks": gex_fields.get("greeks") or {},
+                "iv_smile": gex_fields.get("iv_smile") or [],
                 "max_pain": max_pain,
                 "time_value_yield": tv_yield,
+                "indicators": gex_fields.get("indicators") or {},
             }
         )
 
     if not month_series:
+        empty_ind = run_gex_indicator(
+            [], underlying=float(underlying or 0.0), multiplier=mult, T=30 / 365.0, name="GEX"
+        )
         return {
             "root": code6,
             "name_cn": name_cn,
@@ -430,6 +465,7 @@ def _assemble_etf_options_panel(
             "iv_smile": [],
             "max_pain": None,
             "time_value_yield": [],
+            "indicators": {"gex": empty_ind},
             "message": "已连接期权数据源，但当前月份链截面为空。",
             "data_source": data_source,
             "asof": datetime.now().isoformat(timespec="seconds"),
@@ -440,20 +476,30 @@ def _assemble_etf_options_panel(
     t_avg = sum(Ts) / len(Ts) if Ts else 30 / 365.0
     if select_all and len(chains_for_agg) > 1:
         agg_chain = _aggregate_etf_chains_by_strike(chains_for_agg)
-        agg_gex = (
-            compute_gex(agg_chain, underlying=u_avg, multiplier=mult, T=t_avg) if agg_chain else {}
-        )
+        gex_fields = _gex_fields(agg_chain, spot=u_avg, T=t_avg, label="GEX all")
         chain_out = agg_chain
-        greeks = agg_gex.get("portfolio_greeks") or primary.get("greeks") or {}
-        gex_summary = agg_gex.get("summary") or primary.get("gex_summary") or {}
-        gex_distribution = agg_gex.get("points") or primary.get("gex_distribution") or []
+        greeks = gex_fields.get("greeks") or primary.get("greeks") or {}
+        gex_summary = gex_fields.get("gex_summary") or primary.get("gex_summary") or {}
+        gex_distribution = gex_fields.get("gex_distribution") or primary.get("gex_distribution") or []
+        gex_indicator = (gex_fields.get("indicators") or {}).get("gex")
         max_pain = compute_max_pain(agg_chain) if agg_chain else primary.get("max_pain")
+        iv_smile = gex_fields.get("iv_smile") or primary.get("iv_smile") or []
     else:
         chain_out = chains_for_agg[0] if chains_for_agg else []
         greeks = primary.get("greeks") or {}
         gex_summary = primary.get("gex_summary") or {}
         gex_distribution = primary.get("gex_distribution") or []
+        gex_indicator = (primary.get("indicators") or {}).get("gex")
         max_pain = primary.get("max_pain")
+        iv_smile = primary.get("iv_smile") or []
+    if gex_indicator is None:
+        gex_indicator = run_gex_indicator(
+            chain_out,
+            underlying=float(underlying or u_avg or 0.0),
+            multiplier=mult,
+            T=t_avg,
+            name="GEX",
+        )
     return {
         "root": code6,
         "name_cn": name_cn,
@@ -469,10 +515,11 @@ def _assemble_etf_options_panel(
         "greeks": greeks,
         "gex_summary": gex_summary,
         "gex_distribution": gex_distribution,
-        "iv_smile": primary.get("iv_smile") or [],
+        "iv_smile": iv_smile,
         "max_pain": max_pain,
         "time_value_yield": primary.get("time_value_yield") or [],
         "month_series": month_series,
+        "indicators": {"gex": gex_indicator},
         "data_source": data_source,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
