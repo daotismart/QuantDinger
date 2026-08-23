@@ -327,58 +327,59 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
     }
 
 
-def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str, Any]:
-    from app.markets.cn_options import etf_underlying_display_name
-    from app.services.cn_derivatives_analytics import (
-        _ak,
-        _mid,
-        _safe_float,
-        _time_value_annualized_yield,
-        compute_gex,
-        compute_max_pain,
-    )
 
-    code6 = _etf_code6(code)
-    if not code6:
-        raise ValueError("underlying ETF code is required")
+def _etf_options_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    try:
+        from app.utils.cache import CacheManager
 
-    months = _etf_option_months(code6, _ak)
-    if not months:
-        return {
-            "root": code6,
-            "name_cn": etf_underlying_display_name(code6),
-            "months": [],
-            "month": None,
-            "available": False,
-            "has_option_chain": False,
-            "message": "暂未获取到该 ETF 期权的到期月份列表。",
-            "asof": datetime.now().isoformat(timespec="seconds"),
-        }
+        cached = CacheManager().get(key)
+        return cached if isinstance(cached, dict) else None
+    except Exception as exc:
+        logger.debug("etf options cache get failed: %s", exc)
+        return None
 
-    month_raw = (month or "all").strip().lower()
-    select_all = month_raw in {"", "all", "*", "全部"}
-    # Include all listed expiries when "全部" so the GEX chart can stack by month.
-    # Cap at 8 to keep Sina/SSE fetches bounded on low-RAM hosts.
-    selected_months = months[:8] if select_all else [month_raw]
-    if not select_all and selected_months[0] not in months:
-        selected_months = [months[0]]
 
-    etf_panel = build_etf_spot_panel(code6)
-    underlying = float(etf_panel.get("spot_price") or 0.0)
+def _etf_options_cache_set(key: str, value: Dict[str, Any], ttl: int) -> None:
+    if ttl <= 0:
+        return
+    try:
+        from app.utils.cache import CacheManager
+
+        CacheManager().set(key, value, ttl=ttl)
+    except Exception as exc:
+        logger.debug("etf options cache set failed: %s", exc)
+
+
+def _assemble_etf_options_panel(
+    *,
+    code6: str,
+    name_cn: str,
+    months: List[str],
+    selected_months: List[str],
+    select_all: bool,
+    underlying: float,
+    chains_by_month: Dict[str, List[Dict[str, Any]]],
+    month_meta: Dict[str, Dict[str, Any]],
+    compute_gex,
+    compute_max_pain,
+    time_value_fn,
+    data_source: str,
+) -> Dict[str, Any]:
+    """Shared GEX/panel assembly for ClickHouse and Sina chain inputs."""
     mult = 10000.0
     margin_rate = 0.12
-
     month_series: List[Dict[str, Any]] = []
     chains_for_agg: List[List[Dict[str, Any]]] = []
     underlyings: List[float] = []
     Ts: List[float] = []
 
     for m in selected_months:
-        chain, chain_meta = _etf_option_chain_from_current_day(code6, m, _ak, _mid, _safe_float)
+        chain = chains_by_month.get(m) or []
         if not chain:
             continue
-        mult = float(chain_meta.get("multiplier") or mult)
-        T = float(chain_meta.get("T") or (30 / 365.0))
+        meta = month_meta.get(m) or {}
+        mult = float(meta.get("multiplier") or mult)
+        T = float(meta.get("T") or (30 / 365.0))
         underlyings.append(underlying)
         Ts.append(T)
         chains_for_agg.append(chain)
@@ -388,7 +389,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
             else {"points": [], "summary": {}, "portfolio_greeks": {}, "iv_smile": []}
         )
         max_pain = compute_max_pain(chain) if chain else None
-        tv_yield = _time_value_annualized_yield(
+        tv_yield = time_value_fn(
             chain,
             underlying=underlying,
             multiplier=mult,
@@ -413,7 +414,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
     if not month_series:
         return {
             "root": code6,
-            "name_cn": etf_underlying_display_name(code6),
+            "name_cn": name_cn,
             "available": True,
             "has_option_chain": True,
             "months": months,
@@ -429,7 +430,8 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
             "iv_smile": [],
             "max_pain": None,
             "time_value_yield": [],
-            "message": "已连接 SSE 期权列表，但当前月份链截面为空。",
+            "message": "已连接期权数据源，但当前月份链截面为空。",
+            "data_source": data_source,
             "asof": datetime.now().isoformat(timespec="seconds"),
         }
 
@@ -444,7 +446,6 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         chain_out = agg_chain
         greeks = agg_gex.get("portfolio_greeks") or primary.get("greeks") or {}
         gex_summary = agg_gex.get("summary") or primary.get("gex_summary") or {}
-        # Aggregated distribution for mark lines / Net GEX; per-month stacks come from month_series.
         gex_distribution = agg_gex.get("points") or primary.get("gex_distribution") or []
         max_pain = compute_max_pain(agg_chain) if agg_chain else primary.get("max_pain")
     else:
@@ -455,7 +456,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         max_pain = primary.get("max_pain")
     return {
         "root": code6,
-        "name_cn": etf_underlying_display_name(code6),
+        "name_cn": name_cn,
         "available": True,
         "has_option_chain": True,
         "months": months,
@@ -472,8 +473,120 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         "max_pain": max_pain,
         "time_value_yield": primary.get("time_value_yield") or [],
         "month_series": month_series,
+        "data_source": data_source,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
+
+
+def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str, Any]:
+    from app.markets.cn_options import etf_underlying_display_name
+    from app.services.cn_derivatives_analytics import (
+        _ak,
+        _mid,
+        _safe_float,
+        _time_value_annualized_yield,
+        compute_gex,
+        compute_max_pain,
+    )
+    from app.services.etf_options_clickhouse import (
+        etf_options_panel_cache_ttl,
+        try_load_etf_option_chains,
+    )
+
+    code6 = _etf_code6(code)
+    if not code6:
+        raise ValueError("underlying ETF code is required")
+
+    month_raw = (month or "all").strip().lower()
+    cache_key = f"etf_options_panel:v1:{code6}:{month_raw or 'all'}"
+    cache_ttl = etf_options_panel_cache_ttl()
+    cached = _etf_options_cache_get(cache_key)
+    if cached:
+        out = dict(cached)
+        out["cache_hit"] = True
+        return out
+
+    name_cn = etf_underlying_display_name(code6)
+    select_all = month_raw in {"", "all", "*", "全部"}
+
+    ch_bundle = try_load_etf_option_chains(code6)
+    if ch_bundle:
+        months = list(ch_bundle.get("months") or [])
+        selected_months = months[:8] if select_all else [month_raw]
+        if not select_all and selected_months[0] not in months:
+            selected_months = [months[0]] if months else selected_months
+        underlying = float(ch_bundle.get("underlying") or 0.0)
+        panel = _assemble_etf_options_panel(
+            code6=code6,
+            name_cn=name_cn,
+            months=months,
+            selected_months=selected_months,
+            select_all=select_all,
+            underlying=underlying,
+            chains_by_month=ch_bundle.get("chains_by_month") or {},
+            month_meta=ch_bundle.get("month_meta") or {},
+            compute_gex=compute_gex,
+            compute_max_pain=compute_max_pain,
+            time_value_fn=_time_value_annualized_yield,
+            data_source="clickhouse",
+        )
+        if panel.get("month_series"):
+            _etf_options_cache_set(cache_key, panel, cache_ttl)
+            panel["cache_hit"] = False
+            return panel
+        logger.info("etf_options CH path empty for %s; falling back to Sina/SSE", code6)
+
+    months = _etf_option_months(code6, _ak)
+    if not months:
+        return {
+            "root": code6,
+            "name_cn": name_cn,
+            "months": [],
+            "month": None,
+            "available": False,
+            "has_option_chain": False,
+            "message": "暂未获取到该 ETF 期权的到期月份列表。",
+            "data_source": "sina",
+            "asof": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    selected_months = months[:8] if select_all else [month_raw]
+    if not select_all and selected_months[0] not in months:
+        selected_months = [months[0]]
+
+    etf_panel = build_etf_spot_panel(code6)
+    underlying = float(etf_panel.get("spot_price") or 0.0)
+
+    chains_by_month: Dict[str, List[Dict[str, Any]]] = {}
+    month_meta: Dict[str, Dict[str, Any]] = {}
+    for m in selected_months:
+        chain, chain_meta = _etf_option_chain_from_current_day(code6, m, _ak, _mid, _safe_float)
+        if not chain:
+            continue
+        chains_by_month[m] = chain
+        month_meta[m] = {
+            "multiplier": float(chain_meta.get("multiplier") or 10000.0),
+            "T": float(chain_meta.get("T") or (30 / 365.0)),
+        }
+
+    panel = _assemble_etf_options_panel(
+        code6=code6,
+        name_cn=name_cn,
+        months=months,
+        selected_months=selected_months,
+        select_all=select_all,
+        underlying=underlying,
+        chains_by_month=chains_by_month,
+        month_meta=month_meta,
+        compute_gex=compute_gex,
+        compute_max_pain=compute_max_pain,
+        time_value_fn=_time_value_annualized_yield,
+        data_source="sina",
+    )
+    if panel.get("month_series"):
+        _etf_options_cache_set(cache_key, panel, cache_ttl)
+    panel["cache_hit"] = False
+    return panel
 
 
 def _aggregate_etf_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
