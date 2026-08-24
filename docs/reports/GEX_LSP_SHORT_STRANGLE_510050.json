@@ -1,0 +1,1591 @@
+{
+  "summary": {
+    "underlying": "510050",
+    "initialCapital": 1000000.0,
+    "finalEquity": 996388.81,
+    "totalReturn": -0.003611,
+    "annualizedVol": 0.003033,
+    "sharpe": -3.5071,
+    "maxDrawdown": -0.003595,
+    "trades": 11,
+    "winRate": 0.8182,
+    "avgTradePnl": 215.78,
+    "config": {
+      "underlying_code": "510050",
+      "initial_capital": 1000000.0,
+      "lots": 1,
+      "multiplier": 10000.0,
+      "commission_per_lot": 5.0,
+      "slippage_pct": 0.02,
+      "hedge_band_delta": 0.15,
+      "min_dte": 7,
+      "max_dte": 45,
+      "min_width_pct": 0.03,
+      "max_hold_days": 15,
+      "exit_dte": 5,
+      "lsp_days_1": 5,
+      "lsp_days_2": 10,
+      "lsp_neutral_band": 8.0,
+      "require_inside_walls": true,
+      "wall_buffer_pct": 0.005
+    }
+  },
+  "equityCurve": [
+    {
+      "date": "2026-04-01",
+      "equity": 999971.6
+    },
+    {
+      "date": "2026-04-02",
+      "equity": 999828.34
+    },
+    {
+      "date": "2026-04-09",
+      "equity": 999891.84
+    },
+    {
+      "date": "2026-04-13",
+      "equity": 998878.55
+    },
+    {
+      "date": "2026-04-14",
+      "equity": 999706.42
+    },
+    {
+      "date": "2026-04-15",
+      "equity": 999718.9
+    },
+    {
+      "date": "2026-04-16",
+      "equity": 999262.04
+    },
+    {
+      "date": "2026-04-17",
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-20",
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-21",
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-22",
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-23",
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-24",
+      "equity": 998918.74
+    },
+    {
+      "date": "2026-04-27",
+      "equity": 998953.08
+    },
+    {
+      "date": "2026-04-28",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-04-29",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-04-30",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-06",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-07",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-08",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-11",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-12",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-13",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-14",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-15",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-18",
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-19",
+      "equity": 998795.0
+    },
+    {
+      "date": "2026-05-21",
+      "equity": 998628.12
+    },
+    {
+      "date": "2026-05-22",
+      "equity": 998425.09
+    },
+    {
+      "date": "2026-05-25",
+      "equity": 998396.12
+    },
+    {
+      "date": "2026-05-26",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-05-27",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-05-28",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-05-29",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-02",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-11",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-12",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-15",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-16",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-17",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-18",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-22",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-23",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-24",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-25",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-26",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-29",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-30",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-07-01",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-07-02",
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-07-03",
+      "equity": 998287.86
+    },
+    {
+      "date": "2026-07-06",
+      "equity": 998353.53
+    },
+    {
+      "date": "2026-07-07",
+      "equity": 998353.64
+    },
+    {
+      "date": "2026-07-08",
+      "equity": 998400.35
+    },
+    {
+      "date": "2026-07-09",
+      "equity": 998082.1
+    },
+    {
+      "date": "2026-07-10",
+      "equity": 998082.1
+    },
+    {
+      "date": "2026-07-13",
+      "equity": 998082.1
+    },
+    {
+      "date": "2026-07-14",
+      "equity": 998050.7
+    },
+    {
+      "date": "2026-07-15",
+      "equity": 998069.91
+    },
+    {
+      "date": "2026-07-16",
+      "equity": 997760.22
+    },
+    {
+      "date": "2026-07-17",
+      "equity": 996888.92
+    },
+    {
+      "date": "2026-07-20",
+      "equity": 996749.05
+    },
+    {
+      "date": "2026-07-21",
+      "equity": 996794.21
+    },
+    {
+      "date": "2026-07-22",
+      "equity": 996850.4
+    },
+    {
+      "date": "2026-07-23",
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-24",
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-27",
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-28",
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-29",
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-30",
+      "equity": 996645.94
+    },
+    {
+      "date": "2026-07-31",
+      "equity": 996803.57
+    },
+    {
+      "date": "2026-08-03",
+      "equity": 996677.14
+    },
+    {
+      "date": "2026-08-04",
+      "equity": 996636.95
+    },
+    {
+      "date": "2026-08-05",
+      "equity": 996569.13
+    },
+    {
+      "date": "2026-08-06",
+      "equity": 996622.85
+    },
+    {
+      "date": "2026-08-07",
+      "equity": 996559.84
+    },
+    {
+      "date": "2026-08-10",
+      "equity": 996602.81
+    },
+    {
+      "date": "2026-08-11",
+      "equity": 996487.79
+    },
+    {
+      "date": "2026-08-12",
+      "equity": 996530.17
+    },
+    {
+      "date": "2026-08-13",
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-14",
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-18",
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-19",
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-20",
+      "equity": 996377.04
+    },
+    {
+      "date": "2026-08-21",
+      "equity": 996408.51
+    },
+    {
+      "date": "2026-08-24",
+      "equity": 996388.81
+    }
+  ],
+  "trades": [
+    {
+      "entryDate": "2026-04-01",
+      "exitDate": "2026-04-16",
+      "reason": "call_wall_breach",
+      "callStrike": 3.0,
+      "putStrike": 2.9,
+      "callCode": "50ETF购4月3000",
+      "putCode": "50ETF沽4月2900",
+      "entryCredit": 395.92,
+      "exitDebit": 318.24,
+      "pnl": 424.72,
+      "daysHeld": 6,
+      "callWall": 3.0,
+      "putWall": 2.9,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-04-16",
+      "exitDate": "2026-04-17",
+      "reason": "put_wall_breach",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购5月3100",
+      "putCode": "50ETF沽5月3000",
+      "entryCredit": 749.21,
+      "exitDebit": 814.98,
+      "pnl": 7.28,
+      "daysHeld": 1,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-04-24",
+      "exitDate": "2026-04-28",
+      "reason": "lsp_directional",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购5月3100",
+      "putCode": "50ETF沽5月3000",
+      "entryCredit": 555.17,
+      "exitDebit": 506.94,
+      "pnl": 26.77,
+      "daysHeld": 2,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-05-19",
+      "exitDate": "2026-05-22",
+      "reason": "exit_dte",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购5月3100",
+      "putCode": "50ETF沽5月3000",
+      "entryCredit": 194.04,
+      "exitDebit": 233.58,
+      "pnl": 71.77,
+      "daysHeld": 2,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-05-25",
+      "exitDate": "2026-05-26",
+      "reason": "lsp_directional",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购6月3100",
+      "putCode": "50ETF沽6月3000",
+      "entryCredit": 641.9,
+      "exitDebit": 661.98,
+      "pnl": -40.9,
+      "daysHeld": 1,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "neutral"
+    },
+    {
+      "entryDate": "2026-07-03",
+      "exitDate": "2026-07-09",
+      "reason": "lsp_directional",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购7月3100",
+      "putCode": "50ETF沽7月3000",
+      "entryCredit": 682.08,
+      "exitDebit": 507.96,
+      "pnl": 314.53,
+      "daysHeld": 4,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-07-14",
+      "exitDate": "2026-07-17",
+      "reason": "exit_dte",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购7月3100",
+      "putCode": "50ETF沽7月3000",
+      "entryCredit": 309.68,
+      "exitDebit": 826.2,
+      "pnl": 441.85,
+      "daysHeld": 3,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-07-17",
+      "exitDate": "2026-07-23",
+      "reason": "lsp_directional",
+      "callStrike": 3.1,
+      "putStrike": 2.85,
+      "callCode": "50ETF购8月3100",
+      "putCode": "50ETF沽8月2850",
+      "entryCredit": 769.79,
+      "exitDebit": 578.34,
+      "pnl": 690.69,
+      "daysHeld": 4,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-07-30",
+      "exitDate": "2026-08-04",
+      "reason": "put_wall_breach",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购8月3100",
+      "putCode": "50ETF沽8月3000",
+      "entryCredit": 904.05,
+      "exitDebit": 752.76,
+      "pnl": 222.15,
+      "daysHeld": 3,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-08-05",
+      "exitDate": "2026-08-13",
+      "reason": "lsp_directional",
+      "callStrike": 3.1,
+      "putStrike": 3.0,
+      "callCode": "50ETF购8月3100",
+      "putCode": "50ETF沽8月3000",
+      "entryCredit": 552.72,
+      "exitDebit": 310.59,
+      "pnl": 218.62,
+      "daysHeld": 6,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "mixed"
+    },
+    {
+      "entryDate": "2026-08-20",
+      "exitDate": "2026-08-24",
+      "reason": "eod_force_close",
+      "callStrike": 3.6,
+      "putStrike": 2.9,
+      "callCode": "50ETF购9月3600",
+      "putCode": "50ETF沽9月2900",
+      "entryCredit": 276.36,
+      "exitDebit": 282.03,
+      "pnl": -3.87,
+      "daysHeld": 2,
+      "callWall": 3.6,
+      "putWall": 2.9,
+      "lspRegimeEntry": "mixed"
+    }
+  ],
+  "daily": [
+    {
+      "date": "2026-04-01",
+      "spot": 2.951,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 2.9,
+      "pin": 2.9,
+      "flip": 3.0,
+      "inPosition": true,
+      "equity": 999971.6
+    },
+    {
+      "date": "2026-04-02",
+      "spot": 2.926,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 2.9,
+      "pin": 2.9,
+      "flip": 3.0,
+      "inPosition": true,
+      "equity": 999828.34
+    },
+    {
+      "date": "2026-04-09",
+      "spot": 2.955,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 2.9,
+      "pin": 2.95,
+      "flip": 3.0,
+      "inPosition": true,
+      "equity": 999891.84
+    },
+    {
+      "date": "2026-04-13",
+      "spot": 2.966,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": null,
+      "putWall": null,
+      "pin": null,
+      "flip": null,
+      "inPosition": true,
+      "equity": 998878.55
+    },
+    {
+      "date": "2026-04-14",
+      "spot": 2.998,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 2.9,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 999706.42
+    },
+    {
+      "date": "2026-04-15",
+      "spot": 3.006,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 2.95,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 999718.9
+    },
+    {
+      "date": "2026-04-16",
+      "spot": 3.015,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 999262.04
+    },
+    {
+      "date": "2026-04-17",
+      "spot": 2.983,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-20",
+      "spot": 3.007,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-21",
+      "spot": 3.005,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-22",
+      "spot": 3.004,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-23",
+      "spot": 3.003,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.0,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 999013.05
+    },
+    {
+      "date": "2026-04-24",
+      "spot": 3.018,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998918.74
+    },
+    {
+      "date": "2026-04-27",
+      "spot": 3.014,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998953.08
+    },
+    {
+      "date": "2026-04-28",
+      "spot": 3.019,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-04-29",
+      "spot": 3.019,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": null,
+      "putWall": null,
+      "pin": null,
+      "flip": null,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-04-30",
+      "spot": 3.061,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-06",
+      "spot": 3.1,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-07",
+      "spot": 3.102,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-08",
+      "spot": 3.074,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-11",
+      "spot": 3.122,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-12",
+      "spot": 3.119,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-13",
+      "spot": 3.122,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-14",
+      "spot": 3.073,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-15",
+      "spot": 3.034,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-18",
+      "spot": 3.01,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998893.85
+    },
+    {
+      "date": "2026-05-19",
+      "spot": 3.025,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998795.0
+    },
+    {
+      "date": "2026-05-21",
+      "spot": 2.994,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.215,
+      "inPosition": true,
+      "equity": 998628.12
+    },
+    {
+      "date": "2026-05-22",
+      "spot": 2.996,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.117,
+      "inPosition": false,
+      "equity": 998425.09
+    },
+    {
+      "date": "2026-05-25",
+      "spot": 3.039,
+      "lspRegime": "neutral",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998396.12
+    },
+    {
+      "date": "2026-05-26",
+      "spot": 3.046,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-05-27",
+      "spot": 3.009,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-05-28",
+      "spot": 2.984,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-05-29",
+      "spot": 2.993,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-02",
+      "spot": 2.97,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": null,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-11",
+      "spot": 2.926,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "pin": 3.0,
+      "flip": 3.0,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-12",
+      "spot": 2.979,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 2.9,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-15",
+      "spot": 3.025,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-16",
+      "spot": 2.992,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.02,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-17",
+      "spot": 3.015,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.02,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-18",
+      "spot": 3.017,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-22",
+      "spot": 3.095,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-23",
+      "spot": 3.007,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-24",
+      "spot": 3.024,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-25",
+      "spot": 3.06,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-26",
+      "spot": 2.998,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-29",
+      "spot": 3.081,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-06-30",
+      "spot": 3.083,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-07-01",
+      "spot": 3.077,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-07-02",
+      "spot": 3.002,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998372.45
+    },
+    {
+      "date": "2026-07-03",
+      "spot": 3.022,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998287.86
+    },
+    {
+      "date": "2026-07-06",
+      "spot": 3.047,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998353.53
+    },
+    {
+      "date": "2026-07-07",
+      "spot": 3.009,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998353.64
+    },
+    {
+      "date": "2026-07-08",
+      "spot": 3.008,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998400.35
+    },
+    {
+      "date": "2026-07-09",
+      "spot": 3.088,
+      "lspRegime": "bearish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998082.1
+    },
+    {
+      "date": "2026-07-10",
+      "spot": 3.056,
+      "lspRegime": "bearish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998082.1
+    },
+    {
+      "date": "2026-07-13",
+      "spot": 3.012,
+      "lspRegime": "bearish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 998082.1
+    },
+    {
+      "date": "2026-07-14",
+      "spot": 3.056,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998050.7
+    },
+    {
+      "date": "2026-07-15",
+      "spot": 3.065,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 998069.91
+    },
+    {
+      "date": "2026-07-16",
+      "spot": 2.999,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 997760.22
+    },
+    {
+      "date": "2026-07-17",
+      "spot": 2.928,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "pin": 3.0,
+      "flip": 3.2,
+      "inPosition": true,
+      "equity": 996888.92
+    },
+    {
+      "date": "2026-07-20",
+      "spot": 3.007,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "pin": 3.0,
+      "flip": 3.2,
+      "inPosition": true,
+      "equity": 996749.05
+    },
+    {
+      "date": "2026-07-21",
+      "spot": 3.076,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.0,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996794.21
+    },
+    {
+      "date": "2026-07-22",
+      "spot": 3.088,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996850.4
+    },
+    {
+      "date": "2026-07-23",
+      "spot": 3.085,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-24",
+      "spot": 3.051,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-27",
+      "spot": 3.057,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-28",
+      "spot": 3.018,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-29",
+      "spot": 3.021,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996729.27
+    },
+    {
+      "date": "2026-07-30",
+      "spot": 3.019,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996645.94
+    },
+    {
+      "date": "2026-07-31",
+      "spot": 3.033,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996803.57
+    },
+    {
+      "date": "2026-08-03",
+      "spot": 2.989,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996677.14
+    },
+    {
+      "date": "2026-08-04",
+      "spot": 2.985,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996636.95
+    },
+    {
+      "date": "2026-08-05",
+      "spot": 3.031,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996569.13
+    },
+    {
+      "date": "2026-08-06",
+      "spot": 3.027,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996622.85
+    },
+    {
+      "date": "2026-08-07",
+      "spot": 3.066,
+      "lspRegime": "neutral",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996559.84
+    },
+    {
+      "date": "2026-08-10",
+      "spot": 3.075,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996602.81
+    },
+    {
+      "date": "2026-08-11",
+      "spot": 3.037,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996487.79
+    },
+    {
+      "date": "2026-08-12",
+      "spot": 3.045,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": true,
+      "equity": 996530.17
+    },
+    {
+      "date": "2026-08-13",
+      "spot": 3.036,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-14",
+      "spot": 3.022,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-18",
+      "spot": 3.047,
+      "lspRegime": "bullish",
+      "lspOk": false,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.1,
+      "inPosition": false,
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-19",
+      "spot": 2.991,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "pin": 3.1,
+      "flip": 3.0,
+      "inPosition": false,
+      "equity": 996513.77
+    },
+    {
+      "date": "2026-08-20",
+      "spot": 2.987,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.6,
+      "putWall": 2.9,
+      "pin": 2.9,
+      "flip": 3.5,
+      "inPosition": true,
+      "equity": 996377.04
+    },
+    {
+      "date": "2026-08-21",
+      "spot": 2.993,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.6,
+      "putWall": 2.9,
+      "pin": 3.0,
+      "flip": 3.2,
+      "inPosition": true,
+      "equity": 996408.51
+    },
+    {
+      "date": "2026-08-24",
+      "spot": 2.978,
+      "lspRegime": "mixed",
+      "lspOk": true,
+      "callWall": 3.6,
+      "putWall": 2.9,
+      "pin": 3.0,
+      "flip": 3.2,
+      "inPosition": true,
+      "equity": 996404.34
+    }
+  ]
+}
