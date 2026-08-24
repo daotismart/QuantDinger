@@ -133,3 +133,7 @@ def test_delta_targeted_backtest_runs_on_synthetic_panel():
     if result.daily:
         assert "lspDeltaScore" in result.daily[0]
         assert "targetDeltaShares" in result.daily[0]
+    assert result.summary.get("hedgeMode") == "options_only"
+    for trade in result.trades:
+        assert "hedgeCash" not in trade
+        assert trade.get("callLots", 0) + trade.get("putLots", 0) >= 0

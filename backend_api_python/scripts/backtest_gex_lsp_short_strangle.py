@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run GEX+LSP delta-targeted short-strangle backtest on exported ETF options CSVs.
 
-LSP sets net-delta direction/size; GEX walls set strikes; hedge with option skew + spot.
+LSP sets net-delta direction/size; GEX walls set strikes; hedge with option skew only (no spot).
 
 Example:
   PYTHONPATH=backend_api_python python backend_api_python/scripts/backtest_gex_lsp_short_strangle.py \\
@@ -82,8 +82,8 @@ def main() -> int:
         "",
         "1. **LSP**: continuous `lsp_delta_score` sets portfolio net-delta direction and size.",
         "2. **GEX walls**: sell OTM call near call wall and OTM put near put wall.",
-        "3. **Option skew**: bullish LSP → more short puts / fewer short calls (and vice versa).",
-        "4. **Spot hedge**: residual delta (target − option book) rebalanced when outside band.",
+        "3. **Option-only hedge**: skew short call/put lots to approximate LSP target delta.",
+        "4. **No spot**: underlying is signal-only; never traded for delta hedge.",
         "5. **Exits**: DTE floor, max hold, wall breach, or flattened option book.",
         "",
         "## Recent trades",

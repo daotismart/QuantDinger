@@ -1,4 +1,7 @@
-"""Daily short-vol backtest: LSP sets delta target, GEX walls set strikes."""
+"""Daily short-vol backtest: LSP sets delta via option skew, GEX walls set strikes.
+
+Hedge is options-only (call/put lot skew). No underlying/spot hedge.
+"""
 
 from __future__ import annotations
 
@@ -23,10 +26,7 @@ class ShortStrangleBacktestConfig:
     lots: int = 1
     multiplier: float = 10000.0
     commission_per_lot: float = 5.0
-    # ETF/spot hedge commission in basis points of traded notional.
-    spot_commission_bps: float = 3.0
     slippage_pct: float = 0.02
-    hedge_band_delta: float = 0.10
     min_dte: int = 7
     max_dte: int = 45
     min_width_pct: float = 0.03
@@ -35,7 +35,7 @@ class ShortStrangleBacktestConfig:
     lsp_days_1: int = 5
     lsp_days_2: int = 10
     lsp_neutral_band: float = 8.0
-    # |target delta| cap as a fraction of one short-lot notional delta.
+    # |target delta| cap as a fraction of one short-lot notional delta (reporting + lot picker).
     lsp_max_abs_delta: float = 0.5
     # Extra short lots tilted by LSP (call vs put asymmetry).
     lsp_max_skew_lots: int = 1
@@ -43,10 +43,6 @@ class ShortStrangleBacktestConfig:
     wall_buffer_pct: float = 0.005
     # Re-skew option lots when LSP score changes by this much.
     reskew_score_band: float = 0.25
-
-
-def _spot_fee(shares: float, spot: float, bps: float) -> float:
-    return abs(float(shares)) * max(float(spot), 0.0) * max(float(bps), 0.0) / 10000.0
 
 
 @dataclass
@@ -68,12 +64,9 @@ class _OpenTrade:
     entry_spot: float
     lsp_score_entry: float
     target_delta_entry: float
-    hedge_shares: float = 0.0
     # Net cash from option sells(+) / buys(-), excluding commission (tracked separately).
     option_cash: float = 0.0
     option_fees: float = 0.0
-    hedge_cash: float = 0.0
-    hedge_fees: float = 0.0
     days_held: int = 0
     lsp_regime_entry: str = "neutral"
 
@@ -150,12 +143,56 @@ def _option_book_delta(
     multiplier: float,
 ) -> float:
     """Net delta of a short call/put book in underlying shares."""
-    # Short call: qty=-call_lots → delta contrib = -call_lots * call_delta * mult
-    # Short put:  qty=-put_lots  → delta contrib = -put_lots * put_delta * mult
     return (
         -float(call_lots) * float(call_delta) * float(multiplier)
         - float(put_lots) * float(put_delta) * float(multiplier)
     )
+
+
+def _lots_for_option_hedge(
+    *,
+    lsp_score: float,
+    target_delta_shares: float,
+    call_delta: float,
+    put_delta: float,
+    base_lots: int,
+    max_skew_lots: int,
+    multiplier: float,
+) -> tuple[int, int]:
+    """Pick short call/put lots to approximate LSP target delta with options only.
+
+    Starts from the LSP score skew grid, then chooses the (call, put) lot pair whose
+    short-book delta is closest to ``target_delta_shares``.
+    """
+    base = max(int(base_lots), 1)
+    max_skew = max(int(max_skew_lots), 0)
+    candidates: set[tuple[int, int]] = {lsp_option_skew_lots(lsp_score, base_lots=base, max_skew_lots=max_skew)}
+    for skew in range(0, max_skew + 1):
+        candidates.add((base - skew, base + skew))
+        candidates.add((base + skew, base - skew))
+        candidates.add((base, base))
+    best = (base, base)
+    best_err = float("inf")
+    for call_lots, put_lots in candidates:
+        if call_lots < 0 or put_lots < 0:
+            continue
+        if call_lots + put_lots <= 0:
+            continue
+        book = _option_book_delta(
+            call_lots=call_lots,
+            put_lots=put_lots,
+            call_delta=call_delta,
+            put_delta=put_delta,
+            multiplier=multiplier,
+        )
+        err = abs(book - float(target_delta_shares))
+        # Mild preference for keeping both short-vol legs when error is similar.
+        if call_lots == 0 or put_lots == 0:
+            err += abs(float(target_delta_shares)) * 0.001 + 1.0
+        if err < best_err:
+            best_err = err
+            best = (int(call_lots), int(put_lots))
+    return best
 
 
 def prepare_panel(
@@ -207,41 +244,6 @@ def prepare_panel(
     panel = ch.merge(oi_df, on=["trade_date", "contract_code"], how="left")
     panel["open_interest"] = panel["open_interest"].fillna(0.0)
     return und, panel
-
-
-def _rebalance_spot_hedge(
-    *,
-    cash: float,
-    open_trade: _OpenTrade,
-    spot: float,
-    target_delta_shares: float,
-    call_delta: float,
-    put_delta: float,
-    cfg: ShortStrangleBacktestConfig,
-) -> tuple[float, _OpenTrade]:
-    option_delta = _option_book_delta(
-        call_lots=open_trade.call_lots,
-        put_lots=open_trade.put_lots,
-        call_delta=call_delta,
-        put_delta=put_delta,
-        multiplier=cfg.multiplier,
-    )
-    target_hedge = target_delta_shares - option_delta
-    band_shares = cfg.hedge_band_delta * max(open_trade.call_lots, open_trade.put_lots, 1) * cfg.multiplier
-    if abs(target_hedge - open_trade.hedge_shares) > band_shares:
-        delta_shares = target_hedge - open_trade.hedge_shares
-        if abs(delta_shares) >= 100:
-            notional = delta_shares * spot
-            fee = _spot_fee(delta_shares, spot, cfg.spot_commission_bps)
-            cash -= notional
-            cash -= fee
-            open_trade.hedge_cash -= notional
-            open_trade.hedge_fees += fee
-            open_trade.hedge_shares = target_hedge
-            open_trade.call_delta = call_delta
-            open_trade.put_delta = put_delta
-            open_trade.target_delta_entry = target_delta_shares
-    return cash, open_trade
 
 
 def _adjust_option_lots(
@@ -300,7 +302,6 @@ def _close_option_book(
     open_trade: _OpenTrade,
     call_px: float,
     put_px: float,
-    spot: float,
     exit_date: pd.Timestamp,
     cfg: ShortStrangleBacktestConfig,
     reason: str,
@@ -314,16 +315,7 @@ def _close_option_book(
     open_trade.option_cash -= exit_debit
     open_trade.option_fees += exit_fee
 
-    if abs(open_trade.hedge_shares) >= 1e-9:
-        hedge_close = open_trade.hedge_shares * spot
-        hedge_fee = _spot_fee(open_trade.hedge_shares, spot, cfg.spot_commission_bps)
-        cash += hedge_close
-        cash -= hedge_fee
-        open_trade.hedge_cash += hedge_close
-        open_trade.hedge_fees += hedge_fee
-        open_trade.hedge_shares = 0.0
-
-    trade_pnl = open_trade.option_cash + open_trade.hedge_cash - open_trade.option_fees - open_trade.hedge_fees
+    trade_pnl = open_trade.option_cash - open_trade.option_fees
     trade = {
         "entryDate": str(open_trade.entry_date.date()),
         "exitDate": str(pd.Timestamp(exit_date).date()),
@@ -337,8 +329,7 @@ def _close_option_book(
         "lspScoreEntry": round(open_trade.lsp_score_entry, 4),
         "targetDeltaEntry": round(open_trade.target_delta_entry, 2),
         "optionCash": round(open_trade.option_cash, 2),
-        "hedgeCash": round(open_trade.hedge_cash, 2),
-        "fees": round(open_trade.option_fees + open_trade.hedge_fees, 2),
+        "fees": round(open_trade.option_fees, 2),
         "exitDebit": round(exit_debit, 2),
         "pnl": round(trade_pnl, 2),
         "daysHeld": open_trade.days_held,
@@ -356,7 +347,7 @@ def run_short_strangle_backtest(
     *,
     config: ShortStrangleBacktestConfig | None = None,
 ) -> ShortStrangleBacktestResult:
-    """Run short-vol backtest: walls pick strikes, LSP picks delta, hedge with options+spot."""
+    """Run short-vol backtest: walls pick strikes, LSP delta hedged with options only."""
     cfg = config or ShortStrangleBacktestConfig()
     und, panel = prepare_panel(underlying, chain, oi, config=cfg)
 
@@ -389,6 +380,8 @@ def run_short_strangle_backtest(
             multiplier=cfg.multiplier,
             max_abs_delta=cfg.lsp_max_abs_delta,
         )
+
+        # Default desired lots from score; refined with live deltas when in a trade / opening.
         desired_call_lots, desired_put_lots = lsp_option_skew_lots(
             lsp_score,
             base_lots=cfg.lots,
@@ -405,9 +398,22 @@ def run_short_strangle_backtest(
             put_delta = _option_delta(
                 day_chain, open_trade.put_code, open_trade.put_strike, "P", open_trade.put_delta
             )
+            desired_call_lots, desired_put_lots = _lots_for_option_hedge(
+                lsp_score=lsp_score,
+                target_delta_shares=target_delta,
+                call_delta=call_delta,
+                put_delta=put_delta,
+                base_lots=cfg.lots,
+                max_skew_lots=cfg.lsp_max_skew_lots,
+                multiplier=cfg.multiplier,
+            )
 
-            # 1) Option-side dynamic skew toward LSP.
-            if abs(lsp_score - open_trade.lsp_score_entry) >= cfg.reskew_score_band:
+            # Options-only hedge: re-skew call/put lots toward LSP target delta.
+            if (
+                abs(lsp_score - open_trade.lsp_score_entry) >= cfg.reskew_score_band
+                or desired_call_lots != open_trade.call_lots
+                or desired_put_lots != open_trade.put_lots
+            ) and abs(lsp_score - open_trade.lsp_score_entry) >= cfg.reskew_score_band:
                 cash, open_trade = _adjust_option_lots(
                     cash=cash,
                     open_trade=open_trade,
@@ -417,6 +423,7 @@ def run_short_strangle_backtest(
                     cfg=cfg,
                 )
                 open_trade.lsp_score_entry = lsp_score
+                open_trade.target_delta_entry = target_delta
                 call_delta = _option_delta(
                     day_chain, open_trade.call_code, open_trade.call_strike, "C", call_delta
                 )
@@ -424,16 +431,6 @@ def run_short_strangle_backtest(
                     day_chain, open_trade.put_code, open_trade.put_strike, "P", put_delta
                 )
 
-            # 2) Spot hedge residual to LSP target delta.
-            cash, open_trade = _rebalance_spot_hedge(
-                cash=cash,
-                open_trade=open_trade,
-                spot=spot,
-                target_delta_shares=target_delta,
-                call_delta=call_delta,
-                put_delta=put_delta,
-                cfg=cfg,
-            )
             open_trade.call_delta = call_delta
             open_trade.put_delta = put_delta
 
@@ -456,7 +453,6 @@ def run_short_strangle_backtest(
                     open_trade=open_trade,
                     call_px=call_px,
                     put_px=put_px,
-                    spot=spot,
                     exit_date=dt,
                     cfg=cfg,
                     reason=exit_reason,
@@ -472,6 +468,17 @@ def run_short_strangle_backtest(
             )
             call_px = pick.get("call_close")
             put_px = pick.get("put_close")
+            call_delta = float(pick.get("call_delta") or 0.25)
+            put_delta = float(pick.get("put_delta") or -0.25)
+            desired_call_lots, desired_put_lots = _lots_for_option_hedge(
+                lsp_score=lsp_score,
+                target_delta_shares=target_delta,
+                call_delta=call_delta,
+                put_delta=put_delta,
+                base_lots=cfg.lots,
+                max_skew_lots=cfg.lsp_max_skew_lots,
+                multiplier=cfg.multiplier,
+            )
             if (
                 ((not cfg.require_inside_walls) or inside)
                 and call_px
@@ -489,8 +496,6 @@ def run_short_strangle_backtest(
                 open_fee = _fee(desired_call_lots + desired_put_lots, cfg.commission_per_lot)
                 cash += call_premium + put_premium
                 cash -= open_fee
-                call_delta = float(pick.get("call_delta") or 0.25)
-                put_delta = float(pick.get("put_delta") or -0.25)
                 open_trade = _OpenTrade(
                     entry_date=dt,
                     expire_date=str(pick["expire_date"]),
@@ -509,24 +514,13 @@ def run_short_strangle_backtest(
                     entry_spot=spot,
                     lsp_score_entry=lsp_score,
                     target_delta_entry=target_delta,
-                    hedge_shares=0.0,
                     option_cash=call_premium + put_premium,
                     option_fees=open_fee,
                     days_held=0,
                     lsp_regime_entry=regime,
                 )
-                cash, open_trade = _rebalance_spot_hedge(
-                    cash=cash,
-                    open_trade=open_trade,
-                    spot=spot,
-                    target_delta_shares=target_delta,
-                    call_delta=call_delta,
-                    put_delta=put_delta,
-                    cfg=cfg,
-                )
 
         liability = 0.0
-        hedge_mv = 0.0
         net_delta = 0.0
         if open_trade is not None:
             call_px = _option_px(day_chain, open_trade.call_code, open_trade.call_strike, "C")
@@ -534,18 +528,14 @@ def run_short_strangle_backtest(
             liability = -(
                 call_px * open_trade.call_lots + put_px * open_trade.put_lots
             ) * cfg.multiplier
-            hedge_mv = open_trade.hedge_shares * spot
-            net_delta = (
-                _option_book_delta(
-                    call_lots=open_trade.call_lots,
-                    put_lots=open_trade.put_lots,
-                    call_delta=open_trade.call_delta,
-                    put_delta=open_trade.put_delta,
-                    multiplier=cfg.multiplier,
-                )
-                + open_trade.hedge_shares
+            net_delta = _option_book_delta(
+                call_lots=open_trade.call_lots,
+                put_lots=open_trade.put_lots,
+                call_delta=open_trade.call_delta,
+                put_delta=open_trade.put_delta,
+                multiplier=cfg.multiplier,
             )
-        equity = cash + liability + hedge_mv
+        equity = cash + liability
         equity_curve.append({"date": str(dt.date()), "equity": round(float(equity), 2)})
         daily.append(
             {
@@ -568,7 +558,6 @@ def run_short_strangle_backtest(
 
     if open_trade is not None and dates:
         dt = dates[-1]
-        spot = float(und.loc[dt, "close"])
         day_chain = panel[panel["trade_date"] == dt]
         call_px = _option_px(day_chain, open_trade.call_code, open_trade.call_strike, "C")
         put_px = _option_px(day_chain, open_trade.put_code, open_trade.put_strike, "P")
@@ -577,7 +566,6 @@ def run_short_strangle_backtest(
             open_trade=open_trade,
             call_px=call_px,
             put_px=put_px,
-            spot=spot,
             exit_date=dt,
             cfg=cfg,
             reason="eod_force_close",
@@ -606,6 +594,7 @@ def run_short_strangle_backtest(
         "trades": len(trades),
         "winRate": round(len(wins) / len(trades), 4) if trades else 0.0,
         "avgTradePnl": round(float(np.mean([t["pnl"] for t in trades])), 2) if trades else 0.0,
+        "hedgeMode": "options_only",
         "config": asdict(cfg),
     }
     return ShortStrangleBacktestResult(
