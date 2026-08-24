@@ -1,12 +1,20 @@
-# GEX + LSP Dynamic Short Strangle
+# GEX + LSP Delta-Targeted Short Strangle
 
-Sell a **wide strangle** when:
+期权卖方策略分工：
 
-1. **LSP** confirms non-directional exposure (neutral / mixed regime).
-2. Spot sits between **GEX put wall** and **call wall**.
-3. Strike selection uses the walls themselves (OTM call near call wall, OTM put near put wall).
+1. **LSP** 决定组合 **净 delta 方向与大小**（连续分 `lsp_delta_score` ∈ [-1,1]）。
+2. **GEX wall** 决定 **call / put 行权价**（call wall / put wall 附近卖出）。
+3. **动态对冲**：先用 call/put 张数 skew 实现部分方向敞口，再用 **现货** 把残差对冲到 LSP 目标 delta。
 
-Then **delta-hedge** residual exposure in the underlying ETF and exit on wall breach, LSP direction flip, DTE floor, or max hold.
+## 规则摘要
+
+| 模块 | 作用 |
+|------|------|
+| LSP score | `score > 0` 偏多 → 多卖 put / 少卖 call，目标净 delta 为正；`score < 0` 相反 |
+| GEX walls | 选 OTM call≈call wall、OTM put≈put wall；优先现货在墙内开仓 |
+| Option skew | `lsp_option_skew_lots` 按 score 倾斜短腿张数 |
+| Spot hedge | 残差 delta = 目标 − 期权账面 delta，超出 band 时买卖 ETF |
+| 退出 | 破墙、DTE 下限、最长持有、期权腿被 skew 平光 |
 
 ## Files
 

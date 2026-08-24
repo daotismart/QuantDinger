@@ -2,22 +2,23 @@
   "summary": {
     "underlying": "510050",
     "initialCapital": 1000000.0,
-    "finalEquity": 996388.81,
-    "totalReturn": -0.003611,
-    "annualizedVol": 0.003033,
-    "sharpe": -3.5071,
-    "maxDrawdown": -0.003595,
+    "finalEquity": 999831.57,
+    "totalReturn": -0.000168,
+    "annualizedVol": 0.00332,
+    "sharpe": -0.1326,
+    "maxDrawdown": -0.001013,
     "trades": 11,
-    "winRate": 0.8182,
-    "avgTradePnl": 215.78,
+    "winRate": 0.3636,
+    "avgTradePnl": -15.31,
     "config": {
       "underlying_code": "510050",
       "initial_capital": 1000000.0,
       "lots": 1,
       "multiplier": 10000.0,
       "commission_per_lot": 5.0,
+      "spot_commission_bps": 3.0,
       "slippage_pct": 0.02,
-      "hedge_band_delta": 0.15,
+      "hedge_band_delta": 0.1,
       "min_dte": 7,
       "max_dte": 45,
       "min_width_pct": 0.03,
@@ -26,354 +27,357 @@
       "lsp_days_1": 5,
       "lsp_days_2": 10,
       "lsp_neutral_band": 8.0,
+      "lsp_max_abs_delta": 0.5,
+      "lsp_max_skew_lots": 1,
       "require_inside_walls": true,
-      "wall_buffer_pct": 0.005
+      "wall_buffer_pct": 0.005,
+      "reskew_score_band": 0.25
     }
   },
   "equityCurve": [
     {
       "date": "2026-04-01",
-      "equity": 999971.6
+      "equity": 999981.92
     },
     {
       "date": "2026-04-02",
-      "equity": 999828.34
+      "equity": 999929.57
     },
     {
       "date": "2026-04-09",
-      "equity": 999891.84
+      "equity": 1000091.76
     },
     {
       "date": "2026-04-13",
-      "equity": 998878.55
+      "equity": 999078.48
     },
     {
       "date": "2026-04-14",
-      "equity": 999706.42
+      "equity": 1000083.7
     },
     {
       "date": "2026-04-15",
-      "equity": 999718.9
+      "equity": 1000084.78
     },
     {
       "date": "2026-04-16",
-      "equity": 999262.04
+      "equity": 1000039.84
     },
     {
       "date": "2026-04-17",
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-20",
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-21",
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-22",
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-23",
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-24",
-      "equity": 998918.74
+      "equity": 1000027.14
     },
     {
       "date": "2026-04-27",
-      "equity": 998953.08
+      "equity": 1000055.64
     },
     {
       "date": "2026-04-28",
-      "equity": 998893.85
+      "equity": 1000096.64
     },
     {
       "date": "2026-04-29",
-      "equity": 998893.85
+      "equity": 999635.37
     },
     {
       "date": "2026-04-30",
-      "equity": 998893.85
+      "equity": 1000220.97
     },
     {
       "date": "2026-05-06",
-      "equity": 998893.85
+      "equity": 1000269.7
     },
     {
       "date": "2026-05-07",
-      "equity": 998893.85
+      "equity": 1000271.84
     },
     {
       "date": "2026-05-08",
-      "equity": 998893.85
+      "equity": 1000193.78
     },
     {
       "date": "2026-05-11",
-      "equity": 998893.85
+      "equity": 1000327.03
     },
     {
       "date": "2026-05-12",
-      "equity": 998893.85
+      "equity": 1000327.03
     },
     {
       "date": "2026-05-13",
-      "equity": 998893.85
+      "equity": 1000327.03
     },
     {
       "date": "2026-05-14",
-      "equity": 998893.85
+      "equity": 1000313.05
     },
     {
       "date": "2026-05-15",
-      "equity": 998893.85
+      "equity": 1000150.01
     },
     {
       "date": "2026-05-18",
-      "equity": 998893.85
+      "equity": 1000111.95
     },
     {
       "date": "2026-05-19",
-      "equity": 998795.0
+      "equity": 1000190.06
     },
     {
       "date": "2026-05-21",
-      "equity": 998628.12
+      "equity": 1000163.55
     },
     {
       "date": "2026-05-22",
-      "equity": 998425.09
+      "equity": 1000181.02
     },
     {
       "date": "2026-05-25",
-      "equity": 998396.12
+      "equity": 1000157.92
     },
     {
       "date": "2026-05-26",
-      "equity": 998372.45
+      "equity": 1000140.94
     },
     {
       "date": "2026-05-27",
-      "equity": 998372.45
+      "equity": 999757.33
     },
     {
       "date": "2026-05-28",
-      "equity": 998372.45
+      "equity": 999658.08
     },
     {
       "date": "2026-05-29",
-      "equity": 998372.45
+      "equity": 999658.08
     },
     {
       "date": "2026-06-02",
-      "equity": 998372.45
+      "equity": 999658.08
     },
     {
       "date": "2026-06-11",
-      "equity": 998372.45
+      "equity": 999644.8
     },
     {
       "date": "2026-06-12",
-      "equity": 998372.45
+      "equity": 999746.6
     },
     {
       "date": "2026-06-15",
-      "equity": 998372.45
+      "equity": 999950.24
     },
     {
       "date": "2026-06-16",
-      "equity": 998372.45
+      "equity": 999828.13
     },
     {
       "date": "2026-06-17",
-      "equity": 998372.45
+      "equity": 999921.45
     },
     {
       "date": "2026-06-18",
-      "equity": 998372.45
+      "equity": 999931.61
     },
     {
       "date": "2026-06-22",
-      "equity": 998372.45
+      "equity": 1000205.41
     },
     {
       "date": "2026-06-23",
-      "equity": 998372.45
+      "equity": 1000205.41
     },
     {
       "date": "2026-06-24",
-      "equity": 998372.45
+      "equity": 1000169.42
     },
     {
       "date": "2026-06-25",
-      "equity": 998372.45
+      "equity": 1000295.23
     },
     {
       "date": "2026-06-26",
-      "equity": 998372.45
+      "equity": 999949.56
     },
     {
       "date": "2026-06-29",
-      "equity": 998372.45
+      "equity": 1000257.12
     },
     {
       "date": "2026-06-30",
-      "equity": 998372.45
+      "equity": 1000299.11
     },
     {
       "date": "2026-07-01",
-      "equity": 998372.45
+      "equity": 1000372.15
     },
     {
       "date": "2026-07-02",
-      "equity": 998372.45
+      "equity": 1000109.77
     },
     {
       "date": "2026-07-03",
-      "equity": 998287.86
+      "equity": 1000256.32
     },
     {
       "date": "2026-07-06",
-      "equity": 998353.53
+      "equity": 1000323.0
     },
     {
       "date": "2026-07-07",
-      "equity": 998353.64
+      "equity": 1000319.14
     },
     {
       "date": "2026-07-08",
-      "equity": 998400.35
+      "equity": 1000368.49
     },
     {
       "date": "2026-07-09",
-      "equity": 998082.1
+      "equity": 1000158.94
     },
     {
       "date": "2026-07-10",
-      "equity": 998082.1
+      "equity": 1000252.44
     },
     {
       "date": "2026-07-13",
-      "equity": 998082.1
+      "equity": 1000231.95
     },
     {
       "date": "2026-07-14",
-      "equity": 998050.7
+      "equity": 1000213.55
     },
     {
       "date": "2026-07-15",
-      "equity": 998069.91
+      "equity": 1000184.4
     },
     {
       "date": "2026-07-16",
-      "equity": 997760.22
+      "equity": 1000005.56
     },
     {
       "date": "2026-07-17",
-      "equity": 996888.92
+      "equity": 999798.92
     },
     {
       "date": "2026-07-20",
-      "equity": 996749.05
+      "equity": 999747.13
     },
     {
       "date": "2026-07-21",
-      "equity": 996794.21
+      "equity": 999902.99
     },
     {
       "date": "2026-07-22",
-      "equity": 996850.4
+      "equity": 999965.2
     },
     {
       "date": "2026-07-23",
-      "equity": 996729.27
+      "equity": 1000025.97
     },
     {
       "date": "2026-07-24",
-      "equity": 996729.27
+      "equity": 999947.05
     },
     {
       "date": "2026-07-27",
-      "equity": 996729.27
+      "equity": 1000013.01
     },
     {
       "date": "2026-07-28",
-      "equity": 996729.27
+      "equity": 999832.87
     },
     {
       "date": "2026-07-29",
-      "equity": 996729.27
+      "equity": 999832.19
     },
     {
       "date": "2026-07-30",
-      "equity": 996645.94
+      "equity": 999785.69
     },
     {
       "date": "2026-07-31",
-      "equity": 996803.57
+      "equity": 999902.8
     },
     {
       "date": "2026-08-03",
-      "equity": 996677.14
+      "equity": 999856.79
     },
     {
       "date": "2026-08-04",
-      "equity": 996636.95
+      "equity": 999947.8
     },
     {
       "date": "2026-08-05",
-      "equity": 996569.13
+      "equity": 999925.93
     },
     {
       "date": "2026-08-06",
-      "equity": 996622.85
+      "equity": 999951.92
     },
     {
       "date": "2026-08-07",
-      "equity": 996559.84
+      "equity": 999912.21
     },
     {
       "date": "2026-08-10",
-      "equity": 996602.81
+      "equity": 999957.98
     },
     {
       "date": "2026-08-11",
-      "equity": 996487.79
+      "equity": 999865.7
     },
     {
       "date": "2026-08-12",
-      "equity": 996530.17
+      "equity": 999922.14
     },
     {
       "date": "2026-08-13",
-      "equity": 996513.77
+      "equity": 999941.15
     },
     {
       "date": "2026-08-14",
-      "equity": 996513.77
+      "equity": 999935.8
     },
     {
       "date": "2026-08-18",
-      "equity": 996513.77
+      "equity": 1000034.85
     },
     {
       "date": "2026-08-19",
-      "equity": 996513.77
+      "equity": 999762.95
     },
     {
       "date": "2026-08-20",
-      "equity": 996377.04
+      "equity": 999826.68
     },
     {
       "date": "2026-08-21",
-      "equity": 996408.51
+      "equity": 999866.22
     },
     {
       "date": "2026-08-24",
-      "equity": 996388.81
+      "equity": 999831.57
     }
   ],
   "trades": [
@@ -385,9 +389,15 @@
       "putStrike": 2.9,
       "callCode": "50ETF购4月3000",
       "putCode": "50ETF沽4月2900",
-      "entryCredit": 395.92,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": -0.3654,
+      "targetDeltaEntry": -1085.6,
+      "optionCash": 77.68,
+      "hedgeCash": 20.66,
+      "fees": 31.1,
       "exitDebit": 318.24,
-      "pnl": 424.72,
+      "pnl": 67.24,
       "daysHeld": 6,
       "callWall": 3.0,
       "putWall": 2.9,
@@ -401,9 +411,15 @@
       "putStrike": 3.0,
       "callCode": "50ETF购5月3100",
       "putCode": "50ETF沽5月3000",
-      "entryCredit": 749.21,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": -0.2171,
+      "targetDeltaEntry": -1354.57,
+      "optionCash": -65.77,
+      "hedgeCash": 74.65,
+      "fees": 27.65,
       "exitDebit": 814.98,
-      "pnl": 7.28,
+      "pnl": -18.77,
       "daysHeld": 1,
       "callWall": 3.1,
       "putWall": 3.0,
@@ -411,144 +427,198 @@
     },
     {
       "entryDate": "2026-04-24",
-      "exitDate": "2026-04-28",
-      "reason": "lsp_directional",
+      "exitDate": "2026-05-11",
+      "reason": "call_wall_breach",
       "callStrike": 3.1,
       "putStrike": 3.0,
       "callCode": "50ETF购5月3100",
       "putCode": "50ETF沽5月3000",
-      "entryCredit": 555.17,
-      "exitDebit": 506.94,
-      "pnl": 26.77,
-      "daysHeld": 2,
+      "callLots": 0,
+      "putLots": 2,
+      "lspScoreEntry": 0.6425,
+      "targetDeltaEntry": 3212.5,
+      "optionCash": 117.58,
+      "hedgeCash": 197.44,
+      "fees": 36.47,
+      "exitDebit": 113.22,
+      "pnl": 278.56,
+      "daysHeld": 8,
       "callWall": 3.1,
       "putWall": 3.0,
       "lspRegimeEntry": "mixed"
     },
     {
-      "entryDate": "2026-05-19",
+      "entryDate": "2026-05-14",
       "exitDate": "2026-05-22",
       "reason": "exit_dte",
       "callStrike": 3.1,
       "putStrike": 3.0,
       "callCode": "50ETF购5月3100",
       "putCode": "50ETF沽5月3000",
-      "entryCredit": 194.04,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": -0.0655,
+      "targetDeltaEntry": -627.87,
+      "optionCash": -226.11,
+      "hedgeCash": 124.24,
+      "fees": 44.14,
       "exitDebit": 233.58,
-      "pnl": 71.77,
-      "daysHeld": 2,
+      "pnl": -146.01,
+      "daysHeld": 5,
       "callWall": 3.1,
       "putWall": 3.0,
-      "lspRegimeEntry": "mixed"
+      "lspRegimeEntry": "bullish"
     },
     {
       "entryDate": "2026-05-25",
-      "exitDate": "2026-05-26",
-      "reason": "lsp_directional",
+      "exitDate": "2026-05-28",
+      "reason": "put_wall_breach",
       "callStrike": 3.1,
       "putStrike": 3.0,
       "callCode": "50ETF购6月3100",
       "putCode": "50ETF沽6月3000",
-      "entryCredit": 641.9,
-      "exitDebit": 661.98,
-      "pnl": -40.9,
-      "daysHeld": 1,
+      "callLots": 0,
+      "putLots": 2,
+      "lspScoreEntry": 1.0,
+      "targetDeltaEntry": 5000.0,
+      "optionCash": -585.86,
+      "hedgeCash": 100.12,
+      "fees": 37.2,
+      "exitDebit": 1212.78,
+      "pnl": -522.94,
+      "daysHeld": 3,
       "callWall": 3.1,
       "putWall": 3.0,
       "lspRegimeEntry": "neutral"
     },
     {
-      "entryDate": "2026-07-03",
-      "exitDate": "2026-07-09",
-      "reason": "lsp_directional",
+      "entryDate": "2026-06-11",
+      "exitDate": "2026-06-22",
+      "reason": "exit_dte",
+      "callStrike": 3.1,
+      "putStrike": 2.85,
+      "callCode": "50ETF购6月3100",
+      "putCode": "50ETF沽6月2850",
+      "callLots": 0,
+      "putLots": 2,
+      "lspScoreEntry": 1.0,
+      "targetDeltaEntry": 5000.0,
+      "optionCash": 158.68,
+      "hedgeCash": 415.17,
+      "fees": 26.52,
+      "exitDebit": 2.04,
+      "pnl": 547.32,
+      "daysHeld": 6,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "lspRegimeEntry": "bullish"
+    },
+    {
+      "entryDate": "2026-06-24",
+      "exitDate": "2026-07-15",
+      "reason": "max_hold",
       "callStrike": 3.1,
       "putStrike": 3.0,
       "callCode": "50ETF购7月3100",
       "putCode": "50ETF沽7月3000",
-      "entryCredit": 682.08,
-      "exitDebit": 507.96,
-      "pnl": 314.53,
-      "daysHeld": 4,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": -0.2162,
+      "targetDeltaEntry": -374.22,
+      "optionCash": 382.75,
+      "hedgeCash": -332.82,
+      "fees": 54.02,
+      "exitDebit": 305.49,
+      "pnl": -4.1,
+      "daysHeld": 15,
       "callWall": 3.1,
       "putWall": 3.0,
-      "lspRegimeEntry": "mixed"
+      "lspRegimeEntry": "bullish"
     },
     {
-      "entryDate": "2026-07-14",
+      "entryDate": "2026-07-15",
       "exitDate": "2026-07-17",
       "reason": "exit_dte",
       "callStrike": 3.1,
       "putStrike": 3.0,
       "callCode": "50ETF购7月3100",
       "putCode": "50ETF沽7月3000",
-      "entryCredit": 309.68,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": -0.0748,
+      "targetDeltaEntry": -346.98,
+      "optionCash": -532.69,
+      "hedgeCash": 193.22,
+      "fees": 35.94,
       "exitDebit": 826.2,
-      "pnl": 441.85,
-      "daysHeld": 3,
+      "pnl": -375.41,
+      "daysHeld": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "lspRegimeEntry": "mixed"
     },
     {
       "entryDate": "2026-07-17",
-      "exitDate": "2026-07-23",
-      "reason": "lsp_directional",
+      "exitDate": "2026-08-07",
+      "reason": "max_hold",
       "callStrike": 3.1,
       "putStrike": 2.85,
       "callCode": "50ETF购8月3100",
       "putCode": "50ETF沽8月2850",
-      "entryCredit": 769.79,
-      "exitDebit": 578.34,
-      "pnl": 690.69,
-      "daysHeld": 4,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": -0.068,
+      "targetDeltaEntry": 450.23,
+      "optionCash": 494.39,
+      "hedgeCash": -348.65,
+      "fees": 39.23,
+      "exitDebit": 275.4,
+      "pnl": 106.51,
+      "daysHeld": 15,
       "callWall": 3.1,
       "putWall": 2.85,
       "lspRegimeEntry": "mixed"
     },
     {
-      "entryDate": "2026-07-30",
-      "exitDate": "2026-08-04",
-      "reason": "put_wall_breach",
+      "entryDate": "2026-08-07",
+      "exitDate": "2026-08-21",
+      "reason": "exit_dte",
       "callStrike": 3.1,
       "putStrike": 3.0,
       "callCode": "50ETF购8月3100",
       "putCode": "50ETF沽8月3000",
-      "entryCredit": 904.05,
-      "exitDebit": 752.76,
-      "pnl": 222.15,
-      "daysHeld": 3,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": 0.3514,
+      "targetDeltaEntry": 669.21,
+      "optionCash": 192.68,
+      "hedgeCash": -206.66,
+      "fees": 36.0,
+      "exitDebit": 234.6,
+      "pnl": -49.98,
+      "daysHeld": 9,
       "callWall": 3.1,
       "putWall": 3.0,
-      "lspRegimeEntry": "mixed"
+      "lspRegimeEntry": "neutral"
     },
     {
-      "entryDate": "2026-08-05",
-      "exitDate": "2026-08-13",
-      "reason": "lsp_directional",
-      "callStrike": 3.1,
-      "putStrike": 3.0,
-      "callCode": "50ETF购8月3100",
-      "putCode": "50ETF沽8月3000",
-      "entryCredit": 552.72,
-      "exitDebit": 310.59,
-      "pnl": 218.62,
-      "daysHeld": 6,
-      "callWall": 3.1,
-      "putWall": 3.0,
-      "lspRegimeEntry": "mixed"
-    },
-    {
-      "entryDate": "2026-08-20",
+      "entryDate": "2026-08-21",
       "exitDate": "2026-08-24",
       "reason": "eod_force_close",
       "callStrike": 3.6,
       "putStrike": 2.9,
       "callCode": "50ETF购9月3600",
       "putCode": "50ETF沽9月2900",
-      "entryCredit": 276.36,
+      "callLots": 1,
+      "putLots": 1,
+      "lspScoreEntry": 0.1178,
+      "targetDeltaEntry": -196.85,
+      "optionCash": -50.75,
+      "hedgeCash": 24.89,
+      "fees": 25.01,
       "exitDebit": 282.03,
-      "pnl": -3.87,
-      "daysHeld": 2,
+      "pnl": -50.86,
+      "daysHeld": 1,
       "callWall": 3.6,
       "putWall": 2.9,
       "lspRegimeEntry": "mixed"
@@ -559,1033 +629,1377 @@
       "date": "2026-04-01",
       "spot": 2.951,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.0,
+      "targetDeltaShares": 0.0,
+      "netDeltaShares": -206.47,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 2.9,
       "pin": 2.9,
       "flip": 3.0,
       "inPosition": true,
-      "equity": 999971.6
+      "equity": 999981.92
     },
     {
       "date": "2026-04-02",
       "spot": 2.926,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.0,
+      "targetDeltaShares": 0.0,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 2.9,
       "pin": 2.9,
       "flip": 3.0,
       "inPosition": true,
-      "equity": 999828.34
+      "equity": 999929.57
     },
     {
       "date": "2026-04-09",
       "spot": 2.955,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.0,
+      "targetDeltaShares": 0.0,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 2.9,
       "pin": 2.95,
       "flip": 3.0,
       "inPosition": true,
-      "equity": 999891.84
+      "equity": 1000091.76
     },
     {
       "date": "2026-04-13",
       "spot": 2.966,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.3654,
+      "targetDeltaShares": -1827.24,
+      "netDeltaShares": -828.8,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": null,
       "putWall": null,
       "pin": null,
       "flip": null,
       "inPosition": true,
-      "equity": 998878.55
+      "equity": 999078.48
     },
     {
       "date": "2026-04-14",
       "spot": 2.998,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2848,
+      "targetDeltaShares": -1423.92,
+      "netDeltaShares": -1423.92,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 2.9,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 999706.42
+      "equity": 1000083.7
     },
     {
       "date": "2026-04-15",
       "spot": 3.006,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2772,
+      "targetDeltaShares": -1386.07,
+      "netDeltaShares": -2203.16,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 2.95,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 999718.9
+      "equity": 1000084.78
     },
     {
       "date": "2026-04-16",
       "spot": 3.015,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2171,
+      "targetDeltaShares": -1085.6,
+      "netDeltaShares": -1085.6,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 999262.04
+      "equity": 1000039.84
     },
     {
       "date": "2026-04-17",
       "spot": 2.983,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2709,
+      "targetDeltaShares": -1354.57,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-20",
       "spot": 3.007,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0777,
+      "targetDeltaShares": -388.5,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-21",
       "spot": 3.005,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0287,
+      "targetDeltaShares": -143.69,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-22",
       "spot": 3.004,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.0681,
+      "targetDeltaShares": 340.44,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-23",
       "spot": 3.003,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1052,
+      "targetDeltaShares": 525.91,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.0,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 999013.05
+      "equity": 1000048.47
     },
     {
       "date": "2026-04-24",
       "spot": 3.018,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.2454,
+      "targetDeltaShares": 1227.05,
+      "netDeltaShares": 1459.72,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998918.74
+      "equity": 1000027.14
     },
     {
       "date": "2026-04-27",
       "spot": 3.014,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.2893,
+      "targetDeltaShares": 1446.51,
+      "netDeltaShares": 1772.92,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998953.08
+      "equity": 1000055.64
     },
     {
       "date": "2026-04-28",
       "spot": 3.019,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.3425,
+      "targetDeltaShares": 1712.33,
+      "netDeltaShares": 1645.34,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000096.64
     },
     {
       "date": "2026-04-29",
       "spot": 3.019,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.3681,
+      "targetDeltaShares": 1840.58,
+      "netDeltaShares": 1840.58,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": null,
       "putWall": null,
       "pin": null,
       "flip": null,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 999635.37
     },
     {
       "date": "2026-04-30",
       "spot": 3.061,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.4938,
+      "targetDeltaShares": 2468.97,
+      "netDeltaShares": 2468.97,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000220.97
     },
     {
       "date": "2026-05-06",
       "spot": 3.1,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.6425,
+      "targetDeltaShares": 3212.5,
+      "netDeltaShares": 3212.5,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000269.7
     },
     {
       "date": "2026-05-07",
       "spot": 3.102,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.7083,
+      "targetDeltaShares": 3541.58,
+      "netDeltaShares": 3165.37,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000271.84
     },
     {
       "date": "2026-05-08",
       "spot": 3.074,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.6848,
+      "targetDeltaShares": 3423.92,
+      "netDeltaShares": 4363.94,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000193.78
     },
     {
       "date": "2026-05-11",
       "spot": 3.122,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.7062,
+      "targetDeltaShares": 3530.87,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998893.85
+      "equity": 1000327.03
     },
     {
       "date": "2026-05-12",
       "spot": 3.119,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.721,
+      "targetDeltaShares": 3604.88,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998893.85
+      "equity": 1000327.03
     },
     {
       "date": "2026-05-13",
       "spot": 3.122,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.7165,
+      "targetDeltaShares": 3582.65,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998893.85
+      "equity": 1000327.03
     },
     {
       "date": "2026-05-14",
       "spot": 3.073,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.554,
+      "targetDeltaShares": 2770.17,
+      "netDeltaShares": 3901.88,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000313.05
     },
     {
       "date": "2026-05-15",
       "spot": 3.034,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.4118,
+      "targetDeltaShares": 2058.78,
+      "netDeltaShares": 2058.78,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000150.01
     },
     {
       "date": "2026-05-18",
       "spot": 3.01,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.2199,
+      "targetDeltaShares": 1099.36,
+      "netDeltaShares": 1099.36,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998893.85
+      "inPosition": true,
+      "equity": 1000111.95
     },
     {
       "date": "2026-05-19",
       "spot": 3.025,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0655,
+      "targetDeltaShares": -327.33,
+      "netDeltaShares": -61.43,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998795.0
+      "equity": 1000190.06
     },
     {
       "date": "2026-05-21",
       "spot": 2.994,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.1256,
+      "targetDeltaShares": -627.87,
+      "netDeltaShares": -627.87,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.215,
       "inPosition": true,
-      "equity": 998628.12
+      "equity": 1000163.55
     },
     {
       "date": "2026-05-22",
       "spot": 2.996,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0594,
+      "targetDeltaShares": -297.24,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.117,
       "inPosition": false,
-      "equity": 998425.09
+      "equity": 1000181.02
     },
     {
       "date": "2026-05-25",
       "spot": 3.039,
       "lspRegime": "neutral",
-      "lspOk": true,
+      "lspDeltaScore": 0.0444,
+      "targetDeltaShares": 221.83,
+      "netDeltaShares": 117.31,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998396.12
+      "equity": 1000157.92
     },
     {
       "date": "2026-05-26",
       "spot": 3.046,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 6866.95,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000140.94
     },
     {
       "date": "2026-05-27",
       "spot": 3.009,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 5000.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999757.33
     },
     {
       "date": "2026-05-28",
       "spot": 2.984,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998372.45
+      "equity": 999658.08
     },
     {
       "date": "2026-05-29",
       "spot": 2.993,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998372.45
+      "equity": 999658.08
     },
     {
       "date": "2026-06-02",
       "spot": 2.97,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": null,
       "inPosition": false,
-      "equity": 998372.45
+      "equity": 999658.08
     },
     {
       "date": "2026-06-11",
       "spot": 2.926,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 3463.1,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 2.85,
       "pin": 3.0,
       "flip": 3.0,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999644.8
     },
     {
       "date": "2026-06-12",
       "spot": 2.979,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 5000.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 2.9,
       "pin": 3.0,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999746.6
     },
     {
       "date": "2026-06-15",
       "spot": 3.025,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 1.0,
+      "targetDeltaShares": 5000.0,
+      "netDeltaShares": 4121.76,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999950.24
     },
     {
       "date": "2026-06-16",
       "spot": 2.992,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.8851,
+      "targetDeltaShares": 4425.3,
+      "netDeltaShares": 4303.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.02,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999828.13
     },
     {
       "date": "2026-06-17",
       "spot": 3.015,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.8779,
+      "targetDeltaShares": 4389.45,
+      "netDeltaShares": 3992.52,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.02,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999921.45
     },
     {
       "date": "2026-06-18",
       "spot": 3.017,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.8749,
+      "targetDeltaShares": 4374.71,
+      "netDeltaShares": 3915.36,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999931.61
     },
     {
       "date": "2026-06-22",
       "spot": 3.095,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.8872,
+      "targetDeltaShares": 4436.14,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998372.45
+      "equity": 1000205.41
     },
     {
       "date": "2026-06-23",
       "spot": 3.007,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.6858,
+      "targetDeltaShares": 3428.82,
+      "netDeltaShares": 0.0,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": false,
-      "equity": 998372.45
+      "equity": 1000205.41
     },
     {
       "date": "2026-06-24",
       "spot": 3.024,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.6756,
+      "targetDeltaShares": 3377.94,
+      "netDeltaShares": 3377.94,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000169.42
     },
     {
       "date": "2026-06-25",
       "spot": 3.06,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.6603,
+      "targetDeltaShares": 3301.39,
+      "netDeltaShares": 1712.62,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000295.23
     },
     {
       "date": "2026-06-26",
       "spot": 2.998,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.5934,
+      "targetDeltaShares": 2967.12,
+      "netDeltaShares": 4606.19,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 999949.56
     },
     {
       "date": "2026-06-29",
       "spot": 3.081,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.528,
+      "targetDeltaShares": 2640.2,
+      "netDeltaShares": 1024.08,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000257.12
     },
     {
       "date": "2026-06-30",
       "spot": 3.083,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.5364,
+      "targetDeltaShares": 2681.87,
+      "netDeltaShares": 839.3,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000299.11
     },
     {
       "date": "2026-07-01",
       "spot": 3.077,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.54,
+      "targetDeltaShares": 2699.86,
+      "netDeltaShares": 861.5,
+      "desiredCallLots": 0,
+      "desiredPutLots": 2,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000372.15
     },
     {
       "date": "2026-07-02",
       "spot": 3.002,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1505,
+      "targetDeltaShares": 752.52,
+      "netDeltaShares": 752.52,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998372.45
+      "inPosition": true,
+      "equity": 1000109.77
     },
     {
       "date": "2026-07-03",
       "spot": 3.022,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0504,
+      "targetDeltaShares": -251.79,
+      "netDeltaShares": 40.78,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998287.86
+      "equity": 1000256.32
     },
     {
       "date": "2026-07-06",
       "spot": 3.047,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2162,
+      "targetDeltaShares": -1081.01,
+      "netDeltaShares": -1166.59,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998353.53
+      "equity": 1000323.0
     },
     {
       "date": "2026-07-07",
       "spot": 3.009,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.3469,
+      "targetDeltaShares": -1734.3,
+      "netDeltaShares": -1734.3,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998353.64
+      "equity": 1000319.14
     },
     {
       "date": "2026-07-08",
       "spot": 3.008,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.4466,
+      "targetDeltaShares": -2233.22,
+      "netDeltaShares": -1607.82,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998400.35
+      "equity": 1000368.49
     },
     {
       "date": "2026-07-09",
       "spot": 3.088,
       "lspRegime": "bearish",
-      "lspOk": false,
+      "lspDeltaScore": -0.45,
+      "targetDeltaShares": -2249.95,
+      "netDeltaShares": -2249.95,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998082.1
+      "inPosition": true,
+      "equity": 1000158.94
     },
     {
       "date": "2026-07-10",
       "spot": 3.056,
       "lspRegime": "bearish",
-      "lspOk": false,
+      "lspDeltaScore": -0.435,
+      "targetDeltaShares": -2175.08,
+      "netDeltaShares": -2175.08,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998082.1
+      "inPosition": true,
+      "equity": 1000252.44
     },
     {
       "date": "2026-07-13",
       "spot": 3.012,
       "lspRegime": "bearish",
-      "lspOk": false,
+      "lspDeltaScore": -0.4412,
+      "targetDeltaShares": -2205.91,
+      "netDeltaShares": -2205.91,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 998082.1
+      "inPosition": true,
+      "equity": 1000231.95
     },
     {
       "date": "2026-07-14",
       "spot": 3.056,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2802,
+      "targetDeltaShares": -1401.19,
+      "netDeltaShares": -1401.19,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998050.7
+      "equity": 1000213.55
     },
     {
       "date": "2026-07-15",
       "spot": 3.065,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0748,
+      "targetDeltaShares": -374.22,
+      "netDeltaShares": -374.22,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 998069.91
+      "equity": 1000184.4
     },
     {
       "date": "2026-07-16",
       "spot": 2.999,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0658,
+      "targetDeltaShares": -329.02,
+      "netDeltaShares": -329.02,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 997760.22
+      "equity": 1000005.56
     },
     {
       "date": "2026-07-17",
       "spot": 2.928,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0694,
+      "targetDeltaShares": -346.98,
+      "netDeltaShares": -346.98,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 2.85,
       "pin": 3.0,
       "flip": 3.2,
       "inPosition": true,
-      "equity": 996888.92
+      "equity": 999798.92
     },
     {
       "date": "2026-07-20",
       "spot": 3.007,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.0303,
+      "targetDeltaShares": 151.53,
+      "netDeltaShares": 151.53,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 2.85,
       "pin": 3.0,
       "flip": 3.2,
       "inPosition": true,
-      "equity": 996749.05
+      "equity": 999747.13
     },
     {
       "date": "2026-07-21",
       "spot": 3.076,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1161,
+      "targetDeltaShares": 580.38,
+      "netDeltaShares": 580.38,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.0,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996794.21
+      "equity": 999902.99
     },
     {
       "date": "2026-07-22",
       "spot": 3.088,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1881,
+      "targetDeltaShares": 940.71,
+      "netDeltaShares": 940.71,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996850.4
+      "equity": 999965.2
     },
     {
       "date": "2026-07-23",
       "spot": 3.085,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.2839,
+      "targetDeltaShares": 1419.75,
+      "netDeltaShares": 904.31,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996729.27
+      "inPosition": true,
+      "equity": 1000025.97
     },
     {
       "date": "2026-07-24",
       "spot": 3.051,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.3776,
+      "targetDeltaShares": 1887.96,
+      "netDeltaShares": 2167.57,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996729.27
+      "inPosition": true,
+      "equity": 999947.05
     },
     {
       "date": "2026-07-27",
       "spot": 3.057,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.418,
+      "targetDeltaShares": 2090.14,
+      "netDeltaShares": 1888.82,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996729.27
+      "inPosition": true,
+      "equity": 1000013.01
     },
     {
       "date": "2026-07-28",
       "spot": 3.018,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.3948,
+      "targetDeltaShares": 1974.02,
+      "netDeltaShares": 1974.02,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996729.27
+      "inPosition": true,
+      "equity": 999832.87
     },
     {
       "date": "2026-07-29",
       "spot": 3.021,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.269,
+      "targetDeltaShares": 1345.08,
+      "netDeltaShares": 1878.99,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996729.27
+      "inPosition": true,
+      "equity": 999832.19
     },
     {
       "date": "2026-07-30",
       "spot": 3.019,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1083,
+      "targetDeltaShares": 541.72,
+      "netDeltaShares": 541.72,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996645.94
+      "equity": 999785.69
     },
     {
       "date": "2026-07-31",
       "spot": 3.033,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.068,
+      "targetDeltaShares": -340.11,
+      "netDeltaShares": 7.37,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996803.57
+      "equity": 999902.8
     },
     {
       "date": "2026-08-03",
       "spot": 2.989,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.2146,
+      "targetDeltaShares": -1072.77,
+      "netDeltaShares": -1072.77,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996677.14
+      "equity": 999856.79
     },
     {
       "date": "2026-08-04",
       "spot": 2.985,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.299,
+      "targetDeltaShares": -1494.79,
+      "netDeltaShares": -838.37,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996636.95
+      "inPosition": true,
+      "equity": 999947.8
     },
     {
       "date": "2026-08-05",
       "spot": 3.031,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.1723,
+      "targetDeltaShares": -861.59,
+      "netDeltaShares": -861.59,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996569.13
+      "equity": 999925.93
     },
     {
       "date": "2026-08-06",
       "spot": 3.027,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0793,
+      "targetDeltaShares": -396.59,
+      "netDeltaShares": -709.06,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996622.85
+      "equity": 999951.92
     },
     {
       "date": "2026-08-07",
       "spot": 3.066,
       "lspRegime": "neutral",
-      "lspOk": true,
+      "lspDeltaScore": 0.09,
+      "targetDeltaShares": 450.23,
+      "netDeltaShares": 450.23,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996559.84
+      "equity": 999912.21
     },
     {
       "date": "2026-08-10",
       "spot": 3.075,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.2335,
+      "targetDeltaShares": 1167.59,
+      "netDeltaShares": 1167.59,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996602.81
+      "equity": 999957.98
     },
     {
       "date": "2026-08-11",
       "spot": 3.037,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.3514,
+      "targetDeltaShares": 1756.89,
+      "netDeltaShares": 1756.89,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996487.79
+      "equity": 999865.7
     },
     {
       "date": "2026-08-12",
       "spot": 3.045,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.433,
+      "targetDeltaShares": 2164.91,
+      "netDeltaShares": 1339.41,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
       "inPosition": true,
-      "equity": 996530.17
+      "equity": 999922.14
     },
     {
       "date": "2026-08-13",
       "spot": 3.036,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.451,
+      "targetDeltaShares": 2254.92,
+      "netDeltaShares": 2077.41,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996513.77
+      "inPosition": true,
+      "equity": 999941.15
     },
     {
       "date": "2026-08-14",
       "spot": 3.022,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.3582,
+      "targetDeltaShares": 1790.87,
+      "netDeltaShares": 1790.87,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996513.77
+      "inPosition": true,
+      "equity": 999935.8
     },
     {
       "date": "2026-08-18",
       "spot": 3.047,
       "lspRegime": "bullish",
-      "lspOk": false,
+      "lspDeltaScore": 0.3154,
+      "targetDeltaShares": 1576.78,
+      "netDeltaShares": 1576.78,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.1,
-      "inPosition": false,
-      "equity": 996513.77
+      "inPosition": true,
+      "equity": 1000034.85
     },
     {
       "date": "2026-08-19",
       "spot": 2.991,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.2111,
+      "targetDeltaShares": 1055.68,
+      "netDeltaShares": 1055.68,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.1,
       "putWall": 3.0,
       "pin": 3.1,
       "flip": 3.0,
-      "inPosition": false,
-      "equity": 996513.77
+      "inPosition": true,
+      "equity": 999762.95
     },
     {
       "date": "2026-08-20",
       "spot": 2.987,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1338,
+      "targetDeltaShares": 669.21,
+      "netDeltaShares": 669.21,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.6,
       "putWall": 2.9,
       "pin": 2.9,
       "flip": 3.5,
       "inPosition": true,
-      "equity": 996377.04
+      "equity": 999826.68
     },
     {
       "date": "2026-08-21",
       "spot": 2.993,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": 0.1178,
+      "targetDeltaShares": 589.17,
+      "netDeltaShares": 589.17,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.6,
       "putWall": 2.9,
       "pin": 3.0,
       "flip": 3.2,
       "inPosition": true,
-      "equity": 996408.51
+      "equity": 999866.22
     },
     {
       "date": "2026-08-24",
       "spot": 2.978,
       "lspRegime": "mixed",
-      "lspOk": true,
+      "lspDeltaScore": -0.0394,
+      "targetDeltaShares": -196.85,
+      "netDeltaShares": -196.85,
+      "desiredCallLots": 1,
+      "desiredPutLots": 1,
       "callWall": 3.6,
       "putWall": 2.9,
       "pin": 3.0,
       "flip": 3.2,
       "inPosition": true,
-      "equity": 996404.34
+      "equity": 999849.6
     }
   ]
 }

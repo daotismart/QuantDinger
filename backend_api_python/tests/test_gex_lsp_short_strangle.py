@@ -1,4 +1,4 @@
-"""Unit tests for GEX+LSP short-strangle helpers and backtest engine."""
+"""Unit tests for GEX walls + LSP delta-targeted short-vol engine."""
 
 from __future__ import annotations
 
@@ -7,10 +7,14 @@ import pandas as pd
 
 from app.services.gex_lsp_strangle.engine import ShortStrangleBacktestConfig, run_short_strangle_backtest
 from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
-from app.services.gex_lsp_strangle.lsp import compute_lsp_features
+from app.services.gex_lsp_strangle.lsp import (
+    compute_lsp_features,
+    lsp_option_skew_lots,
+    lsp_target_delta_shares,
+)
 
 
-def test_lsp_features_have_regime_columns():
+def test_lsp_features_include_delta_score():
     idx = pd.date_range("2026-01-01", periods=40, freq="B")
     close = pd.Series(np.linspace(2.8, 3.0, len(idx)) + np.sin(np.arange(len(idx)) / 3) * 0.02, index=idx)
     bars = pd.DataFrame(
@@ -24,8 +28,16 @@ def test_lsp_features_have_regime_columns():
         index=idx,
     )
     out = compute_lsp_features(bars, days_1=5, days_2=10, neutral_band=8.0)
-    assert {"lsp_bb", "lsp_bb2", "lsp_regime", "lsp_ok_for_short_vol"} <= set(out.columns)
-    assert out["lsp_regime"].notna().any()
+    assert {"lsp_bb", "lsp_bb2", "lsp_regime", "lsp_delta_score"} <= set(out.columns)
+    assert out["lsp_delta_score"].between(-1.0, 1.0).all()
+
+
+def test_lsp_maps_to_delta_and_option_skew():
+    assert lsp_target_delta_shares(1.0, lots=1, multiplier=10000, max_abs_delta=0.5) == 5000.0
+    assert lsp_target_delta_shares(-1.0, lots=1, multiplier=10000, max_abs_delta=0.5) == -5000.0
+    assert lsp_option_skew_lots(0.0, base_lots=1, max_skew_lots=1) == (1, 1)
+    assert lsp_option_skew_lots(1.0, base_lots=1, max_skew_lots=1) == (0, 2)
+    assert lsp_option_skew_lots(-1.0, base_lots=1, max_skew_lots=1) == (2, 0)
 
 
 def test_gex_walls_pick_max_oi_strikes():
@@ -71,7 +83,7 @@ def test_gex_walls_pick_max_oi_strikes():
     assert pick["put_strike"] <= pick["spot"]
 
 
-def test_short_strangle_backtest_runs_on_synthetic_panel():
+def test_delta_targeted_backtest_runs_on_synthetic_panel():
     dates = pd.date_range("2026-04-01", periods=30, freq="B")
     und = pd.DataFrame(
         {
@@ -109,14 +121,15 @@ def test_short_strangle_backtest_runs_on_synthetic_panel():
                     }
                 )
                 oi_rows.append({"trade_date": dt, "underlying_code": "510050", "contract_code": code, "open_interest": oi})
-    chain = pd.DataFrame(chain_rows)
-    oi = pd.DataFrame(oi_rows)
     result = run_short_strangle_backtest(
         und,
-        chain,
-        oi,
-        config=ShortStrangleBacktestConfig(require_inside_walls=False, lots=1),
+        pd.DataFrame(chain_rows),
+        pd.DataFrame(oi_rows),
+        config=ShortStrangleBacktestConfig(require_inside_walls=False, lots=1, lsp_max_skew_lots=1),
     )
     assert result.summary["trades"] >= 0
     assert result.summary["finalEquity"] > 0
     assert len(result.equity_curve) > 0
+    if result.daily:
+        assert "lspDeltaScore" in result.daily[0]
+        assert "targetDeltaShares" in result.daily[0]

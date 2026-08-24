@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Run GEX+LSP short-strangle backtest on exported ETF options CSVs.
+"""Run GEX+LSP delta-targeted short-strangle backtest on exported ETF options CSVs.
+
+LSP sets net-delta direction/size; GEX walls set strikes; hedge with option skew + spot.
 
 Example:
   PYTHONPATH=backend_api_python python backend_api_python/scripts/backtest_gex_lsp_short_strangle.py \\
@@ -78,11 +80,11 @@ def main() -> int:
         "",
         "## Rules",
         "",
-        "1. **LSP gate**: only sell when LSP regime is neutral/mixed (no strong directional pressure).",
-        "2. **GEX walls**: sell OTM call near call wall and OTM put near put wall (wide strangle).",
-        "3. **Entry filter**: prefer spot inside put/call walls.",
-        "4. **Dynamic hedge**: rebalance underlying shares when residual delta exceeds band.",
-        "5. **Exits**: DTE floor, max hold, wall breach, or LSP turning directional.",
+        "1. **LSP**: continuous `lsp_delta_score` sets portfolio net-delta direction and size.",
+        "2. **GEX walls**: sell OTM call near call wall and OTM put near put wall.",
+        "3. **Option skew**: bullish LSP → more short puts / fewer short calls (and vice versa).",
+        "4. **Spot hedge**: residual delta (target − option book) rebalanced when outside band.",
+        "5. **Exits**: DTE floor, max hold, wall breach, or flattened option book.",
         "",
         "## Recent trades",
         "",
@@ -91,6 +93,8 @@ def main() -> int:
         lines.append(
             f"- {trade['entryDate']} → {trade['exitDate']} | "
             f"K={trade['putStrike']}/{trade['callStrike']} | "
+            f"lots={trade.get('putLots')}/{trade.get('callLots')} | "
+            f"score={trade.get('lspScoreEntry')} | "
             f"PnL={trade['pnl']:,.2f} | {trade['reason']}"
         )
     md.write_text("\n".join(lines) + "\n", encoding="utf-8")
