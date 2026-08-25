@@ -265,11 +265,6 @@ def _option_capital_for_chain(
     }
 
 
-# Floor used when converting holding-period TV/margin into an annualized rate.
-# Near-expiry months (DTE≈1) would otherwise be multiplied by ~365 and look absurdly high.
-_TV_YIELD_MIN_ANNUALIZE_YEARS = 7.0 / 365.0
-
-
 def _time_value_annualized_yield(
     chain: List[Dict[str, Any]],
     *,
@@ -279,32 +274,15 @@ def _time_value_annualized_yield(
     T: float,
     month: str,
 ) -> Dict[str, Any]:
-    """Annualized time-value / seller-margin yield by strike for one expiry.
-
-    Definition (seller perspective, simple cash yield):
-
-        time_value = max(mid - intrinsic, 0)
-        margin     ≈ spot * multiplier * margin_rate   (flat approx)
-        period_yield = (time_value * multiplier) / margin
-        annualized   = period_yield / max(T, 7/365)
-
-    The 7-day floor stops near-expiry DTE=1 quotes from being scaled by ~365.
-    """
+    """Annualized time-value / seller-margin yield by strike for one expiry."""
     F = float(underlying or 0.0)
     mult = float(multiplier or 1.0)
     rate = float(margin_rate or 0.12)
     t_years = max(float(T or 0.0), 1.0 / 365.0)
-    t_ann = max(t_years, _TV_YIELD_MIN_ANNUALIZE_YEARS)
     call_points = []
     put_points = []
     if F <= 0 or mult <= 0 or rate <= 0:
-        return {
-            "month": month,
-            "T": t_years,
-            "T_annualize": t_ann,
-            "call": [],
-            "put": [],
-        }
+        return {"month": month, "T": t_years, "call": [], "put": []}
 
     for row in chain:
         k = float(row["strike"])
@@ -319,40 +297,30 @@ def _time_value_annualized_yield(
         if margin <= 0:
             continue
         if call_mid > 0:
-            period = (call_tv * mult) / margin
             call_points.append(
                 {
                     "strike": k,
                     "time_value": call_tv,
                     "premium": call_mid,
                     "margin": margin,
-                    "period_yield": period,
-                    "yield": period / t_ann,
+                    "yield": (call_tv * mult / margin) / t_years,
                     "side": "call",
                     "month": month,
                 }
             )
         if put_mid > 0:
-            period = (put_tv * mult) / margin
             put_points.append(
                 {
                     "strike": k,
                     "time_value": put_tv,
                     "premium": put_mid,
                     "margin": margin,
-                    "period_yield": period,
-                    "yield": period / t_ann,
+                    "yield": (put_tv * mult / margin) / t_years,
                     "side": "put",
                     "month": month,
                 }
             )
-    return {
-        "month": month,
-        "T": t_years,
-        "T_annualize": t_ann,
-        "call": call_points,
-        "put": put_points,
-    }
+    return {"month": month, "T": t_years, "call": call_points, "put": put_points}
 
 
 def list_derivative_products() -> List[Dict[str, Any]]:
