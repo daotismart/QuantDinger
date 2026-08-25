@@ -236,23 +236,41 @@
       :title="historyTitle"
       :visible="historyVisible"
       :footer="null"
-      :width="920"
+      :width="isGexHistory ? 1100 : 920"
       destroy-on-close
       @cancel="closeHistory"
     >
       <div class="fda-history-toolbar">
-        <span>{{ $t('marketComposite.futures.historyPeriod') }}</span>
-        <a-radio-group v-model="historyDays" button-style="solid" size="small" @change="loadHistory">
-          <a-radio-button :value="30">30D</a-radio-button>
-          <a-radio-button :value="90">90D</a-radio-button>
-          <a-radio-button :value="180">180D</a-radio-button>
-        </a-radio-group>
-        <span>{{ $t('marketComposite.futures.historyFrequency') }}</span>
-        <a-radio-group v-model="historyFrequency" button-style="solid" size="small" @change="loadHistory">
-          <a-radio-button value="day">{{ $t('marketComposite.futures.freqDay') }}</a-radio-button>
-          <a-radio-button value="week">{{ $t('marketComposite.futures.freqWeek') }}</a-radio-button>
-          <a-radio-button value="month">{{ $t('marketComposite.futures.freqMonth') }}</a-radio-button>
-        </a-radio-group>
+        <template v-if="isGexHistory">
+          <span>回看条数</span>
+          <a-radio-group v-model="historyBars" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button :value="30">30</a-radio-button>
+            <a-radio-button :value="60">60</a-radio-button>
+            <a-radio-button :value="90">90</a-radio-button>
+            <a-radio-button :value="240">240</a-radio-button>
+          </a-radio-group>
+          <span>周期</span>
+          <a-radio-group v-model="historyInterval" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button value="1m">1m</a-radio-button>
+            <a-radio-button value="30m">30m</a-radio-button>
+            <a-radio-button value="day">日</a-radio-button>
+            <a-radio-button value="week">周</a-radio-button>
+          </a-radio-group>
+        </template>
+        <template v-else>
+          <span>{{ $t('marketComposite.futures.historyPeriod') }}</span>
+          <a-radio-group v-model="historyDays" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button :value="30">30D</a-radio-button>
+            <a-radio-button :value="90">90D</a-radio-button>
+            <a-radio-button :value="180">180D</a-radio-button>
+          </a-radio-group>
+          <span>{{ $t('marketComposite.futures.historyFrequency') }}</span>
+          <a-radio-group v-model="historyFrequency" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button value="day">{{ $t('marketComposite.futures.freqDay') }}</a-radio-button>
+            <a-radio-button value="week">{{ $t('marketComposite.futures.freqWeek') }}</a-radio-button>
+            <a-radio-button value="month">{{ $t('marketComposite.futures.freqMonth') }}</a-radio-button>
+          </a-radio-group>
+        </template>
       </div>
       <a-spin :spinning="historyLoading">
         <p v-if="historyNote" class="fda-muted">{{ historyNote }}</p>
@@ -269,7 +287,12 @@
             @change="onHistorySliceChange"
           />
         </div>
-        <div ref="historyChart" class="fda-chart fda-chart-history" />
+        <div ref="historyChart" class="fda-chart" :class="isGexHistory ? 'fda-chart-history-gex' : 'fda-chart-history'" />
+        <div
+          v-show="isGexHistory"
+          ref="historyLevelsChart"
+          class="fda-chart fda-chart-history-levels"
+        />
       </a-spin>
     </a-modal>
 
@@ -322,19 +345,25 @@ export default {
       historyKey: '',
       historyDays: 90,
       historyFrequency: 'week',
+      historyBars: 60,
+      historyInterval: 'day',
       historyNote: '',
       historyTitle: '',
       historySlices: [],
-      historySliceIndex: 0
+      historySliceIndex: 0,
+      historyLevelsSeries: []
     }
   },
   computed: {
     ...mapState({
       navTheme: state => state.app.theme
     }),
+    isGexHistory () {
+      return this.historyKey === 'options.gex'
+    },
     historySliceLabel () {
       const slice = this.historySlices[this.historySliceIndex]
-      return (slice && (slice.label || slice.date)) || '--'
+      return (slice && (slice.label || slice.ts || slice.date)) || '--'
     },
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
@@ -817,76 +846,7 @@ export default {
       return String(best)
     },
 
-
-    formatStrikeMark (value) {
-      const n = Number(value)
-      if (!Number.isFinite(n)) return ''
-      const abs = Math.abs(n)
-      let s
-      if (abs >= 100) s = n.toFixed(0)
-      else if (abs >= 10) s = n.toFixed(1)
-      else s = n.toFixed(2)
-      return s.replace(/\.0+$/, '').replace(/(\.[0-9]*?)0+$/, '$1').replace(/\.$/, '')
-    },
-
-    buildStrikeMarkLineData (markDefs, strikes) {
-      // Group marks that snap to the same category so one vertical line can carry
-      // stacked labels with strike values (avoids clipping + missing numbers).
-      const groups = new Map()
-      markDefs.forEach((item) => {
-        if (item.value == null) return
-        const x = this.nearestStrikeLabel(strikes, item.value)
-        if (x == null) return
-        const key = String(x)
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key).push(item)
-      })
-      const out = []
-      let groupIdx = 0
-      groups.forEach((items, x) => {
-        const primary = items.find(i => i.name === 'Price') || items[0]
-        const lines = items.map((item) => {
-          const v = this.formatStrikeMark(item.value != null ? item.value : x)
-          return v ? `${item.name} ${v}` : item.name
-        })
-        out.push({
-          name: items.map(i => i.name).join('/'),
-          xAxis: String(x),
-          lineStyle: {
-            color: primary.color,
-            width: primary.name === 'Price' ? 2 : (primary.width || 1.5),
-            type: primary.name === 'Price' ? 'solid' : 'dashed'
-          },
-          label: {
-            show: true,
-            formatter: lines.join('\n'),
-            color: primary.color,
-            position: 'end',
-            distance: 8 + groupIdx * 4,
-            lineHeight: 14,
-            fontSize: 11,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            padding: [2, 4],
-            borderRadius: 2
-          }
-        })
-        groupIdx += 1
-      })
-      return out
-    },
-
-    buildStackedStrikeSeries (monthSeries, points, palette, buildMarks, opts) {
-      const {
-        stack,
-        valueKey,
-        netKey,
-        netName,
-        singlePositive,
-        singleNegative,
-        singlePosKey,
-        singleNegKey,
-        negateSingleNegative = false
-      } = opts
+    buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
       const months = (monthSeries || []).filter(ms => (ms.gex_distribution || []).length)
       if (months.length > 1) {
         const strikeNums = new Set()
@@ -899,41 +859,29 @@ export default {
         const strikes = Array.from(strikeNums).sort((a, b) => a - b).map(k => String(k))
         const series = months.map((ms, idx) => {
           const byK = new Map(
-            (ms.gex_distribution || []).map(p => {
-              let v = Number(p[valueKey])
-              if (!Number.isFinite(v) && valueKey === 'total_oi') {
-                v = (Number(p.call_oi) || 0) + (Number(p.put_oi) || 0)
-              }
-              return [String(Number(p.strike)), Number.isFinite(v) ? v : 0]
-            })
+            (ms.gex_distribution || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
           )
           return {
             name: String(ms.month || `M${idx + 1}`),
             type: 'bar',
-            stack,
+            stack: 'gex',
             barMaxWidth: 18,
             data: strikes.map(k => byK.get(k) || 0),
             itemStyle: { color: palette[idx % palette.length], opacity: 0.78 }
           }
         })
         const aggByK = new Map(
-          (points || []).map(p => {
-            let v = Number(p[netKey])
-            if (!Number.isFinite(v) && netKey === 'net_oi') {
-              v = (Number(p.call_oi) || 0) - (Number(p.put_oi) || 0)
-            }
-            return [String(Number(p.strike)), Number.isFinite(v) ? v : 0]
-          })
+          (points || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
         )
         const netData = strikes.map((k, i) => {
           if (aggByK.has(k)) return aggByK.get(k)
           return series.reduce((sum, ser) => sum + (Number(ser.data[i]) || 0), 0)
         })
         series.push({
-          name: netName,
+          name: 'Net GEX',
           type: 'line',
           data: netData,
-          itemStyle: { color: opts.netColor || '#fa8c16' },
+          itemStyle: { color: '#fa8c16' },
           markLine: { symbol: 'none', data: buildMarks(strikes) }
         })
         return { strikes, series }
@@ -942,65 +890,11 @@ export default {
       return {
         strikes,
         series: [
-          {
-            name: singlePositive,
-            type: 'bar',
-            stack,
-            barMaxWidth: 18,
-            data: (points || []).map(p => p[singlePosKey]),
-            itemStyle: { color: '#52c41a', opacity: 0.55 }
-          },
-          {
-            name: singleNegative,
-            type: 'bar',
-            stack,
-            barMaxWidth: 18,
-            data: (points || []).map(p => (negateSingleNegative ? -Math.abs(Number(p[singleNegKey]) || 0) : p[singleNegKey])),
-            itemStyle: { color: '#ff4d4f', opacity: 0.55 }
-          },
-          {
-            name: netName,
-            type: 'line',
-            data: (points || []).map(p => {
-              const v = Number(p[netKey])
-              if (Number.isFinite(v)) return v
-              if (netKey === 'net_oi') return (Number(p.call_oi) || 0) - (Number(p.put_oi) || 0)
-              return 0
-            }),
-            itemStyle: { color: opts.netColor || '#fa8c16' },
-            markLine: { symbol: 'none', data: buildMarks(strikes) }
-          }
+          { name: 'Call GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: (points || []).map(p => p.call_gex), itemStyle: { color: '#52c41a', opacity: 0.55 } },
+          { name: 'Put GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: (points || []).map(p => p.put_gex), itemStyle: { color: '#ff4d4f', opacity: 0.55 } },
+          { name: 'Net GEX', type: 'line', data: (points || []).map(p => p.net_gex), itemStyle: { color: '#fa8c16' }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
         ]
       }
-    },
-
-    buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
-      return this.buildStackedStrikeSeries(monthSeries, points, palette, buildMarks, {
-        stack: 'gex',
-        valueKey: 'net_gex',
-        netKey: 'net_gex',
-        netName: 'Net GEX',
-        netColor: '#fa8c16',
-        singlePositive: 'Call GEX',
-        singleNegative: 'Put GEX',
-        singlePosKey: 'call_gex',
-        singleNegKey: 'put_gex'
-      })
-    },
-
-    buildStackedOiSeries (monthSeries, points, palette, buildMarks) {
-      return this.buildStackedStrikeSeries(monthSeries, points, palette, buildMarks, {
-        stack: 'oi',
-        valueKey: 'total_oi',
-        netKey: 'net_oi',
-        netName: 'Net OI',
-        netColor: '#2f54eb',
-        singlePositive: 'Call OI',
-        singleNegative: 'Put OI',
-        singlePosKey: 'call_oi',
-        singleNegKey: 'put_oi',
-        negateSingleNegative: true
-      })
     },
 
     renderOptionsCharts () {
@@ -1019,18 +913,36 @@ export default {
         { name: 'Pin', value: summary.pin, color: '#722ed1', width: 1.5 }
       ]
 
-      const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
+      const buildMarks = (strikes) => markDefs.map((item, idx) => {
+        const x = this.nearestStrikeLabel(strikes, item.value)
+        if (x == null) return null
+        return {
+          name: item.name,
+          xAxis: String(x),
+          lineStyle: { color: item.color, width: item.width, type: item.name === 'Price' ? 'solid' : 'dashed' },
+          label: {
+            formatter: item.name,
+            color: item.color,
+            position: 'insideEndTop',
+            distance: idx * 16
+          }
+        }
+      }).filter(Boolean)
 
       const oi = this.ensureChart('oiChart')
       if (oi) {
-        const stackedOi = this.buildStackedOiSeries(monthSeries, points, palette, buildMarks)
+        const strikes = points.map(p => String(p.strike))
         oi.setOption({
           ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 36, top: 80, bottom: 40 },
-          xAxis: { type: 'category', data: stackedOi.strikes, axisLabel: { color: this.chartText } },
+          legend: { top: 0, textStyle: { color: this.chartText } },
+          grid: { left: 56, right: 24, top: 48, bottom: 40 },
+          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
           yAxis: { type: 'value', name: 'OI', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stackedOi.series
+          series: [
+            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi), itemStyle: { color: '#52c41a', opacity: 0.7 } },
+            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi), itemStyle: { color: '#ff4d4f', opacity: 0.7 } },
+            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi), itemStyle: { color: '#2f54eb' }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
+          ]
         }, true)
       }
 
@@ -1040,7 +952,7 @@ export default {
         gex.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 36, top: 80, bottom: 40 },
+          grid: { left: 56, right: 24, top: 48, bottom: 40 },
           xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
           yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
           series: stacked.series
@@ -1125,14 +1037,17 @@ export default {
       this.historyVisible = false
       this.historySlices = []
       this.historySliceIndex = 0
-      if (this.charts.historyChart) {
-        this.charts.historyChart.dispose()
-        delete this.charts.historyChart
-      }
+      this.historyLevelsSeries = []
+      ;['historyChart', 'historyLevelsChart'].forEach(key => {
+        if (this.charts[key]) {
+          this.charts[key].dispose()
+          delete this.charts[key]
+        }
+      })
     },
     historyTipFormatter (index) {
       const slice = this.historySlices[index]
-      return (slice && (slice.label || slice.date)) || String(index)
+      return (slice && (slice.label || slice.ts || slice.date)) || String(index)
     },
     onHistorySliceChange () {
       this.renderHistorySlice()
@@ -1141,20 +1056,31 @@ export default {
       if (!this.selectedRoot || !this.historyKey) return
       this.historyLoading = true
       try {
-        const res = await getChartHistory({
+        const params = {
           root: this.selectedRoot,
           chart: this.historyKey,
-          days: this.historyDays,
-          frequency: this.historyFrequency,
           month: this.selectedMonth || 'all',
           ...this.etfScopeParams()
-        })
+        }
+        if (this.isGexHistory) {
+          params.bars = this.historyBars
+          params.interval = this.historyInterval
+          params.frequency = this.historyInterval
+        } else {
+          params.days = this.historyDays
+          params.frequency = this.historyFrequency
+        }
+        const res = await getChartHistory(params)
         const data = (res && res.data) || {}
         this.historyNote = data.note || ''
-        if (data.mode === 'slices') {
+        this.historyLevelsSeries = data.levels_series || []
+        if (data.mode === 'slices' || data.mode === 'gex_playback') {
           this.historySlices = data.slices || []
           this.historySliceIndex = Math.max(this.historySlices.length - 1, 0)
-          this.$nextTick(() => this.renderHistorySlice())
+          this.$nextTick(() => {
+            this.renderHistorySlice()
+            if (this.isGexHistory) this.renderGexLevelsHistory()
+          })
         } else {
           this.historySlices = []
           this.$nextTick(() => this.renderHistoryChart(data))
@@ -1165,12 +1091,79 @@ export default {
         this.historyLoading = false
       }
     },
+    renderGexLevelsHistory () {
+      const chart = this.ensureChart('historyLevelsChart')
+      if (!chart) return
+      const rows = this.historyLevelsSeries || []
+      const labels = rows.map(r => r.label || r.ts)
+      const slice = this.historySlices[this.historySliceIndex] || {}
+      const markLabel = slice.label || slice.ts || labels[this.historySliceIndex]
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 24, top: 48, bottom: 48 },
+        xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
+        yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        series: [
+          {
+            name: 'Underlying',
+            type: 'line',
+            showSymbol: false,
+            data: rows.map(r => r.underlying),
+            itemStyle: { color: '#1890ff' },
+            lineStyle: { width: 2 },
+            markLine: labels.length && markLabel
+              ? {
+                symbol: 'none',
+                label: { formatter: String(markLabel), color: this.chartText },
+                lineStyle: { color: '#8c8c8c', type: 'dashed' },
+                data: [{ xAxis: markLabel }]
+              }
+              : undefined
+          },
+          { name: 'Call Wall', type: 'line', showSymbol: false, data: rows.map(r => r.call_wall), itemStyle: { color: '#52c41a' } },
+          { name: 'Put Wall', type: 'line', showSymbol: false, data: rows.map(r => r.put_wall), itemStyle: { color: '#ff4d4f' } },
+          { name: 'Gamma Flip', type: 'line', showSymbol: false, data: rows.map(r => r.flip), itemStyle: { color: '#faad14' }, lineStyle: { type: 'dashed' } },
+          { name: 'Gamma Pin', type: 'line', showSymbol: false, data: rows.map(r => r.pin), itemStyle: { color: '#722ed1' }, lineStyle: { type: 'dotted' } }
+        ]
+      }, true)
+    },
     renderHistorySlice () {
       const slice = this.historySlices[this.historySliceIndex]
       if (!slice) return
       const chart = this.ensureChart('historyChart')
       if (!chart) return
       const key = this.historyKey
+
+      if (key === 'options.gex') {
+        const points = slice.gex_distribution || []
+        const monthSeries = (slice.month_series || []).map(ms => ({
+          month: ms.month,
+          gex_distribution: ms.gex_distribution || []
+        }))
+        const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb']
+        const summary = slice.gex_summary || {}
+        const price = slice.current_price || slice.underlying || summary.underlying
+        const markDefs = [
+          { name: 'Price', value: price, color: '#1890ff', width: 2 },
+          { name: 'Flip', value: summary.flip, color: '#faad14', width: 1.5 },
+          { name: 'Call Wall', value: summary.call_wall, color: '#52c41a', width: 1.5 },
+          { name: 'Put Wall', value: summary.put_wall, color: '#ff4d4f', width: 1.5 },
+          { name: 'Pin', value: summary.pin, color: '#722ed1', width: 1.5 }
+        ]
+        const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
+        const stacked = this.buildStackedGexSeries(monthSeries, points, palette, buildMarks)
+        chart.setOption({
+          ...this.baseChartOption(),
+          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+          grid: { left: 56, right: 36, top: 72, bottom: 40 },
+          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
+          yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+          series: stacked.series
+        }, true)
+        this.renderGexLevelsHistory()
+        return
+      }
 
       if (key === 'futures.term') {
         const curve = (slice.term_structure || []).filter(p => !p.is_continuous)
@@ -1301,16 +1294,25 @@ export default {
 
       if (key === 'options.oi' || key === 'options.gex') {
         const points = slice.gex_distribution || []
-        const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb']
-        const stacked = key === 'options.oi'
-          ? this.buildStackedOiSeries(slice.month_series || [], points, palette, () => [])
-          : this.buildStackedGexSeries(slice.month_series || [], points, palette, () => [])
+        let strikes = points.map(p => p.strike)
+        let series
+        if (key === 'options.oi') {
+          series = [
+            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi) },
+            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi) },
+            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi) }
+          ]
+        } else {
+          const stacked = this.buildStackedGexSeries(slice.month_series || [], points, ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb'], () => [])
+          strikes = stacked.strikes
+          series = stacked.series
+        }
         chart.setOption({
           ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
+          legend: { top: 0, textStyle: { color: this.chartText } },
+          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
           yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stacked.series
+          series
         }, true)
         return
       }
@@ -1540,6 +1542,15 @@ export default {
 
 .fda-chart-history {
   height: 420px;
+}
+
+.fda-chart-history-gex {
+  height: 360px;
+}
+
+.fda-chart-history-levels {
+  height: 280px;
+  margin-top: 12px;
 }
 
 .fda-metrics-gex {
