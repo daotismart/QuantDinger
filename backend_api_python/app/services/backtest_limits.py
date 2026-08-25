@@ -63,8 +63,9 @@ _MARKET_LIMITS: Dict[str, Dict[str, BacktestRangePolicy]] = {
         "5m": BacktestRangePolicy(60, "60 days", "US stock intraday data provider limit"),
         "15m": BacktestRangePolicy(60, "60 days", "US stock intraday data provider limit"),
         "30m": BacktestRangePolicy(60, "60 days", "US stock intraday data provider limit"),
-        "1H": BacktestRangePolicy(700, "about 23 months", "US stock hourly data provider limit"),
-        "4H": BacktestRangePolicy(700, "about 23 months", "US stock hourly data provider limit"),
+        # Local qd_market_bars (Yahoo chart backfill) unlocks near-max Yahoo 1h depth (~730d).
+        "1H": BacktestRangePolicy(800, "about 26 months", "US stock hourly local bar depth"),
+        "4H": BacktestRangePolicy(800, "about 26 months", "US stock hourly local bar depth"),
         "1D": BacktestRangePolicy(3650, "10 years", "US stock daily data provider limit"),
         "1W": BacktestRangePolicy(3650, "10 years", "US stock weekly data provider limit"),
     },
