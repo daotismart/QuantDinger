@@ -817,6 +817,64 @@ export default {
       return String(best)
     },
 
+
+    formatStrikeMark (value) {
+      const n = Number(value)
+      if (!Number.isFinite(n)) return ''
+      const abs = Math.abs(n)
+      let s
+      if (abs >= 100) s = n.toFixed(0)
+      else if (abs >= 10) s = n.toFixed(1)
+      else s = n.toFixed(2)
+      return s.replace(/\.0+$/, '').replace(/(\.[0-9]*?)0+$/, '$1').replace(/\.$/, '')
+    },
+
+    buildStrikeMarkLineData (markDefs, strikes) {
+      // Group marks that snap to the same category so one vertical line can carry
+      // stacked labels with strike values (avoids clipping + missing numbers).
+      const groups = new Map()
+      markDefs.forEach((item) => {
+        if (item.value == null) return
+        const x = this.nearestStrikeLabel(strikes, item.value)
+        if (x == null) return
+        const key = String(x)
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key).push(item)
+      })
+      const out = []
+      let groupIdx = 0
+      groups.forEach((items, x) => {
+        const primary = items.find(i => i.name === 'Price') || items[0]
+        const lines = items.map((item) => {
+          const v = this.formatStrikeMark(item.value != null ? item.value : x)
+          return v ? `${item.name} ${v}` : item.name
+        })
+        out.push({
+          name: items.map(i => i.name).join('/'),
+          xAxis: String(x),
+          lineStyle: {
+            color: primary.color,
+            width: primary.name === 'Price' ? 2 : (primary.width || 1.5),
+            type: primary.name === 'Price' ? 'solid' : 'dashed'
+          },
+          label: {
+            show: true,
+            formatter: lines.join('\n'),
+            color: primary.color,
+            position: 'end',
+            distance: 8 + groupIdx * 4,
+            lineHeight: 14,
+            fontSize: 11,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            padding: [2, 4],
+            borderRadius: 2
+          }
+        })
+        groupIdx += 1
+      })
+      return out
+    },
+
     buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
       const months = (monthSeries || []).filter(ms => (ms.gex_distribution || []).length)
       if (months.length > 1) {
@@ -884,21 +942,7 @@ export default {
         { name: 'Pin', value: summary.pin, color: '#722ed1', width: 1.5 }
       ]
 
-      const buildMarks = (strikes) => markDefs.map((item, idx) => {
-        const x = this.nearestStrikeLabel(strikes, item.value)
-        if (x == null) return null
-        return {
-          name: item.name,
-          xAxis: String(x),
-          lineStyle: { color: item.color, width: item.width, type: item.name === 'Price' ? 'solid' : 'dashed' },
-          label: {
-            formatter: item.name,
-            color: item.color,
-            position: 'insideEndTop',
-            distance: idx * 16
-          }
-        }
-      }).filter(Boolean)
+      const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
 
       const oi = this.ensureChart('oiChart')
       if (oi) {
@@ -906,7 +950,7 @@ export default {
         oi.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 24, top: 48, bottom: 40 },
+          grid: { left: 56, right: 36, top: 80, bottom: 40 },
           xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
           yAxis: { type: 'value', name: 'OI', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
           series: [
@@ -923,7 +967,7 @@ export default {
         gex.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 24, top: 48, bottom: 40 },
+          grid: { left: 56, right: 36, top: 80, bottom: 40 },
           xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
           yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
           series: stacked.series

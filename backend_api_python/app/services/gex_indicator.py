@@ -206,16 +206,14 @@ def derive_gex_levels(
 ) -> Dict[str, Optional[float]]:
     """Derive Flip / Call Wall / Put Wall / Pin from strike-level GEX rows.
 
-    Conventions (chart-aligned; walls follow GEX peaks, not raw OI piles):
+    Chart-aligned conventions (match the Net GEX profile the UI plots):
 
-    - **Call wall** — max ``call_gex`` at strikes ``>=`` spot (fallback: global max)
-    - **Put wall** — most negative ``put_gex`` at strikes ``<=`` spot (fallback: global)
+    - **Call wall** — max ``net_gex`` at strikes ``>=`` spot (peak positive stack)
+    - **Put wall** — min ``net_gex`` at strikes ``<=`` spot (deepest trough)
     - **Pin** — strike with max total OI (call + put)
-    - **Flip** — first strike (ascending, at/above ``0.8×`` spot) where cumulative
-      net GEX crosses from **negative to non-negative**
-
-    Deep OTM OI spikes (e.g. 588000 call OI at 2.55 while spot≈1.69) must not
-    displace Call Wall away from the GEX peak near the money.
+    - **Flip** — first strike (ascending, at/above ``0.8×`` spot) where **per-strike**
+      ``net_gex`` crosses from negative to non-negative (same place the Net GEX
+      line crosses zero). Falls back to cumulative cross when no per-strike cross.
     """
     if not points:
         return {"call_wall": None, "put_wall": None, "pin": None, "flip": None}
@@ -240,21 +238,26 @@ def derive_gex_levels(
     above = [p for p in ordered if spot <= 0 or float(p["strike"]) >= spot]
     below = [p for p in ordered if spot <= 0 or float(p["strike"]) <= spot]
 
-    # Prefer GEX peaks; fall back to OI if GEX columns are missing/zero.
-    call_wall = _pick_strike(above, "call_gex", mode="max") or _pick_strike(
-        ordered, "call_gex", mode="max"
+    call_wall = _pick_strike(above, "net_gex", mode="max") or _pick_strike(
+        ordered, "net_gex", mode="max"
     )
-    if call_wall is None or all(_safe_float(p.get("call_gex")) == 0 for p in ordered):
-        call_wall = _pick_strike(above, "call_oi", mode="max") or _pick_strike(
-            ordered, "call_oi", mode="max"
+    if call_wall is None or all(_safe_float(p.get("net_gex")) == 0 for p in ordered):
+        call_wall = (
+            _pick_strike(above, "call_gex", mode="max")
+            or _pick_strike(ordered, "call_gex", mode="max")
+            or _pick_strike(above, "call_oi", mode="max")
+            or _pick_strike(ordered, "call_oi", mode="max")
         )
 
-    put_wall = _pick_strike(below, "put_gex", mode="min") or _pick_strike(
-        ordered, "put_gex", mode="min"
+    put_wall = _pick_strike(below, "net_gex", mode="min") or _pick_strike(
+        ordered, "net_gex", mode="min"
     )
-    if put_wall is None or all(_safe_float(p.get("put_gex")) == 0 for p in ordered):
-        put_wall = _pick_strike(below, "put_oi", mode="max") or _pick_strike(
-            ordered, "put_oi", mode="max"
+    if put_wall is None or all(_safe_float(p.get("net_gex")) == 0 for p in ordered):
+        put_wall = (
+            _pick_strike(below, "put_gex", mode="min")
+            or _pick_strike(ordered, "put_gex", mode="min")
+            or _pick_strike(below, "put_oi", mode="max")
+            or _pick_strike(ordered, "put_oi", mode="max")
         )
 
     pin = float(
@@ -264,21 +267,35 @@ def derive_gex_levels(
         )["strike"]
     )
 
+    # Primary Flip: per-strike Net GEX sign change (matches the plotted orange line).
     flip = None
-    cum = 0.0
-    prev_cum: Optional[float] = None
     floor = 0.8 * spot if spot > 0 else float("-inf")
+    prev_net: Optional[float] = None
     for point in ordered:
         strike = float(point["strike"])
-        cum += _safe_float(point.get("net_gex"))
+        net = _safe_float(point.get("net_gex"))
         if strike < floor:
-            prev_cum = cum
+            prev_net = net
             continue
-        # Strict regime flip: dealer net GEX crosses from short-gamma (-) to long-gamma (>=0).
-        if prev_cum is not None and prev_cum < 0.0 <= cum:
+        if prev_net is not None and prev_net < 0.0 <= net:
             flip = strike
             break
-        prev_cum = cum
+        prev_net = net
+
+    # Fallback: cumulative cross when the profile never flips strike-by-strike.
+    if flip is None:
+        cum = 0.0
+        prev_cum: Optional[float] = None
+        for point in ordered:
+            strike = float(point["strike"])
+            cum += _safe_float(point.get("net_gex"))
+            if strike < floor:
+                prev_cum = cum
+                continue
+            if prev_cum is not None and prev_cum < 0.0 <= cum:
+                flip = strike
+                break
+            prev_cum = cum
 
     return {
         "call_wall": call_wall,

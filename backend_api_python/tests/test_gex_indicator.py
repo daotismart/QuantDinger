@@ -21,20 +21,20 @@ def _sample_chain():
 
 
 def test_derive_gex_levels_flip_only_on_neg_to_pos_cross():
-    """Old bug: prev_cum * cum <= 0 treated +→− (and zero) as Flip."""
+    """Per-strike Net GEX sign change; walls follow net GEX peaks."""
     points = [
         {"strike": 2.7, "call_oi": 1, "put_oi": 10, "call_gex": 1.0, "put_gex": -50.0, "net_gex": -50.0},
-        {"strike": 2.8, "call_oi": 2, "put_oi": 40, "call_gex": 2.0, "put_gex": -80.0, "net_gex": -30.0},
+        {"strike": 2.8, "call_oi": 2, "put_oi": 40, "call_gex": 2.0, "put_gex": -80.0, "net_gex": -90.0},
         {"strike": 2.9, "call_oi": 5, "put_oi": 20, "call_gex": 5.0, "put_gex": -20.0, "net_gex": -10.0},
         {"strike": 3.0, "call_oi": 15, "put_oi": 12, "call_gex": 40.0, "put_gex": -10.0, "net_gex": 100.0},
-        {"strike": 3.1, "call_oi": 10, "put_oi": 8, "call_gex": 20.0, "put_gex": -5.0, "net_gex": 25.0},
-        # Huge deep-OTM call OI must NOT become Call Wall when call_gex is small
+        {"strike": 3.1, "call_oi": 10, "put_oi": 8, "call_gex": 80.0, "put_gex": -5.0, "net_gex": 120.0},
+        # Huge deep-OTM call OI must NOT become Call Wall when net_gex is small
         {"strike": 3.2, "call_oi": 80, "put_oi": 6, "call_gex": 8.0, "put_gex": -1.0, "net_gex": -5.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
     assert levels["flip"] == 3.0
-    assert levels["call_wall"] == 3.0  # max call_gex at/above spot
-    assert levels["put_wall"] == 2.8  # most negative put_gex at/below spot
+    assert levels["call_wall"] == 3.1  # max net_gex at/above spot
+    assert levels["put_wall"] == 2.8  # min net_gex at/below spot
     assert levels["pin"] == 3.2  # still max total OI
 
 
@@ -60,17 +60,32 @@ def test_derive_gex_levels_ignores_zero_product_false_flip():
     assert levels["flip"] == 3.1
 
 
-def test_derive_gex_levels_walls_follow_gex_peaks_not_oi():
+def test_derive_gex_levels_walls_follow_net_gex_peaks_not_oi():
     points = [
         {"strike": 2.5, "call_oi": 1000, "put_oi": 1, "call_gex": 1.0, "put_gex": -1.0, "net_gex": -1.0},
-        {"strike": 2.8, "call_oi": 10, "put_oi": 50, "call_gex": 5.0, "put_gex": -90.0, "net_gex": -2.0},
-        {"strike": 3.0, "call_oi": 40, "put_oi": 5, "call_gex": 80.0, "put_gex": -5.0, "net_gex": 1.0},
+        {"strike": 2.8, "call_oi": 10, "put_oi": 50, "call_gex": 5.0, "put_gex": -90.0, "net_gex": -200.0},
+        {"strike": 3.0, "call_oi": 40, "put_oi": 5, "call_gex": 80.0, "put_gex": -5.0, "net_gex": 150.0},
         {"strike": 3.3, "call_oi": 5, "put_oi": 900, "call_gex": 3.0, "put_gex": -2.0, "net_gex": 2.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
     assert levels["call_wall"] == 3.0
     assert levels["put_wall"] == 2.8
     assert levels["pin"] == 2.5
+
+
+def test_derive_gex_levels_flip_uses_per_strike_when_cum_never_crosses():
+    """588000-style: cumulative stays negative but Net GEX line flips near spot."""
+    points = [
+        {"strike": 1.5, "call_oi": 1, "put_oi": 10, "call_gex": 1.0, "put_gex": -500.0, "net_gex": -400.0},
+        {"strike": 1.6, "call_oi": 2, "put_oi": 20, "call_gex": 2.0, "put_gex": -800.0, "net_gex": -700.0},
+        {"strike": 1.65, "call_oi": 3, "put_oi": 15, "call_gex": 30.0, "put_gex": -200.0, "net_gex": -100.0},
+        {"strike": 1.7, "call_oi": 20, "put_oi": 10, "call_gex": 80.0, "put_gex": -30.0, "net_gex": 50.0},
+        {"strike": 1.75, "call_oi": 15, "put_oi": 5, "call_gex": 60.0, "put_gex": -10.0, "net_gex": 120.0},
+    ]
+    levels = derive_gex_levels(points, underlying=1.67)
+    assert levels["flip"] == 1.7
+    assert levels["call_wall"] == 1.75
+    assert levels["put_wall"] == 1.6
 
 
 def test_aggregate_gex_points_sums_monthly_profiles():
@@ -89,7 +104,7 @@ def test_aggregate_gex_points_sums_monthly_profiles():
     assert by[1.7]["call_gex"] == 190.0
     assert by[2.5]["call_oi"] == 250.0
     levels = derive_gex_levels(agg, underlying=1.69)
-    assert levels["call_wall"] == 1.7  # GEX peak, not OI pile at 2.5
+    assert levels["call_wall"] == 1.7  # net GEX peak, not OI pile at 2.5
     assert levels["pin"] == 2.5
 
 
