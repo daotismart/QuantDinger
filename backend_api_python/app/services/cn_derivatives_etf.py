@@ -372,6 +372,8 @@ def _assemble_etf_options_panel(
     ``gex_distribution`` / ``gex_summary`` remain for older clients.
     """
     from app.services.gex_indicator import (
+        aggregate_gex_points,
+        indicator_from_gex_points,
         panel_fields_from_gex_indicator,
         run_gex_indicator,
     )
@@ -474,16 +476,32 @@ def _assemble_etf_options_panel(
     primary = month_series[0]
     u_avg = sum(underlyings) / len(underlyings) if underlyings else underlying
     t_avg = sum(Ts) / len(Ts) if Ts else 30 / 365.0
-    if select_all and len(chains_for_agg) > 1:
+    if select_all and len(month_series) > 1:
+        # Sum per-month GEX by strike (each month keeps its own T/gamma).
+        # Do NOT merge OI then recompute with average T — that inflates deep-OTM
+        # walls (e.g. 588000 Call Wall at 2.55 while spot≈1.69).
+        agg_points = aggregate_gex_points(
+            [list(ms.get("gex_distribution") or []) for ms in month_series]
+        )
+        gex_indicator = indicator_from_gex_points(
+            agg_points,
+            underlying=float(u_avg or underlying or 0.0),
+            multiplier=mult,
+            T=t_avg,
+            name="GEX all",
+        )
+        gex_fields = panel_fields_from_gex_indicator(gex_indicator)
         agg_chain = _aggregate_etf_chains_by_strike(chains_for_agg)
-        gex_fields = _gex_fields(agg_chain, spot=u_avg, T=t_avg, label="GEX all")
         chain_out = agg_chain
-        greeks = gex_fields.get("greeks") or primary.get("greeks") or {}
-        gex_summary = gex_fields.get("gex_summary") or primary.get("gex_summary") or {}
-        gex_distribution = gex_fields.get("gex_distribution") or primary.get("gex_distribution") or []
-        gex_indicator = (gex_fields.get("indicators") or {}).get("gex")
+        greeks = primary.get("greeks") or {}
+        for ms in month_series:
+            g = ms.get("greeks") or {}
+            for k in ("delta", "gamma", "vega", "theta"):
+                greeks[k] = float(greeks.get(k) or 0.0) + float(g.get(k) or 0.0)
+        gex_summary = gex_fields.get("gex_summary") or {}
+        gex_distribution = gex_fields.get("gex_distribution") or agg_points
         max_pain = compute_max_pain(agg_chain) if agg_chain else primary.get("max_pain")
-        iv_smile = gex_fields.get("iv_smile") or primary.get("iv_smile") or []
+        iv_smile = primary.get("iv_smile") or []
     else:
         chain_out = chains_for_agg[0] if chains_for_agg else []
         greeks = primary.get("greeks") or {}
@@ -545,7 +563,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         raise ValueError("underlying ETF code is required")
 
     month_raw = (month or "all").strip().lower()
-    cache_key = f"etf_options_panel:v1:{code6}:{month_raw or 'all'}"
+    cache_key = f"etf_options_panel:v2:{code6}:{month_raw or 'all'}"
     cache_ttl = etf_options_panel_cache_ttl()
     cached = _etf_options_cache_get(cache_key)
     if cached:

@@ -178,19 +178,7 @@ def compute_gex_raw(
             smile.append({"strike": k, "iv": put_iv, "side": "put"})
 
     points.sort(key=lambda p: p["strike"])
-    call_wall = max(points, key=lambda p: p["call_oi"])["strike"] if points else None
-    put_wall = max(points, key=lambda p: p["put_oi"])["strike"] if points else None
-    pin = max(points, key=lambda p: p["call_oi"] + p["put_oi"])["strike"] if points else None
-
-    flip = None
-    cum = 0.0
-    prev_cum = None
-    for point in points:
-        cum += point["net_gex"]
-        if prev_cum is not None and prev_cum * cum <= 0 and point["strike"] >= underlying * 0.8:
-            flip = point["strike"]
-            break
-        prev_cum = cum
+    levels = derive_gex_levels(points, underlying=underlying)
 
     return {
         "points": points,
@@ -200,15 +188,223 @@ def compute_gex_raw(
             "put_gex": total_put_gex,
             "call_oi": total_call_oi,
             "put_oi": total_put_oi,
-            "call_wall": call_wall,
-            "put_wall": put_wall,
-            "pin": pin,
-            "flip": flip,
+            "call_wall": levels["call_wall"],
+            "put_wall": levels["put_wall"],
+            "pin": levels["pin"],
+            "flip": levels["flip"],
             "underlying": underlying,
         },
         "portfolio_greeks": portfolio,
         "iv_smile": smile,
     }
+
+
+def derive_gex_levels(
+    points: List[Dict[str, Any]],
+    *,
+    underlying: float,
+) -> Dict[str, Optional[float]]:
+    """Derive Flip / Call Wall / Put Wall / Pin from strike-level GEX rows.
+
+    Chart-aligned conventions (match the Net GEX profile the UI plots):
+
+    - **Call wall** — max ``net_gex`` at strikes ``>=`` spot (peak positive stack)
+    - **Put wall** — min ``net_gex`` at strikes ``<=`` spot (deepest trough)
+    - **Pin** — strike with max total OI (call + put)
+    - **Flip** — first strike (ascending, at/above ``0.8×`` spot) where **per-strike**
+      ``net_gex`` crosses from negative to non-negative (same place the Net GEX
+      line crosses zero). Falls back to cumulative cross when no per-strike cross.
+    """
+    if not points:
+        return {"call_wall": None, "put_wall": None, "pin": None, "flip": None}
+
+    ordered = sorted(points, key=lambda p: float(p["strike"]))
+    spot = _safe_float(underlying)
+
+    def _pick_strike(
+        rows: List[Dict[str, Any]],
+        key: str,
+        *,
+        mode: str,
+    ) -> Optional[float]:
+        if not rows:
+            return None
+        if mode == "max":
+            best = max(rows, key=lambda p: _safe_float(p.get(key)))
+        else:
+            best = min(rows, key=lambda p: _safe_float(p.get(key)))
+        return float(best["strike"])
+
+    above = [p for p in ordered if spot <= 0 or float(p["strike"]) >= spot]
+    below = [p for p in ordered if spot <= 0 or float(p["strike"]) <= spot]
+
+    call_wall = _pick_strike(above, "net_gex", mode="max") or _pick_strike(
+        ordered, "net_gex", mode="max"
+    )
+    if call_wall is None or all(_safe_float(p.get("net_gex")) == 0 for p in ordered):
+        call_wall = (
+            _pick_strike(above, "call_gex", mode="max")
+            or _pick_strike(ordered, "call_gex", mode="max")
+            or _pick_strike(above, "call_oi", mode="max")
+            or _pick_strike(ordered, "call_oi", mode="max")
+        )
+
+    put_wall = _pick_strike(below, "net_gex", mode="min") or _pick_strike(
+        ordered, "net_gex", mode="min"
+    )
+    if put_wall is None or all(_safe_float(p.get("net_gex")) == 0 for p in ordered):
+        put_wall = (
+            _pick_strike(below, "put_gex", mode="min")
+            or _pick_strike(ordered, "put_gex", mode="min")
+            or _pick_strike(below, "put_oi", mode="max")
+            or _pick_strike(ordered, "put_oi", mode="max")
+        )
+
+    pin = float(
+        max(
+            ordered,
+            key=lambda p: _safe_float(p.get("call_oi")) + _safe_float(p.get("put_oi")),
+        )["strike"]
+    )
+
+    # Primary Flip: per-strike Net GEX sign change (matches the plotted orange line).
+    flip = None
+    floor = 0.8 * spot if spot > 0 else float("-inf")
+    prev_net: Optional[float] = None
+    for point in ordered:
+        strike = float(point["strike"])
+        net = _safe_float(point.get("net_gex"))
+        if strike < floor:
+            prev_net = net
+            continue
+        if prev_net is not None and prev_net < 0.0 <= net:
+            flip = strike
+            break
+        prev_net = net
+
+    # Fallback: cumulative cross when the profile never flips strike-by-strike.
+    if flip is None:
+        cum = 0.0
+        prev_cum: Optional[float] = None
+        for point in ordered:
+            strike = float(point["strike"])
+            cum += _safe_float(point.get("net_gex"))
+            if strike < floor:
+                prev_cum = cum
+                continue
+            if prev_cum is not None and prev_cum < 0.0 <= cum:
+                flip = strike
+                break
+            prev_cum = cum
+
+    return {
+        "call_wall": call_wall,
+        "put_wall": put_wall,
+        "pin": pin,
+        "flip": flip,
+    }
+
+
+def aggregate_gex_points(
+    point_groups: List[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Sum per-month GEX rows by strike (OI + GEX). Do not recompute gamma."""
+    bucket: Dict[float, Dict[str, float]] = {}
+    for points in point_groups or []:
+        for row in points or []:
+            k = _safe_float(row.get("strike"))
+            if k <= 0:
+                continue
+            item = bucket.setdefault(
+                k,
+                {
+                    "strike": k,
+                    "call_oi": 0.0,
+                    "put_oi": 0.0,
+                    "call_gex": 0.0,
+                    "put_gex": 0.0,
+                    "net_gex": 0.0,
+                },
+            )
+            item["call_oi"] += _safe_float(row.get("call_oi"))
+            item["put_oi"] += _safe_float(row.get("put_oi"))
+            item["call_gex"] += _safe_float(row.get("call_gex"))
+            item["put_gex"] += _safe_float(row.get("put_gex"))
+            net = row.get("net_gex")
+            if net is None:
+                item["net_gex"] += _safe_float(row.get("call_gex")) + _safe_float(
+                    row.get("put_gex")
+                )
+            else:
+                item["net_gex"] += _safe_float(net)
+
+    out: List[Dict[str, Any]] = []
+    for item in sorted(bucket.values(), key=lambda x: x["strike"]):
+        call_oi = float(item["call_oi"])
+        put_oi = float(item["put_oi"])
+        out.append(
+            {
+                "strike": float(item["strike"]),
+                "call_oi": call_oi,
+                "put_oi": put_oi,
+                "total_oi": call_oi + put_oi,
+                "net_oi": call_oi - put_oi,
+                "call_gex": float(item["call_gex"]),
+                "put_gex": float(item["put_gex"]),
+                "net_gex": float(item["net_gex"]),
+                "call_iv": None,
+                "put_iv": None,
+            }
+        )
+    return out
+
+
+def summary_from_gex_points(
+    points: List[Dict[str, Any]],
+    *,
+    underlying: float,
+) -> Dict[str, Any]:
+    """Build gex_summary totals + Flip/Walls/Pin from aggregated points."""
+    levels = derive_gex_levels(points, underlying=underlying)
+    call_gex = sum(_safe_float(p.get("call_gex")) for p in points)
+    put_gex = sum(_safe_float(p.get("put_gex")) for p in points)
+    return {
+        "net_gex": call_gex + put_gex,
+        "call_gex": call_gex,
+        "put_gex": put_gex,
+        "call_oi": sum(_safe_float(p.get("call_oi")) for p in points),
+        "put_oi": sum(_safe_float(p.get("put_oi")) for p in points),
+        "call_wall": levels["call_wall"],
+        "put_wall": levels["put_wall"],
+        "pin": levels["pin"],
+        "flip": levels["flip"],
+        "underlying": float(underlying),
+    }
+
+
+def indicator_from_gex_points(
+    points: List[Dict[str, Any]],
+    *,
+    underlying: float,
+    multiplier: float = 10000.0,
+    T: float = 30 / 365.0,
+    name: str = "GEX",
+) -> Dict[str, Any]:
+    """Build indicator display payload from precomputed strike points."""
+    summary = summary_from_gex_points(points, underlying=underlying)
+    raw = {
+        "points": list(points or []),
+        "summary": summary,
+        "portfolio_greeks": {},
+        "iv_smile": [],
+    }
+    return _build_indicator_output(
+        raw,
+        name=name,
+        underlying=underlying,
+        multiplier=multiplier,
+        T=T,
+    )
 
 
 def _build_indicator_output(
