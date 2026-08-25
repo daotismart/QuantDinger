@@ -494,7 +494,7 @@ def list_playback_timestamps(
 
     if interval == "1m":
         sql = f"""
-        SELECT ts_minute
+        SELECT ts_minute AS bucket_ts
         FROM opt_underlying_1m
         WHERE underlying_code = '{code6}'
           AND ifNull(last_price, close) > 0
@@ -503,32 +503,32 @@ def list_playback_timestamps(
         """
     elif interval == "30m":
         sql = f"""
-        SELECT max(ts_minute) AS ts_minute
+        SELECT max(ts_minute) AS bucket_ts
         FROM opt_underlying_1m
         WHERE underlying_code = '{code6}'
           AND ifNull(last_price, close) > 0
         GROUP BY toStartOfInterval(ts_minute, INTERVAL 30 MINUTE)
-        ORDER BY ts_minute DESC
+        ORDER BY bucket_ts DESC
         LIMIT {bars}
         """
     elif interval == "week":
         sql = f"""
-        SELECT max(ts_minute) AS ts_minute
+        SELECT max(ts_minute) AS bucket_ts
         FROM opt_underlying_1m
         WHERE underlying_code = '{code6}'
           AND ifNull(last_price, close) > 0
         GROUP BY toStartOfWeek(toDate(ts_minute), 1)
-        ORDER BY ts_minute DESC
+        ORDER BY bucket_ts DESC
         LIMIT {bars}
         """
     else:  # day
         sql = f"""
-        SELECT max(ts_minute) AS ts_minute
+        SELECT max(ts_minute) AS bucket_ts
         FROM opt_underlying_1m
         WHERE underlying_code = '{code6}'
           AND ifNull(last_price, close) > 0
         GROUP BY toDate(ts_minute)
-        ORDER BY ts_minute DESC
+        ORDER BY bucket_ts DESC
         LIMIT {bars}
         """
     try:
@@ -539,7 +539,7 @@ def list_playback_timestamps(
     out: List[str] = []
     for raw in rows:
         row = dict(zip(cols, raw))
-        ts = str(row.get("ts_minute") or "").strip()[:19]
+        ts = str(row.get("bucket_ts") or row.get("ts_minute") or "").strip()[:19]
         if ts:
             out.append(ts)
     out.reverse()  # ascending for slider
@@ -592,28 +592,38 @@ def fetch_option_chain_rows_at_timestamps(
         return {}, meta
 
     ts_sql = _sql_ts_list(timestamps)
+    # ClickHouse disallows correlated subqueries that reference outer columns
+    # in JOIN ON; map each stamp to the nearest prior trade_date via join.
     sql = f"""
     WITH
       stamps AS (
         SELECT toDateTime(arrayJoin([{ts_sql}]), 'Asia/Shanghai') AS ts_minute
       ),
+      stamp_dates AS (
+        SELECT ts_minute, toDate(ts_minute) AS d FROM stamps
+      ),
+      stamp_trade AS (
+        SELECT
+          sd.ts_minute AS ts_minute,
+          max(c.trade_date) AS trade_date
+        FROM stamp_dates sd
+        CROSS JOIN opt_contracts_daily c
+        WHERE c.underlying_code = '{code6}'
+          AND c.trade_date <= sd.d
+        GROUP BY sd.ts_minute
+      ),
       contracts AS (
         SELECT
-          s.ts_minute AS ts_minute,
+          st.ts_minute AS ts_minute,
           c.contract_code AS contract_code,
           c.contract_id AS contract_id,
           c.strike AS strike,
           c.cp AS cp,
           c.expire_date AS expire_date
-        FROM stamps s
+        FROM stamp_trade st
         INNER JOIN opt_contracts_daily c
           ON c.underlying_code = '{code6}'
-         AND c.trade_date = (
-           SELECT max(trade_date)
-           FROM opt_contracts_daily
-           WHERE underlying_code = '{code6}'
-             AND trade_date <= toDate(s.ts_minute)
-         )
+         AND c.trade_date = st.trade_date
         WHERE c.contract_id IS NOT NULL AND c.contract_id != ''
       )
     SELECT
