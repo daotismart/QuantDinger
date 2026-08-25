@@ -149,6 +149,27 @@ def test_time_value_annualized_yield_shape():
     atm_call = next(p for p in result["call"] if p["strike"] == 3000)
     # ATM call time value ~= 80, margin = 3000*10*0.12=3600, yield=(800/3600)/0.25
     assert atm_call["yield"] == pytest.approx((80 * 10 / 3600) / 0.25, rel=1e-6)
+    assert atm_call["period_yield"] == pytest.approx(80 * 10 / 3600, rel=1e-6)
+
+
+def test_time_value_annualized_yield_floors_near_expiry():
+    """DTE≈1 must not be annualized with 1/365 (would inflate ~365x)."""
+    chain = [_chain_row(3000, 80, 80, 1, 1)]
+    raw = svc._time_value_annualized_yield(
+        chain,
+        underlying=3000.0,
+        multiplier=10.0,
+        margin_rate=0.12,
+        T=1 / 365.0,
+        month="m2508",
+    )
+    atm = raw["call"][0]
+    period = 80 * 10 / 3600
+    # Annualize with at least 7/365, not 1/365.
+    assert raw["T_annualize"] == pytest.approx(7 / 365.0)
+    assert atm["yield"] == pytest.approx(period / (7 / 365.0), rel=1e-6)
+    # Without the floor this would be ~7x larger.
+    assert atm["yield"] < period / (1 / 365.0)
 
 
 def test_gex_points_include_total_oi():
