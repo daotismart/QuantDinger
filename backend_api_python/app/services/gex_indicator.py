@@ -178,19 +178,7 @@ def compute_gex_raw(
             smile.append({"strike": k, "iv": put_iv, "side": "put"})
 
     points.sort(key=lambda p: p["strike"])
-    call_wall = max(points, key=lambda p: p["call_oi"])["strike"] if points else None
-    put_wall = max(points, key=lambda p: p["put_oi"])["strike"] if points else None
-    pin = max(points, key=lambda p: p["call_oi"] + p["put_oi"])["strike"] if points else None
-
-    flip = None
-    cum = 0.0
-    prev_cum = None
-    for point in points:
-        cum += point["net_gex"]
-        if prev_cum is not None and prev_cum * cum <= 0 and point["strike"] >= underlying * 0.8:
-            flip = point["strike"]
-            break
-        prev_cum = cum
+    levels = derive_gex_levels(points, underlying=underlying)
 
     return {
         "points": points,
@@ -200,14 +188,79 @@ def compute_gex_raw(
             "put_gex": total_put_gex,
             "call_oi": total_call_oi,
             "put_oi": total_put_oi,
-            "call_wall": call_wall,
-            "put_wall": put_wall,
-            "pin": pin,
-            "flip": flip,
+            "call_wall": levels["call_wall"],
+            "put_wall": levels["put_wall"],
+            "pin": levels["pin"],
+            "flip": levels["flip"],
             "underlying": underlying,
         },
         "portfolio_greeks": portfolio,
         "iv_smile": smile,
+    }
+
+
+def derive_gex_levels(
+    points: List[Dict[str, Any]],
+    *,
+    underlying: float,
+) -> Dict[str, Optional[float]]:
+    """Derive Flip / Call Wall / Put Wall / Pin from strike-level GEX rows.
+
+    Conventions (aligned with the GEX walls helper used by short-strangle research):
+
+    - **Call wall** — max call OI at strikes ``>=`` spot (fallback: global max call OI)
+    - **Put wall** — max put OI at strikes ``<=`` spot (fallback: global max put OI)
+    - **Pin** — strike with max total OI (call + put)
+    - **Flip** — first strike (ascending, at/above ``0.8×`` spot) where cumulative
+      net GEX crosses from **negative to non-negative**
+    """
+    if not points:
+        return {"call_wall": None, "put_wall": None, "pin": None, "flip": None}
+
+    ordered = sorted(points, key=lambda p: float(p["strike"]))
+    spot = _safe_float(underlying)
+
+    def _max_strike(rows: List[Dict[str, Any]], key: str) -> Optional[float]:
+        if not rows:
+            return None
+        best = max(rows, key=lambda p: _safe_float(p.get(key)))
+        return float(best["strike"])
+
+    call_wall = _max_strike(
+        [p for p in ordered if spot <= 0 or float(p["strike"]) >= spot],
+        "call_oi",
+    ) or _max_strike(ordered, "call_oi")
+    put_wall = _max_strike(
+        [p for p in ordered if spot <= 0 or float(p["strike"]) <= spot],
+        "put_oi",
+    ) or _max_strike(ordered, "put_oi")
+    pin = max(
+        ordered,
+        key=lambda p: _safe_float(p.get("call_oi")) + _safe_float(p.get("put_oi")),
+    )["strike"]
+    pin = float(pin)
+
+    flip = None
+    cum = 0.0
+    prev_cum: Optional[float] = None
+    floor = 0.8 * spot if spot > 0 else float("-inf")
+    for point in ordered:
+        strike = float(point["strike"])
+        cum += _safe_float(point.get("net_gex"))
+        if strike < floor:
+            prev_cum = cum
+            continue
+        # Strict regime flip: dealer net GEX crosses from short-gamma (-) to long-gamma (>=0).
+        if prev_cum is not None and prev_cum < 0.0 <= cum:
+            flip = strike
+            break
+        prev_cum = cum
+
+    return {
+        "call_wall": call_wall,
+        "put_wall": put_wall,
+        "pin": pin,
+        "flip": flip,
     }
 
 
