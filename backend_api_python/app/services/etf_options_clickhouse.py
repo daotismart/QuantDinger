@@ -431,3 +431,270 @@ def try_load_etf_option_chains(code6: str) -> Optional[Dict[str, Any]]:
         "source": "clickhouse",
         "meta": meta,
     }
+
+
+_PLAYBACK_INTERVALS = {"1m", "30m", "day", "week"}
+_PLAYBACK_BARS = {30, 60, 90, 240}
+
+
+def normalize_playback_interval(value: Any) -> str:
+    raw = str(value or "day").strip().lower()
+    aliases = {
+        "1": "1m",
+        "1min": "1m",
+        "1minute": "1m",
+        "min": "1m",
+        "30": "30m",
+        "30min": "30m",
+        "30minute": "30m",
+        "d": "day",
+        "1d": "day",
+        "daily": "day",
+        "w": "week",
+        "1w": "week",
+        "weekly": "week",
+    }
+    raw = aliases.get(raw, raw)
+    return raw if raw in _PLAYBACK_INTERVALS else "day"
+
+
+def normalize_playback_bars(value: Any) -> int:
+    try:
+        bars = int(value)
+    except Exception:
+        bars = 60
+    if bars in _PLAYBACK_BARS:
+        return bars
+    # nearest allowed
+    return min(_PLAYBACK_BARS, key=lambda x: abs(x - bars))
+
+
+def _sql_ts_list(timestamps: List[str]) -> str:
+    cleaned = []
+    for ts in timestamps:
+        text = str(ts or "").strip()[:19]
+        if not text:
+            continue
+        cleaned.append("'" + text.replace("'", "") + "'")
+    return ", ".join(cleaned) if cleaned else "''"
+
+
+def list_playback_timestamps(
+    code6: str,
+    *,
+    interval: str = "day",
+    bars: int = 60,
+) -> List[str]:
+    """Return ascending timestamps (len <= bars) for GEX playback buckets."""
+    code6 = str(code6 or "").strip()
+    interval = normalize_playback_interval(interval)
+    bars = normalize_playback_bars(bars)
+    if not code6:
+        return []
+
+    if interval == "1m":
+        sql = f"""
+        SELECT ts_minute AS bucket_ts
+        FROM opt_underlying_1m
+        WHERE underlying_code = '{code6}'
+          AND ifNull(last_price, close) > 0
+        ORDER BY ts_minute DESC
+        LIMIT {bars}
+        """
+    elif interval == "30m":
+        sql = f"""
+        SELECT max(ts_minute) AS bucket_ts
+        FROM opt_underlying_1m
+        WHERE underlying_code = '{code6}'
+          AND ifNull(last_price, close) > 0
+        GROUP BY toStartOfInterval(ts_minute, INTERVAL 30 MINUTE)
+        ORDER BY bucket_ts DESC
+        LIMIT {bars}
+        """
+    elif interval == "week":
+        sql = f"""
+        SELECT max(ts_minute) AS bucket_ts
+        FROM opt_underlying_1m
+        WHERE underlying_code = '{code6}'
+          AND ifNull(last_price, close) > 0
+        GROUP BY toStartOfWeek(toDate(ts_minute), 1)
+        ORDER BY bucket_ts DESC
+        LIMIT {bars}
+        """
+    else:  # day
+        sql = f"""
+        SELECT max(ts_minute) AS bucket_ts
+        FROM opt_underlying_1m
+        WHERE underlying_code = '{code6}'
+          AND ifNull(last_price, close) > 0
+        GROUP BY toDate(ts_minute)
+        ORDER BY bucket_ts DESC
+        LIMIT {bars}
+        """
+    try:
+        cols, rows = _ch_query(sql, timeout=30.0)
+    except Exception as exc:
+        logger.warning("list_playback_timestamps failed code=%s: %s", code6, exc)
+        return []
+    out: List[str] = []
+    for raw in rows:
+        row = dict(zip(cols, raw))
+        ts = str(row.get("bucket_ts") or row.get("ts_minute") or "").strip()[:19]
+        if ts:
+            out.append(ts)
+    out.reverse()  # ascending for slider
+    return out
+
+
+def fetch_underlying_series(
+    code6: str,
+    timestamps: List[str],
+) -> Dict[str, float]:
+    """Map timestamp -> underlying price for exact playback minutes."""
+    code6 = str(code6 or "").strip()
+    if not code6 or not timestamps:
+        return {}
+    sql = f"""
+    SELECT
+      ts_minute,
+      ifNull(last_price, close) AS px
+    FROM opt_underlying_1m
+    WHERE underlying_code = '{code6}'
+      AND ts_minute IN ({_sql_ts_list(timestamps)})
+    """
+    try:
+        cols, rows = _ch_query(sql, timeout=30.0)
+    except Exception as exc:
+        logger.warning("fetch_underlying_series failed code=%s: %s", code6, exc)
+        return {}
+    out: Dict[str, float] = {}
+    for raw in rows:
+        row = dict(zip(cols, raw))
+        ts = str(row.get("ts_minute") or "").strip()[:19]
+        px = _to_float(row.get("px"))
+        if ts and px > 0:
+            out[ts] = px
+    return out
+
+
+def fetch_option_chain_rows_at_timestamps(
+    code6: str,
+    timestamps: List[str],
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """Bulk-load flat option rows for each playback timestamp.
+
+    Uses exact-minute joins against quotes/analytics at the playback stamps,
+    and contracts for the matching trade_date (or nearest prior listing day).
+    """
+    code6 = str(code6 or "").strip()
+    meta: Dict[str, Any] = {"source": "clickhouse_playback", "timestamps": len(timestamps)}
+    if not code6 or not timestamps:
+        return {}, meta
+
+    ts_sql = _sql_ts_list(timestamps)
+    # ClickHouse disallows correlated subqueries that reference outer columns
+    # in JOIN ON; map each stamp to the nearest prior trade_date via join.
+    sql = f"""
+    WITH
+      stamps AS (
+        SELECT toDateTime(arrayJoin([{ts_sql}]), 'Asia/Shanghai') AS ts_minute
+      ),
+      stamp_dates AS (
+        SELECT ts_minute, toDate(ts_minute) AS d FROM stamps
+      ),
+      stamp_trade AS (
+        SELECT
+          sd.ts_minute AS ts_minute,
+          max(c.trade_date) AS trade_date
+        FROM stamp_dates sd
+        CROSS JOIN opt_contracts_daily c
+        WHERE c.underlying_code = '{code6}'
+          AND c.trade_date <= sd.d
+        GROUP BY sd.ts_minute
+      ),
+      contracts AS (
+        SELECT
+          st.ts_minute AS ts_minute,
+          c.contract_code AS contract_code,
+          c.contract_id AS contract_id,
+          c.strike AS strike,
+          c.cp AS cp,
+          c.expire_date AS expire_date
+        FROM stamp_trade st
+        INNER JOIN opt_contracts_daily c
+          ON c.underlying_code = '{code6}'
+         AND c.trade_date = st.trade_date
+        WHERE c.contract_id IS NOT NULL AND c.contract_id != ''
+      )
+    SELECT
+      ct.ts_minute AS ts_minute,
+      ct.contract_code AS contract_code,
+      ct.contract_id AS contract_id,
+      ct.strike AS strike,
+      ct.cp AS cp,
+      ct.expire_date AS expire_date,
+      q.close AS close,
+      q.open_interest AS open_interest,
+      a.iv AS iv,
+      a.gamma AS gamma,
+      a.underlying_price AS underlying_price
+    FROM contracts ct
+    INNER JOIN (
+      SELECT
+        ts_minute,
+        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+        close,
+        open_interest
+      FROM opt_quotes_bar_1m
+      WHERE underlying_code = '{code6}'
+        AND ts_minute IN ({ts_sql})
+    ) q ON q.ts_minute = ct.ts_minute
+       AND q.jid = toString(ct.contract_id)
+    LEFT JOIN (
+      SELECT
+        ts_minute,
+        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+        iv,
+        gamma,
+        underlying_price
+      FROM opt_analytics_1m
+      WHERE underlying_code = '{code6}'
+        AND ts_minute IN ({ts_sql})
+    ) a ON a.ts_minute = ct.ts_minute
+       AND a.jid = toString(ct.contract_id)
+    SETTINGS max_execution_time = 90
+    """
+    t0 = time.perf_counter()
+    try:
+        cols, raw_rows = _ch_query(sql, timeout=100.0)
+    except Exception as exc:
+        logger.warning("fetch_option_chain_rows_at_timestamps failed code=%s: %s", code6, exc)
+        meta["error"] = str(exc)
+        return {}, meta
+
+    by_ts: Dict[str, List[Dict[str, Any]]] = {}
+    for raw in raw_rows:
+        item = dict(zip(cols, raw))
+        ts = str(item.get("ts_minute") or "").strip()[:19]
+        if not ts:
+            continue
+        by_ts.setdefault(ts, []).append(
+            {
+                "contract_code": str(item.get("contract_code") or ""),
+                "contract_id": str(item.get("contract_id") or ""),
+                "strike": _to_float(item.get("strike")),
+                "cp": str(item.get("cp") or "").strip().upper(),
+                "expire_date": item.get("expire_date"),
+                "month": _month_key_from_expire(item.get("expire_date")),
+                "close": _to_float(item.get("close")),
+                "open_interest": _to_float(item.get("open_interest")),
+                "iv": _to_float(item.get("iv")),
+                "gamma": _to_float(item.get("gamma")),
+                "underlying_price": _to_float(item.get("underlying_price")),
+                "quote_ts": ts,
+            }
+        )
+    meta["elapsed_s"] = round(time.perf_counter() - t0, 4)
+    meta["row_count"] = sum(len(v) for v in by_ts.values())
+    meta["stamp_count"] = len(by_ts)
+    return by_ts, meta

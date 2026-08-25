@@ -122,6 +122,8 @@ def chart_history():
     month = (request.args.get("month") or "all").strip().lower() or "all"
     frequency = (request.args.get("frequency") or request.args.get("freq") or "day").strip().lower()
     days = request.args.get("days") or 30
+    bars = request.args.get("bars")
+    interval = (request.args.get("interval") or frequency or "day").strip().lower()
     if not root:
         return jsonify({"code": 0, "msg": "root is required", "data": None}), 400
     if not chart_key:
@@ -131,6 +133,21 @@ def chart_history():
     except Exception:
         days_i = 30
     try:
+        bars_i = int(bars) if bars is not None else None
+    except Exception:
+        bars_i = None
+    try:
+        # ETF GEX playback: minute/day/week slices from ClickHouse option chains
+        if _is_etf_scope() and chart_key in {"options.gex", "options.gexDist", "gex"}:
+            from app.services.gex_history import build_gex_playback_history
+
+            data = build_gex_playback_history(
+                root,
+                interval=interval,
+                bars=bars_i if bars_i is not None else 60,
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
+
         data = build_chart_history(
             root,
             chart_key=chart_key,
