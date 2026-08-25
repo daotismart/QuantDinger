@@ -206,13 +206,16 @@ def derive_gex_levels(
 ) -> Dict[str, Optional[float]]:
     """Derive Flip / Call Wall / Put Wall / Pin from strike-level GEX rows.
 
-    Conventions (aligned with the GEX walls helper used by short-strangle research):
+    Conventions (chart-aligned; walls follow GEX peaks, not raw OI piles):
 
-    - **Call wall** — max call OI at strikes ``>=`` spot (fallback: global max call OI)
-    - **Put wall** — max put OI at strikes ``<=`` spot (fallback: global max put OI)
+    - **Call wall** — max ``call_gex`` at strikes ``>=`` spot (fallback: global max)
+    - **Put wall** — most negative ``put_gex`` at strikes ``<=`` spot (fallback: global)
     - **Pin** — strike with max total OI (call + put)
     - **Flip** — first strike (ascending, at/above ``0.8×`` spot) where cumulative
       net GEX crosses from **negative to non-negative**
+
+    Deep OTM OI spikes (e.g. 588000 call OI at 2.55 while spot≈1.69) must not
+    displace Call Wall away from the GEX peak near the money.
     """
     if not points:
         return {"call_wall": None, "put_wall": None, "pin": None, "flip": None}
@@ -220,25 +223,46 @@ def derive_gex_levels(
     ordered = sorted(points, key=lambda p: float(p["strike"]))
     spot = _safe_float(underlying)
 
-    def _max_strike(rows: List[Dict[str, Any]], key: str) -> Optional[float]:
+    def _pick_strike(
+        rows: List[Dict[str, Any]],
+        key: str,
+        *,
+        mode: str,
+    ) -> Optional[float]:
         if not rows:
             return None
-        best = max(rows, key=lambda p: _safe_float(p.get(key)))
+        if mode == "max":
+            best = max(rows, key=lambda p: _safe_float(p.get(key)))
+        else:
+            best = min(rows, key=lambda p: _safe_float(p.get(key)))
         return float(best["strike"])
 
-    call_wall = _max_strike(
-        [p for p in ordered if spot <= 0 or float(p["strike"]) >= spot],
-        "call_oi",
-    ) or _max_strike(ordered, "call_oi")
-    put_wall = _max_strike(
-        [p for p in ordered if spot <= 0 or float(p["strike"]) <= spot],
-        "put_oi",
-    ) or _max_strike(ordered, "put_oi")
-    pin = max(
-        ordered,
-        key=lambda p: _safe_float(p.get("call_oi")) + _safe_float(p.get("put_oi")),
-    )["strike"]
-    pin = float(pin)
+    above = [p for p in ordered if spot <= 0 or float(p["strike"]) >= spot]
+    below = [p for p in ordered if spot <= 0 or float(p["strike"]) <= spot]
+
+    # Prefer GEX peaks; fall back to OI if GEX columns are missing/zero.
+    call_wall = _pick_strike(above, "call_gex", mode="max") or _pick_strike(
+        ordered, "call_gex", mode="max"
+    )
+    if call_wall is None or all(_safe_float(p.get("call_gex")) == 0 for p in ordered):
+        call_wall = _pick_strike(above, "call_oi", mode="max") or _pick_strike(
+            ordered, "call_oi", mode="max"
+        )
+
+    put_wall = _pick_strike(below, "put_gex", mode="min") or _pick_strike(
+        ordered, "put_gex", mode="min"
+    )
+    if put_wall is None or all(_safe_float(p.get("put_gex")) == 0 for p in ordered):
+        put_wall = _pick_strike(below, "put_oi", mode="max") or _pick_strike(
+            ordered, "put_oi", mode="max"
+        )
+
+    pin = float(
+        max(
+            ordered,
+            key=lambda p: _safe_float(p.get("call_oi")) + _safe_float(p.get("put_oi")),
+        )["strike"]
+    )
 
     flip = None
     cum = 0.0
@@ -262,6 +286,108 @@ def derive_gex_levels(
         "pin": pin,
         "flip": flip,
     }
+
+
+def aggregate_gex_points(
+    point_groups: List[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """Sum per-month GEX rows by strike (OI + GEX). Do not recompute gamma."""
+    bucket: Dict[float, Dict[str, float]] = {}
+    for points in point_groups or []:
+        for row in points or []:
+            k = _safe_float(row.get("strike"))
+            if k <= 0:
+                continue
+            item = bucket.setdefault(
+                k,
+                {
+                    "strike": k,
+                    "call_oi": 0.0,
+                    "put_oi": 0.0,
+                    "call_gex": 0.0,
+                    "put_gex": 0.0,
+                    "net_gex": 0.0,
+                },
+            )
+            item["call_oi"] += _safe_float(row.get("call_oi"))
+            item["put_oi"] += _safe_float(row.get("put_oi"))
+            item["call_gex"] += _safe_float(row.get("call_gex"))
+            item["put_gex"] += _safe_float(row.get("put_gex"))
+            net = row.get("net_gex")
+            if net is None:
+                item["net_gex"] += _safe_float(row.get("call_gex")) + _safe_float(
+                    row.get("put_gex")
+                )
+            else:
+                item["net_gex"] += _safe_float(net)
+
+    out: List[Dict[str, Any]] = []
+    for item in sorted(bucket.values(), key=lambda x: x["strike"]):
+        call_oi = float(item["call_oi"])
+        put_oi = float(item["put_oi"])
+        out.append(
+            {
+                "strike": float(item["strike"]),
+                "call_oi": call_oi,
+                "put_oi": put_oi,
+                "total_oi": call_oi + put_oi,
+                "net_oi": call_oi - put_oi,
+                "call_gex": float(item["call_gex"]),
+                "put_gex": float(item["put_gex"]),
+                "net_gex": float(item["net_gex"]),
+                "call_iv": None,
+                "put_iv": None,
+            }
+        )
+    return out
+
+
+def summary_from_gex_points(
+    points: List[Dict[str, Any]],
+    *,
+    underlying: float,
+) -> Dict[str, Any]:
+    """Build gex_summary totals + Flip/Walls/Pin from aggregated points."""
+    levels = derive_gex_levels(points, underlying=underlying)
+    call_gex = sum(_safe_float(p.get("call_gex")) for p in points)
+    put_gex = sum(_safe_float(p.get("put_gex")) for p in points)
+    return {
+        "net_gex": call_gex + put_gex,
+        "call_gex": call_gex,
+        "put_gex": put_gex,
+        "call_oi": sum(_safe_float(p.get("call_oi")) for p in points),
+        "put_oi": sum(_safe_float(p.get("put_oi")) for p in points),
+        "call_wall": levels["call_wall"],
+        "put_wall": levels["put_wall"],
+        "pin": levels["pin"],
+        "flip": levels["flip"],
+        "underlying": float(underlying),
+    }
+
+
+def indicator_from_gex_points(
+    points: List[Dict[str, Any]],
+    *,
+    underlying: float,
+    multiplier: float = 10000.0,
+    T: float = 30 / 365.0,
+    name: str = "GEX",
+) -> Dict[str, Any]:
+    """Build indicator display payload from precomputed strike points."""
+    summary = summary_from_gex_points(points, underlying=underlying)
+    raw = {
+        "points": list(points or []),
+        "summary": summary,
+        "portfolio_greeks": {},
+        "iv_smile": [],
+    }
+    return _build_indicator_output(
+        raw,
+        name=name,
+        underlying=underlying,
+        multiplier=multiplier,
+        T=T,
+    )
 
 
 def _build_indicator_output(

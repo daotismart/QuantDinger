@@ -62,7 +62,7 @@ def test_gex_summary_walls_and_portfolio():
     ]
     gex = svc.compute_gex(chain, underlying=3000.0, multiplier=10.0, T=0.2)
     summary = gex["summary"]
-    # Call wall prefers max call OI at/above spot; put wall at/below spot.
+    # Call/Put walls follow GEX peaks on the spot-appropriate side.
     assert summary["call_wall"] == 3000.0
     assert summary["put_wall"] == 3000.0
     assert summary["pin"] == 3100.0

@@ -23,26 +23,27 @@ def _sample_chain():
 def test_derive_gex_levels_flip_only_on_neg_to_pos_cross():
     """Old bug: prev_cum * cum <= 0 treated +→− (and zero) as Flip."""
     points = [
-        {"strike": 2.7, "call_oi": 1, "put_oi": 10, "net_gex": -50.0},
-        {"strike": 2.8, "call_oi": 2, "put_oi": 40, "net_gex": -30.0},
-        {"strike": 2.9, "call_oi": 5, "put_oi": 20, "net_gex": -10.0},
-        {"strike": 3.0, "call_oi": 15, "put_oi": 12, "net_gex": 100.0},  # cum -90 → +10
-        {"strike": 3.1, "call_oi": 10, "put_oi": 8, "net_gex": 25.0},
-        {"strike": 3.2, "call_oi": 80, "put_oi": 6, "net_gex": -5.0},  # +→− must NOT win
+        {"strike": 2.7, "call_oi": 1, "put_oi": 10, "call_gex": 1.0, "put_gex": -50.0, "net_gex": -50.0},
+        {"strike": 2.8, "call_oi": 2, "put_oi": 40, "call_gex": 2.0, "put_gex": -80.0, "net_gex": -30.0},
+        {"strike": 2.9, "call_oi": 5, "put_oi": 20, "call_gex": 5.0, "put_gex": -20.0, "net_gex": -10.0},
+        {"strike": 3.0, "call_oi": 15, "put_oi": 12, "call_gex": 40.0, "put_gex": -10.0, "net_gex": 100.0},
+        {"strike": 3.1, "call_oi": 10, "put_oi": 8, "call_gex": 20.0, "put_gex": -5.0, "net_gex": 25.0},
+        # Huge deep-OTM call OI must NOT become Call Wall when call_gex is small
+        {"strike": 3.2, "call_oi": 80, "put_oi": 6, "call_gex": 8.0, "put_gex": -1.0, "net_gex": -5.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
     assert levels["flip"] == 3.0
-    assert levels["call_wall"] == 3.2  # max call OI at/above spot
-    assert levels["put_wall"] == 2.8  # max put OI at/below spot
-    assert levels["pin"] == 3.2  # 80+6
+    assert levels["call_wall"] == 3.0  # max call_gex at/above spot
+    assert levels["put_wall"] == 2.8  # most negative put_gex at/below spot
+    assert levels["pin"] == 3.2  # still max total OI
 
 
 def test_derive_gex_levels_ignores_pos_to_neg_cross():
     points = [
-        {"strike": 2.8, "call_oi": 10, "put_oi": 1, "net_gex": 40.0},
-        {"strike": 2.9, "call_oi": 10, "put_oi": 1, "net_gex": 20.0},
-        {"strike": 3.0, "call_oi": 10, "put_oi": 1, "net_gex": -80.0},  # +→− only
-        {"strike": 3.1, "call_oi": 10, "put_oi": 1, "net_gex": -10.0},
+        {"strike": 2.8, "call_oi": 10, "put_oi": 1, "call_gex": 40.0, "put_gex": -1.0, "net_gex": 40.0},
+        {"strike": 2.9, "call_oi": 10, "put_oi": 1, "call_gex": 20.0, "put_gex": -1.0, "net_gex": 20.0},
+        {"strike": 3.0, "call_oi": 10, "put_oi": 1, "call_gex": 5.0, "put_gex": -1.0, "net_gex": -80.0},
+        {"strike": 3.1, "call_oi": 10, "put_oi": 1, "call_gex": 5.0, "put_gex": -1.0, "net_gex": -10.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
     assert levels["flip"] is None
@@ -50,27 +51,45 @@ def test_derive_gex_levels_ignores_pos_to_neg_cross():
 
 def test_derive_gex_levels_ignores_zero_product_false_flip():
     points = [
-        {"strike": 2.8, "call_oi": 1, "put_oi": 5, "net_gex": 10.0},
-        {"strike": 2.9, "call_oi": 2, "put_oi": 5, "net_gex": -10.0},  # cum → 0
-        {"strike": 3.0, "call_oi": 3, "put_oi": 5, "net_gex": -20.0},
-        {"strike": 3.1, "call_oi": 4, "put_oi": 5, "net_gex": 30.0},  # true -→+
+        {"strike": 2.8, "call_oi": 1, "put_oi": 5, "call_gex": 10.0, "put_gex": -1.0, "net_gex": 10.0},
+        {"strike": 2.9, "call_oi": 2, "put_oi": 5, "call_gex": 5.0, "put_gex": -1.0, "net_gex": -10.0},
+        {"strike": 3.0, "call_oi": 3, "put_oi": 5, "call_gex": 5.0, "put_gex": -1.0, "net_gex": -20.0},
+        {"strike": 3.1, "call_oi": 4, "put_oi": 5, "call_gex": 30.0, "put_gex": -1.0, "net_gex": 30.0},
     ]
     levels = derive_gex_levels(points, underlying=3.0)
     assert levels["flip"] == 3.1
 
 
-def test_derive_gex_levels_walls_prefer_spot_side_with_fallback():
+def test_derive_gex_levels_walls_follow_gex_peaks_not_oi():
     points = [
-        # Huge call OI below spot should NOT be call wall
-        {"strike": 2.5, "call_oi": 1000, "put_oi": 1, "net_gex": -1.0},
-        {"strike": 2.8, "call_oi": 10, "put_oi": 50, "net_gex": -2.0},
-        {"strike": 3.0, "call_oi": 40, "put_oi": 5, "net_gex": 1.0},
-        # Huge put OI above spot should NOT be put wall
-        {"strike": 3.3, "call_oi": 5, "put_oi": 900, "net_gex": 2.0},
+        {"strike": 2.5, "call_oi": 1000, "put_oi": 1, "call_gex": 1.0, "put_gex": -1.0, "net_gex": -1.0},
+        {"strike": 2.8, "call_oi": 10, "put_oi": 50, "call_gex": 5.0, "put_gex": -90.0, "net_gex": -2.0},
+        {"strike": 3.0, "call_oi": 40, "put_oi": 5, "call_gex": 80.0, "put_gex": -5.0, "net_gex": 1.0},
+        {"strike": 3.3, "call_oi": 5, "put_oi": 900, "call_gex": 3.0, "put_gex": -2.0, "net_gex": 2.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
     assert levels["call_wall"] == 3.0
     assert levels["put_wall"] == 2.8
+    assert levels["pin"] == 2.5
+
+
+def test_aggregate_gex_points_sums_monthly_profiles():
+    from app.services.gex_indicator import aggregate_gex_points, derive_gex_levels
+
+    m1 = [
+        {"strike": 1.7, "call_oi": 10, "put_oi": 5, "call_gex": 100.0, "put_gex": -20.0, "net_gex": 80.0},
+        {"strike": 2.5, "call_oi": 200, "put_oi": 1, "call_gex": 5.0, "put_gex": -1.0, "net_gex": 4.0},
+    ]
+    m2 = [
+        {"strike": 1.7, "call_oi": 8, "put_oi": 6, "call_gex": 90.0, "put_gex": -30.0, "net_gex": 60.0},
+        {"strike": 2.5, "call_oi": 50, "put_oi": 1, "call_gex": 2.0, "put_gex": -1.0, "net_gex": 1.0},
+    ]
+    agg = aggregate_gex_points([m1, m2])
+    by = {p["strike"]: p for p in agg}
+    assert by[1.7]["call_gex"] == 190.0
+    assert by[2.5]["call_oi"] == 250.0
+    levels = derive_gex_levels(agg, underlying=1.69)
+    assert levels["call_wall"] == 1.7  # GEX peak, not OI pile at 2.5
     assert levels["pin"] == 2.5
 
 
