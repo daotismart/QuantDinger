@@ -1,0 +1,435 @@
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index 8742148..f052faa 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -7349,11 +7349,23 @@ export default {
+   "marketComposite.etf.tabs.etf": "ETF",
+   "marketComposite.etf.tabs.etfOptions": "ETF Options",
+   "marketComposite.etf.hints.index": "Benchmark index for the selected ETF (and related index futures when available).",
+-  "marketComposite.etf.hints.etf": "Spot quote and premium/discount for the selected ETF.",
++  "marketComposite.etf.hints.etf": "AUM, price, volume, turnover, fees, holdings profit, and historical trends for the selected ETF.",
+   "marketComposite.etf.hints.etfOptions": "Option chain, GEX and Greeks for the selected ETF.",
+   "marketComposite.etf.labels.cnEtf": "A-share ETF",
+   "marketComposite.etf.labels.usEtf": "US ETF",
+   "marketComposite.etf.labels.hkEtf": "HK ETF",
+   "marketComposite.etf.labels.indexFutures": "Index futures",
+-  "marketComposite.etf.labels.spotIndex": "Spot index"
++  "marketComposite.etf.labels.spotIndex": "Spot index",
++  "marketComposite.etf.metrics.scale": "AUM",
++  "marketComposite.etf.metrics.price": "Price",
++  "marketComposite.etf.metrics.volume": "Volume",
++  "marketComposite.etf.metrics.amount": "Turnover",
++  "marketComposite.etf.metrics.fee": "Expense ratio",
++  "marketComposite.etf.metrics.constituentProfit": "Holdings net profit",
++  "marketComposite.etf.metrics.premiumRate": "Premium / discount",
++  "marketComposite.etf.metrics.priceTrend": "Price trend",
++  "marketComposite.etf.metrics.volumeAmountTrend": "Volume / turnover",
++  "marketComposite.etf.metrics.scaleTrend": "AUM trend",
++  "marketComposite.etf.metrics.feeProfitTrend": "Fees / holdings profit",
++  "marketComposite.etf.metrics.historyAll": "ETF metrics overview"
+ }
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index 3b1edb8..4f04e20 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -7650,11 +7650,23 @@ export default {
+   "marketComposite.etf.tabs.etf": "ETF",
+   "marketComposite.etf.tabs.etfOptions": "ETF期权",
+   "marketComposite.etf.hints.index": "展示所选 ETF 对应的基准指数（及关联股指期货，如有）。",
+-  "marketComposite.etf.hints.etf": "展示所选 ETF 现货行情与折溢价。",
++  "marketComposite.etf.hints.etf": "展示所选 ETF 的规模、价格、成交、费用、成份股利润及历史趋势。",
+   "marketComposite.etf.hints.etfOptions": "展示所选 ETF 的期权链、GEX 与 Greeks。",
+   "marketComposite.etf.labels.cnEtf": "A股ETF",
+   "marketComposite.etf.labels.usEtf": "美股ETF",
+   "marketComposite.etf.labels.hkEtf": "港股ETF",
+   "marketComposite.etf.labels.indexFutures": "股指期货",
+-  "marketComposite.etf.labels.spotIndex": "现货指数"
++  "marketComposite.etf.labels.spotIndex": "现货指数",
++  "marketComposite.etf.metrics.scale": "规模",
++  "marketComposite.etf.metrics.price": "价格",
++  "marketComposite.etf.metrics.volume": "成交量",
++  "marketComposite.etf.metrics.amount": "成交额",
++  "marketComposite.etf.metrics.fee": "运作费率",
++  "marketComposite.etf.metrics.constituentProfit": "成份股利润总和",
++  "marketComposite.etf.metrics.premiumRate": "折溢价率",
++  "marketComposite.etf.metrics.priceTrend": "价格趋势",
++  "marketComposite.etf.metrics.volumeAmountTrend": "成交量 / 成交额",
++  "marketComposite.etf.metrics.scaleTrend": "规模趋势",
++  "marketComposite.etf.metrics.feeProfitTrend": "费率 / 成份股利润",
++  "marketComposite.etf.metrics.historyAll": "ETF 指标综合"
+ }
+diff --git a/src/views/market-composite-analysis/etf-derivatives.vue b/src/views/market-composite-analysis/etf-derivatives.vue
+index 12bda52..8719ee4 100644
+--- a/src/views/market-composite-analysis/etf-derivatives.vue
++++ b/src/views/market-composite-analysis/etf-derivatives.vue
+@@ -41,23 +41,42 @@
+       <!-- ETF -->
+       <div v-else-if="activeTab === 'etf'" class="fda-panel">
+         <div class="fda-metrics">
+-          <div class="fda-metric">
+-            <span>{{ $t('marketComposite.futures.spot.spotPrice') }}</span>
+-            <strong>{{ fmt(spotData && spotData.spot_price) }}</strong>
++          <div class="fda-metric" v-for="item in etfMetricCards" :key="item.key">
++            <span>{{ item.label }}</span>
++            <strong>{{ item.display }}</strong>
+           </div>
+-          <div class="fda-metric" v-if="spotData && spotData.spot && spotData.spot.etf && spotData.spot.etf.iopv">
+-            <span>IOPV</span>
+-            <strong>{{ fmt(spotData.spot.etf.iopv, 4) }}</strong>
++        </div>
++        <div class="fda-charts fda-charts-etf">
++          <div class="fda-chart-box">
++            <div class="fda-chart-head">
++              <h3>{{ $t('marketComposite.etf.metrics.priceTrend') }}</h3>
++              <a-button size="small" @click="openHistory('etf.price')">{{ $t('marketComposite.futures.history') }}</a-button>
++            </div>
++            <div ref="etfPriceChart" class="fda-chart" />
+           </div>
+-          <div class="fda-metric" v-if="spotData && spotData.spot && spotData.spot.index">
+-            <span>{{ spotData.spot.index.name || 'Index' }}</span>
+-            <strong>{{ fmt(spotData.spot.index.price) }}</strong>
++          <div class="fda-chart-box">
++            <div class="fda-chart-head">
++              <h3>{{ $t('marketComposite.etf.metrics.volumeAmountTrend') }}</h3>
++              <a-button size="small" @click="openHistory('etf.volume')">{{ $t('marketComposite.futures.history') }}</a-button>
++            </div>
++            <div ref="etfVolumeChart" class="fda-chart" />
+           </div>
+-          <div class="fda-metric" v-if="spotData && spotData.spot && spotData.spot.etf">
+-            <span>折价率</span>
+-            <strong>{{ fmt(spotData.spot.etf.premium_rate, 2) }}%</strong>
++          <div class="fda-chart-box">
++            <div class="fda-chart-head">
++              <h3>{{ $t('marketComposite.etf.metrics.scaleTrend') }}</h3>
++              <a-button size="small" @click="openHistory('etf.scale')">{{ $t('marketComposite.futures.history') }}</a-button>
++            </div>
++            <div ref="etfScaleChart" class="fda-chart" />
++          </div>
++          <div class="fda-chart-box">
++            <div class="fda-chart-head">
++              <h3>{{ $t('marketComposite.etf.metrics.feeProfitTrend') }}</h3>
++              <a-button size="small" @click="openHistory('etf.metrics')">{{ $t('marketComposite.futures.history') }}</a-button>
++            </div>
++            <div ref="etfFeeProfitChart" class="fda-chart" />
+           </div>
+         </div>
++        <p v-if="etfMetricsNote" class="fda-muted fda-etf-note">{{ etfMetricsNote }}</p>
+         <div class="fda-section">
+           <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
+           <ul class="fda-analysis">
+@@ -351,7 +370,9 @@ export default {
+       historyTitle: '',
+       historySlices: [],
+       historySliceIndex: 0,
+-      historyLevelsSeries: []
++      historyLevelsSeries: [],
++      etfHistoryPoints: [],
++      etfMetricsNote: ''
+     }
+   },
+   computed: {
+@@ -361,6 +382,9 @@ export default {
+     isGexHistory () {
+       return this.historyKey === 'options.gex'
+     },
++    isEtfMetricsHistory () {
++      return String(this.historyKey || '').startsWith('etf.')
++    },
+     historySliceLabel () {
+       const slice = this.historySlices[this.historySliceIndex]
+       return (slice && (slice.label || slice.ts || slice.date)) || '--'
+@@ -368,6 +392,29 @@ export default {
+     isDarkTheme () {
+       return this.navTheme === 'dark' || this.navTheme === 'realdark'
+     },
++    etfSpot () {
++      return (this.spotData && this.spotData.spot && this.spotData.spot.etf) || {}
++    },
++    etfMetricCards () {
++      const etf = this.etfSpot
++      const fee = etf.total_fee_pct
++      const feeParts = []
++      if (etf.management_fee_pct != null) feeParts.push(`${this.fmt(etf.management_fee_pct, 2)}%`)
++      if (etf.custodian_fee_pct != null) feeParts.push(`${this.fmt(etf.custodian_fee_pct, 2)}%`)
++      const feeDisplay = fee != null
++        ? `${this.fmt(fee, 2)}%${feeParts.length ? ` (${feeParts.join('+')})` : ''}`
++        : '-'
++      return [
++        { key: 'scale', label: this.$t('marketComposite.etf.metrics.scale'), display: this.fmtMoney(etf.scale) },
++        { key: 'price', label: this.$t('marketComposite.etf.metrics.price'), display: this.fmt(this.spotData && this.spotData.spot_price, 4) },
++        { key: 'volume', label: this.$t('marketComposite.etf.metrics.volume'), display: this.fmtCompact(etf.volume) },
++        { key: 'amount', label: this.$t('marketComposite.etf.metrics.amount'), display: this.fmtMoney(etf.amount) },
++        { key: 'fee', label: this.$t('marketComposite.etf.metrics.fee'), display: feeDisplay },
++        { key: 'profit', label: this.$t('marketComposite.etf.metrics.constituentProfit'), display: this.fmtMoney(etf.constituent_profit_sum) },
++        { key: 'iopv', label: 'IOPV', display: this.fmt(etf.iopv, 4) },
++        { key: 'premium', label: this.$t('marketComposite.etf.metrics.premiumRate'), display: etf.premium_rate != null ? `${this.fmt(etf.premium_rate, 2)}%` : '-' }
++      ]
++    },
+     optionMonths () {
+       return (this.optionsData && this.optionsData.months) || []
+     },
+@@ -525,6 +572,24 @@ export default {
+       if (!Number.isFinite(n)) return '-'
+       return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 })
+     },
++    fmtCompact (value) {
++      if (value === null || value === undefined || value === '') return '-'
++      const n = Number(value)
++      if (!Number.isFinite(n)) return '-'
++      const abs = Math.abs(n)
++      if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`
++      if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万`
++      return this.fmt(n, 0)
++    },
++    fmtMoney (value) {
++      if (value === null || value === undefined || value === '') return '-'
++      const n = Number(value)
++      if (!Number.isFinite(n)) return '-'
++      const abs = Math.abs(n)
++      if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿元`
++      if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万元`
++      return `${this.fmt(n, 0)}元`
++    },
+     pct (value) {
+       if (value === null || value === undefined || value === '') return '-'
+       const n = Number(value)
+@@ -650,12 +715,137 @@ export default {
+       try {
+         const res = await getSpotPanel(this.spotRequestRoot(), this.spotRequestParams())
+         this.spotData = (res && res.data) || null
++        await this.loadEtfMetricsHistory()
+       } catch (e) {
+         this.$message.error((e && e.message) || this.$t('marketComposite.futures.loadFailed'))
+       } finally {
+         this.loadingTab = false
+       }
+     },
++    async loadEtfMetricsHistory () {
++      if (!this.selectedRoot) return
++      try {
++        const res = await getChartHistory({
++          root: this.spotRequestRoot(),
++          chart: 'etf.metrics',
++          days: 180,
++          frequency: 'day',
++          ...this.etfScopeParams()
++        })
++        const data = (res && res.data) || {}
++        this.etfHistoryPoints = data.points || []
++        this.etfMetricsNote = data.note || ''
++        this.$nextTick(() => {
++          this.renderEtfMetricsCharts()
++          requestAnimationFrame(() => this.resizeCharts())
++        })
++      } catch (e) {
++        this.etfHistoryPoints = []
++        this.etfMetricsNote = ''
++      }
++    },
++    renderEtfMetricsCharts () {
++      const points = this.etfHistoryPoints || []
++      const dates = points.map(p => p.date)
++      const axisLabel = { color: this.chartText, hideOverlap: true }
++      const splitLine = { lineStyle: { color: this.chartGrid, type: 'dashed' } }
++
++      const price = this.ensureChart('etfPriceChart')
++      if (price) {
++        price.setOption({
++          ...this.baseChartOption(),
++          grid: { left: 52, right: 24, top: 36, bottom: 36 },
++          xAxis: { type: 'category', data: dates, axisLabel },
++          yAxis: { type: 'value', scale: true, splitLine },
++          series: [{
++            name: this.$t('marketComposite.etf.metrics.price'),
++            type: 'line',
++            showSymbol: false,
++            data: points.map(p => p.price),
++            itemStyle: { color: '#1677ff' }
++          }]
++        }, true)
++      }
++
++      const volume = this.ensureChart('etfVolumeChart')
++      if (volume) {
++        volume.setOption({
++          ...this.baseChartOption(),
++          legend: { top: 0, textStyle: { color: this.chartText } },
++          grid: { left: 52, right: 56, top: 40, bottom: 36 },
++          xAxis: { type: 'category', data: dates, axisLabel },
++          yAxis: [
++            { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
++            { type: 'value', name: this.$t('marketComposite.etf.metrics.amount'), splitLine: { show: false } }
++          ],
++          series: [
++            {
++              name: this.$t('marketComposite.etf.metrics.volume'),
++              type: 'bar',
++              data: points.map(p => p.volume),
++              itemStyle: { color: '#69c0ff', opacity: 0.55 }
++            },
++            {
++              name: this.$t('marketComposite.etf.metrics.amount'),
++              type: 'line',
++              yAxisIndex: 1,
++              showSymbol: false,
++              data: points.map(p => p.amount),
++              itemStyle: { color: '#fa8c16' }
++            }
++          ]
++        }, true)
++      }
++
++      const scale = this.ensureChart('etfScaleChart')
++      if (scale) {
++        scale.setOption({
++          ...this.baseChartOption(),
++          grid: { left: 56, right: 24, top: 36, bottom: 36 },
++          xAxis: { type: 'category', data: dates, axisLabel },
++          yAxis: { type: 'value', scale: true, splitLine },
++          series: [{
++            name: this.$t('marketComposite.etf.metrics.scale'),
++            type: 'line',
++            showSymbol: false,
++            areaStyle: { opacity: 0.12 },
++            data: points.map(p => p.scale),
++            itemStyle: { color: '#13c2c2' }
++          }]
++        }, true)
++      }
++
++      const feeProfit = this.ensureChart('etfFeeProfitChart')
++      if (feeProfit) {
++        feeProfit.setOption({
++          ...this.baseChartOption(),
++          legend: { top: 0, textStyle: { color: this.chartText } },
++          grid: { left: 56, right: 56, top: 40, bottom: 36 },
++          xAxis: { type: 'category', data: dates, axisLabel },
++          yAxis: [
++            { type: 'value', name: this.$t('marketComposite.etf.metrics.fee'), splitLine },
++            { type: 'value', name: this.$t('marketComposite.etf.metrics.constituentProfit'), splitLine: { show: false } }
++          ],
++          series: [
++            {
++              name: this.$t('marketComposite.etf.metrics.fee'),
++              type: 'line',
++              showSymbol: false,
++              data: points.map(p => p.fee_pct),
++              itemStyle: { color: '#722ed1' }
++            },
++            {
++              name: this.$t('marketComposite.etf.metrics.constituentProfit'),
++              type: 'line',
++              yAxisIndex: 1,
++              showSymbol: false,
++              data: points.map(p => p.constituent_profit_sum),
++              itemStyle: { color: '#eb2f96' }
++            }
++          ]
++        }, true)
++      }
++    },
+     async loadFutures () {
+       this.loadingTab = true
+       try {
+@@ -1027,7 +1217,16 @@ export default {
+     },
+     openHistory (chartKey) {
+       this.historyKey = chartKey
+-      this.historyTitle = `${this.$t('marketComposite.futures.history')} · ${chartKey}`
++      const titleMap = {
++        'etf.metrics': this.$t('marketComposite.etf.metrics.historyAll'),
++        'etf.price': this.$t('marketComposite.etf.metrics.priceTrend'),
++        'etf.volume': this.$t('marketComposite.etf.metrics.volumeAmountTrend'),
++        'etf.amount': this.$t('marketComposite.etf.metrics.volumeAmountTrend'),
++        'etf.scale': this.$t('marketComposite.etf.metrics.scaleTrend'),
++        'etf.fee': this.$t('marketComposite.etf.metrics.feeProfitTrend'),
++        'etf.profit': this.$t('marketComposite.etf.metrics.feeProfitTrend')
++      }
++      this.historyTitle = `${this.$t('marketComposite.futures.history')} · ${titleMap[chartKey] || chartKey}`
+       this.historySlices = []
+       this.historySliceIndex = 0
+       this.historyVisible = true
+@@ -1348,6 +1547,10 @@ export default {
+       if (!chart) return
+       if (data.mode === 'daily') {
+         const points = data.points || []
++        if (this.isEtfMetricsHistory) {
++          this.renderEtfHistoryModal(chart, points)
++          return
++        }
+         chart.setOption({
+           ...this.baseChartOption(),
+           legend: { top: 0, textStyle: { color: this.chartText } },
+@@ -1365,8 +1568,57 @@ export default {
+         }, true)
+       }
+     },
++    renderEtfHistoryModal (chart, points) {
++      const key = this.historyKey
++      const dates = points.map(p => p.date)
++      const axisLabel = { color: this.chartText, hideOverlap: true }
++      const splitLine = { lineStyle: { color: this.chartGrid, type: 'dashed' } }
++      let series = []
++      let yAxis = { type: 'value', scale: true, splitLine }
++
++      if (key === 'etf.price') {
++        series = [{ name: this.$t('marketComposite.etf.metrics.price'), type: 'line', showSymbol: false, data: points.map(p => p.price) }]
++      } else if (key === 'etf.scale') {
++        series = [{ name: this.$t('marketComposite.etf.metrics.scale'), type: 'line', showSymbol: false, areaStyle: { opacity: 0.12 }, data: points.map(p => p.scale) }]
++      } else if (key === 'etf.volume' || key === 'etf.amount') {
++        yAxis = [
++          { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
++          { type: 'value', name: this.$t('marketComposite.etf.metrics.amount'), splitLine: { show: false } }
++        ]
++        series = [
++          { name: this.$t('marketComposite.etf.metrics.volume'), type: 'bar', data: points.map(p => p.volume), itemStyle: { opacity: 0.45 } },
++          { name: this.$t('marketComposite.etf.metrics.amount'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.amount) }
++        ]
++      } else if (key === 'etf.fee') {
++        series = [{ name: this.$t('marketComposite.etf.metrics.fee'), type: 'line', showSymbol: false, data: points.map(p => p.fee_pct) }]
++      } else if (key === 'etf.profit') {
++        series = [{ name: this.$t('marketComposite.etf.metrics.constituentProfit'), type: 'line', showSymbol: false, data: points.map(p => p.constituent_profit_sum) }]
++      } else {
++        yAxis = [
++          { type: 'value', name: this.$t('marketComposite.etf.metrics.price'), splitLine },
++          { type: 'value', name: this.$t('marketComposite.etf.metrics.scale'), splitLine: { show: false } }
++        ]
++        series = [
++          { name: this.$t('marketComposite.etf.metrics.price'), type: 'line', showSymbol: false, data: points.map(p => p.price) },
++          { name: this.$t('marketComposite.etf.metrics.volume'), type: 'bar', data: points.map(p => p.volume), itemStyle: { opacity: 0.3 } },
++          { name: this.$t('marketComposite.etf.metrics.scale'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.scale) },
++          { name: this.$t('marketComposite.etf.metrics.fee'), type: 'line', showSymbol: false, data: points.map(p => p.fee_pct) },
++          { name: this.$t('marketComposite.etf.metrics.constituentProfit'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.constituent_profit_sum) }
++        ]
++      }
++
++      chart.setOption({
++        ...this.baseChartOption(),
++        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
++        grid: { left: 56, right: 56, top: 48, bottom: 40 },
++        xAxis: { type: 'category', data: dates, axisLabel },
++        yAxis,
++        series
++      }, true)
++    },
+     renderActiveCharts () {
+       if (this.activeTab === 'index') this.renderFuturesCharts()
++      if (this.activeTab === 'etf') this.renderEtfMetricsCharts()
+       if (this.activeTab === 'etfOptions') this.renderOptionsCharts()
+     },
+     scheduleOptionsChartRender () {
+@@ -1557,6 +1809,14 @@ export default {
+   margin-bottom: 16px;
+ }
+ 
++.fda-etf-note {
++  margin: 0 0 12px;
++}
++
++.fda-charts-etf {
++  margin-bottom: 8px;
++}
++
+ .fda-analysis {
+   margin: 0;
+   padding-left: 18px;
