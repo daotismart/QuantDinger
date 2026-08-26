@@ -1,0 +1,10 @@
+QuantDinger-Vue push is not permitted from this cloud agent.
+Apply frontend changes on QuantDinger-Vue branch cursor/etf-analysis-metrics-c137:
+
+  cd QuantDinger-Vue
+  git checkout -b cursor/etf-analysis-metrics-c137
+  git apply ../tmp-frontend-patches/etf-analysis-metrics.patch
+  # or copy etf-derivatives-metrics.vue over src/views/market-composite-analysis/etf-derivatives.vue
+  # and merge locale keys from the patch into zh-CN.js / en-US.js
+
+Backend PR companion: QuantDinger cursor/etf-analysis-metrics-c137
