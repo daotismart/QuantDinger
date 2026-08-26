@@ -297,6 +297,13 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
         index_code = str(bench[0] or "").strip()
         index_row = _index_row_from_spot(index_frame, index_code.lower(), _safe_float)
 
+    try:
+        from app.services.cn_derivatives_etf_metrics import enrich_etf_metrics
+
+        etf = enrich_etf_metrics(code6, etf)
+    except Exception as exc:
+        logger.warning("enrich_etf_metrics %s failed: %s", code6, exc)
+
     etf_price = float(etf.get("price") or 0.0)
     index_price = float((index_row or {}).get("price") or 0.0)
     analysis: List[str] = []
@@ -305,6 +312,22 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
     if etf.get("iopv"):
         analysis.append(
             f"IOPV {float(etf['iopv']):.4f}，折价率 {float(etf.get('premium_rate') or 0):.2f}%。"
+        )
+    if etf.get("scale"):
+        analysis.append(f"基金规模（总市值）约 {float(etf['scale']):,.0f} 元。")
+    if etf.get("amount"):
+        analysis.append(f"成交额 {float(etf['amount']):,.0f} 元，成交量 {float(etf.get('volume') or 0):,.0f}。")
+    if etf.get("total_fee_pct") is not None:
+        analysis.append(
+            f"运作费率约 {float(etf['total_fee_pct']):.2f}%/年"
+            f"（管理费 {float(etf.get('management_fee_pct') or 0):.2f}% + "
+            f"托管费 {float(etf.get('custodian_fee_pct') or 0):.2f}%）。"
+        )
+    if etf.get("constituent_profit_sum") is not None:
+        coverage = int(etf.get("constituent_profit_coverage") or 0)
+        analysis.append(
+            f"成份股最新财报净利润合计约 {float(etf['constituent_profit_sum']):,.0f} 元"
+            f"（覆盖前部持仓 {coverage} 只）。"
         )
     if index_row and index_price > 0:
         analysis.append(f"基准指数 {index_row.get('name')} 最新 {index_price:.2f}。")

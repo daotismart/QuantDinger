@@ -148,6 +148,26 @@ def chart_history():
             )
             return jsonify({"code": 1, "msg": "ok", "data": data})
 
+        # ETF fund metrics history (price/volume/amount/scale/fee/profit)
+        if _is_etf_scope() and chart_key in {
+            "etf.metrics",
+            "etf.price",
+            "etf.volume",
+            "etf.amount",
+            "etf.scale",
+            "etf.fee",
+            "etf.profit",
+        }:
+            from app.services.cn_derivatives_etf_metrics import build_etf_metrics_history
+
+            data = build_etf_metrics_history(
+                root,
+                chart_key=chart_key,
+                days=days_i,
+                frequency=frequency,
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
+
         data = build_chart_history(
             root,
             chart_key=chart_key,
