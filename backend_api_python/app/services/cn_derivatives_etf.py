@@ -408,6 +408,11 @@ def _assemble_etf_options_panel(
     underlyings: List[float] = []
     Ts: List[float] = []
 
+    from app.services.cn_derivatives_etf_capital import (
+        build_capital_curve_by_month,
+        compute_option_capital_metrics,
+    )
+
     def _gex_fields(chain: List[Dict[str, Any]], *, spot: float, T: float, label: str) -> Dict[str, Any]:
         indicator = run_gex_indicator(
             chain or [],
@@ -453,6 +458,12 @@ def _assemble_etf_options_panel(
             T=T,
             month=m,
         )
+        capital_metrics = compute_option_capital_metrics(
+            chain,
+            underlying=underlying,
+            multiplier=mult,
+            margin_rate=margin_rate,
+        )
         month_series.append(
             {
                 "month": m,
@@ -464,6 +475,7 @@ def _assemble_etf_options_panel(
                 "iv_smile": gex_fields.get("iv_smile") or [],
                 "max_pain": max_pain,
                 "time_value_yield": tv_yield,
+                "capital_metrics": capital_metrics,
                 "indicators": gex_fields.get("indicators") or {},
             }
         )
@@ -490,6 +502,7 @@ def _assemble_etf_options_panel(
             "iv_smile": [],
             "max_pain": None,
             "time_value_yield": [],
+            "capital_curve": {"points": [], "total": {}, "note": ""},
             "indicators": {"gex": empty_ind},
             "message": "已连接期权数据源，但当前月份链截面为空。",
             "data_source": data_source,
@@ -541,6 +554,15 @@ def _assemble_etf_options_panel(
             T=t_avg,
             name="GEX",
         )
+
+    capital_curve = build_capital_curve_by_month(
+        {ms["month"]: (chains_by_month.get(ms["month"]) or []) for ms in month_series},
+        underlying=float(underlying or u_avg or 0.0),
+        multiplier=mult,
+        margin_rate=margin_rate,
+        months=[ms["month"] for ms in month_series],
+    )
+
     return {
         "root": code6,
         "name_cn": name_cn,
@@ -560,6 +582,7 @@ def _assemble_etf_options_panel(
         "max_pain": max_pain,
         "time_value_yield": primary.get("time_value_yield") or [],
         "month_series": month_series,
+        "capital_curve": capital_curve,
         "indicators": {"gex": gex_indicator},
         "data_source": data_source,
         "asof": datetime.now().isoformat(timespec="seconds"),

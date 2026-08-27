@@ -148,6 +148,23 @@ def chart_history():
             )
             return jsonify({"code": 1, "msg": "ok", "data": data})
 
+        # ETF options capital history (premium/margin/value ratios)
+        if _is_etf_scope() and chart_key in {
+            "options.capital",
+            "etf.optionsCapital",
+            "options.premiumMargin",
+        }:
+            from app.services.cn_derivatives_etf_capital import build_etf_options_capital_history
+
+            data = build_etf_options_capital_history(
+                root,
+                chart_key=chart_key,
+                interval=interval,
+                bars=bars_i if bars_i is not None else 60,
+                month=month,
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
+
         # ETF fund metrics history (price/volume/amount/scale/fee/profit)
         if _is_etf_scope() and chart_key in {
             "etf.metrics",
