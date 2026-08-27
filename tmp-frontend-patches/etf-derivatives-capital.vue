@@ -1251,10 +1251,11 @@ export default {
             const head = rows[0].axisValueLabel || rows[0].name || ''
             const lines = rows.map((row) => {
               const val = row.data
-              const isRatio = String(row.seriesName || '').includes('/')
+              const name = String(row.seriesName || '')
+              const isRatio = name.includes('/') || name.toLowerCase().includes('long')
               const text = val == null || val === ''
                 ? '-'
-                : (isRatio ? `${(Number(val) * 100).toFixed(2)}%` : this.fmtCompact(val))
+                : (isRatio ? Number(val).toFixed(4) : this.fmtCompact(val))
               return `${row.marker}${row.seriesName}: ${text}`
             })
             return [head].concat(lines).join('<br/>')
@@ -1272,48 +1273,55 @@ export default {
             type: 'value',
             name: this.$t('marketComposite.futures.options.capitalRatioAxis'),
             scale: true,
-            axisLabel: { formatter: v => `${(Number(v) * 100).toFixed(0)}%` },
+            min: 0,
+            axisLabel: { formatter: v => Number(v).toFixed(2) },
             splitLine: { show: false }
           }
         ],
         series: [
           {
+            name: this.$t('marketComposite.futures.options.marginShortTotal'),
+            type: 'line',
+            showSymbol: true,
+            symbolSize: 4,
+            data: points.map(p => p.margin_short_total != null ? p.margin_short_total : p.margin_total),
+            itemStyle: { color: '#ef4444' },
+            lineStyle: { width: 2 }
+          },
+          {
             name: this.$t('marketComposite.futures.options.premiumTotal'),
             type: 'line',
-            showSymbol: false,
+            showSymbol: true,
+            symbolSize: 4,
             data: points.map(p => p.premium_total),
-            itemStyle: { color: '#1677ff' }
+            itemStyle: { color: '#2563eb' },
+            lineStyle: { width: 2 }
           },
           {
-            name: this.$t('marketComposite.futures.options.marginTotal'),
+            name: this.$t('marketComposite.futures.options.timeValueTotal'),
             type: 'line',
             showSymbol: false,
-            data: points.map(p => p.margin_total),
-            itemStyle: { color: '#fa8c16' }
+            data: points.map(p => p.time_value_total),
+            itemStyle: { color: '#f97316' },
+            lineStyle: { type: 'dotted', width: 2 }
           },
           {
-            name: this.$t('marketComposite.futures.options.premiumMarginRatio'),
+            name: this.$t('marketComposite.futures.options.intrinsicTotal'),
             type: 'line',
-            yAxisIndex: 1,
             showSymbol: false,
-            data: points.map(p => p.premium_margin_ratio),
-            itemStyle: { color: '#722ed1' }
+            data: points.map(p => p.intrinsic_total),
+            itemStyle: { color: '#22c55e' },
+            lineStyle: { type: 'dotted', width: 2 }
           },
           {
-            name: this.$t('marketComposite.futures.options.timeValuePremiumRatio'),
-            type: 'line',
-            yAxisIndex: 1,
-            showSymbol: false,
-            data: points.map(p => p.time_value_premium_ratio),
-            itemStyle: { color: '#13c2c2' }
-          },
-          {
-            name: this.$t('marketComposite.futures.options.intrinsicPremiumRatio'),
+            name: this.$t('marketComposite.futures.options.longShortRatio'),
             type: 'line',
             yAxisIndex: 1,
-            showSymbol: false,
-            data: points.map(p => p.intrinsic_premium_ratio),
-            itemStyle: { color: '#eb2f96' }
+            showSymbol: true,
+            symbolSize: 4,
+            data: points.map(p => p.long_short_ratio != null ? p.long_short_ratio : p.premium_margin_ratio),
+            itemStyle: { color: '#7c3aed' },
+            lineStyle: { type: 'dashed', width: 2 }
           }
         ]
       }, true)

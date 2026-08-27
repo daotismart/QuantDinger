@@ -1,16 +1,25 @@
-"""ETF options premium / margin / value-ratio aggregates and history."""
+"""ETF options premium / long-short margin aggregates and history.
+
+Aligned with the etf_options market-trend口径:
+  - Premium = option price × OI × multiplier
+  - Long margin (权利仓) = premium (full premium paid)
+  - Short margin (义务仓) = SSE/SZSE ETF option opening-margin formula
+  - Primary ratio = long_margin / short_margin (多头/空头)
+"""
 
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 _DEFAULT_MULT = 10000.0
-_DEFAULT_MARGIN_RATE = 0.12
+# Match etf_options `etf_option_margin.py` (docstring says 12%, runtime uses 15%).
+_SHORT_MARGIN_PCT = 0.15
+_SHORT_MARGIN_FLOOR_PCT = 0.07
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -31,22 +40,74 @@ def _ratio(num: float, den: float) -> Optional[float]:
         return None
 
 
+def initial_margin_long_per_contract(option_price: float, multiplier: float = _DEFAULT_MULT) -> float:
+    """权利仓开仓应付（元/张）= 期权价 × 合约单位。"""
+    px = max(_safe_float(option_price), 0.0)
+    mult = _safe_float(multiplier, _DEFAULT_MULT) or _DEFAULT_MULT
+    return px * mult
+
+
+def initial_margin_short_per_contract(
+    option_price: float,
+    underlying: float,
+    strike: float,
+    *,
+    is_call: bool,
+    multiplier: float = _DEFAULT_MULT,
+    pct: float = _SHORT_MARGIN_PCT,
+    floor_pct: float = _SHORT_MARGIN_FLOOR_PCT,
+) -> float:
+    """义务仓开仓保证金（元/张），与 etf_options / 上交所 ETF 期权公式一致。
+
+    Call: [C + max(pct×S − OTM, floor×S)] × unit, OTM = max(K−S, 0)
+    Put:  min(C + max(pct×S − OTM, floor×K), K) × unit, OTM = max(S−K, 0)
+    """
+    S = _safe_float(underlying)
+    K = _safe_float(strike)
+    C = max(_safe_float(option_price), 0.0)
+    mult = _safe_float(multiplier, _DEFAULT_MULT) or _DEFAULT_MULT
+    if S <= 0 or K <= 0 or mult <= 0:
+        return 0.0
+    if is_call:
+        otm = max(K - S, 0.0)
+        bracket = C + max(pct * S - otm, floor_pct * S)
+        return bracket * mult
+    otm = max(S - K, 0.0)
+    inner = C + max(pct * S - otm, floor_pct * K)
+    return min(inner, K) * mult
+
+
+def _option_price(row: Dict[str, Any], side: str) -> float:
+    """Prefer last, then mid — same preference as peer last_px / mid fallback."""
+    if side == "call":
+        return max(
+            _safe_float(row.get("call_last") or row.get("call_mid") or row.get("call_close")),
+            0.0,
+        )
+    return max(
+        _safe_float(row.get("put_last") or row.get("put_mid") or row.get("put_close")),
+        0.0,
+    )
+
+
 def compute_option_capital_metrics(
     chain: List[Dict[str, Any]],
     *,
     underlying: float,
     multiplier: float = _DEFAULT_MULT,
-    margin_rate: float = _DEFAULT_MARGIN_RATE,
+    margin_rate: float = _SHORT_MARGIN_PCT,
 ) -> Dict[str, Any]:
-    """Aggregate premium / seller-margin / intrinsic / time-value for one chain.
+    """Aggregate premium / long-short margin / intrinsic / time-value for one chain.
 
-    Premium = mid * OI * multiplier
-    Margin  ≈ OI * underlying * multiplier * margin_rate  (seller margin proxy)
-    Intrinsic / time-value are OI-weighted contract values.
+    Parameters
+    ----------
+    margin_rate:
+        Short-margin percentage coefficient (default 0.15). Kept for call-site
+        compatibility; floor coefficient stays at 7%.
     """
     spot = _safe_float(underlying)
     mult = _safe_float(multiplier, _DEFAULT_MULT) or _DEFAULT_MULT
-    rate = _safe_float(margin_rate, _DEFAULT_MARGIN_RATE) or _DEFAULT_MARGIN_RATE
+    pct = _safe_float(margin_rate, _SHORT_MARGIN_PCT) or _SHORT_MARGIN_PCT
 
     call_premium = 0.0
     put_premium = 0.0
@@ -56,35 +117,55 @@ def compute_option_capital_metrics(
     put_tv = 0.0
     call_oi = 0.0
     put_oi = 0.0
+    margin_long = 0.0
+    margin_short = 0.0
 
     for row in chain or []:
         k = _safe_float(row.get("strike"))
         if k <= 0:
             continue
-        c_mid = max(_safe_float(row.get("call_mid") or row.get("call_last")), 0.0)
-        p_mid = max(_safe_float(row.get("put_mid") or row.get("put_last")), 0.0)
+        c_px = _option_price(row, "call")
+        p_px = _option_price(row, "put")
         c_oi = max(_safe_float(row.get("call_oi")), 0.0)
         p_oi = max(_safe_float(row.get("put_oi")), 0.0)
         c_intr = max(spot - k, 0.0) if spot > 0 else 0.0
         p_intr = max(k - spot, 0.0) if spot > 0 else 0.0
-        c_tv_unit = max(c_mid - c_intr, 0.0)
-        p_tv_unit = max(p_mid - p_intr, 0.0)
+        c_tv_unit = max(c_px - c_intr, 0.0)
+        p_tv_unit = max(p_px - p_intr, 0.0)
 
         call_oi += c_oi
         put_oi += p_oi
-        call_premium += c_mid * c_oi * mult
-        put_premium += p_mid * p_oi * mult
+        call_premium += c_px * c_oi * mult
+        put_premium += p_px * p_oi * mult
         call_intrinsic += c_intr * c_oi * mult
         put_intrinsic += p_intr * p_oi * mult
         call_tv += c_tv_unit * c_oi * mult
         put_tv += p_tv_unit * p_oi * mult
+
+        if c_oi > 0:
+            margin_long += initial_margin_long_per_contract(c_px, mult) * c_oi
+            margin_short += (
+                initial_margin_short_per_contract(
+                    c_px, spot, k, is_call=True, multiplier=mult, pct=pct
+                )
+                * c_oi
+            )
+        if p_oi > 0:
+            margin_long += initial_margin_long_per_contract(p_px, mult) * p_oi
+            margin_short += (
+                initial_margin_short_per_contract(
+                    p_px, spot, k, is_call=False, multiplier=mult, pct=pct
+                )
+                * p_oi
+            )
 
     premium_total = call_premium + put_premium
     intrinsic_total = call_intrinsic + put_intrinsic
     time_value_total = call_tv + put_tv
     total_oi = call_oi + put_oi
     notional = total_oi * spot * mult if spot > 0 else 0.0
-    margin_total = notional * rate
+    # Backward-compatible alias: "margin_total" = short (义务仓) sediment.
+    margin_total = margin_short
 
     return {
         "call_oi": call_oi,
@@ -100,11 +181,16 @@ def compute_option_capital_metrics(
         "put_time_value": put_tv,
         "time_value_total": time_value_total,
         "notional": notional,
+        "margin_long_total": margin_long,
+        "margin_short_total": margin_short,
         "margin_total": margin_total,
-        "margin_rate": rate,
+        "margin_rate": pct,
+        "margin_floor_rate": _SHORT_MARGIN_FLOOR_PCT,
         "multiplier": mult,
         "underlying": spot,
-        "premium_margin_ratio": _ratio(premium_total, margin_total),
+        "long_short_ratio": _ratio(margin_long, margin_short),
+        # Kept for older clients; now premium / short-margin.
+        "premium_margin_ratio": _ratio(premium_total, margin_short),
         "time_value_premium_ratio": _ratio(time_value_total, premium_total),
         "intrinsic_premium_ratio": _ratio(intrinsic_total, premium_total),
     }
@@ -115,7 +201,7 @@ def build_capital_curve_by_month(
     *,
     underlying: float,
     multiplier: float = _DEFAULT_MULT,
-    margin_rate: float = _DEFAULT_MARGIN_RATE,
+    margin_rate: float = _SHORT_MARGIN_PCT,
     months: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build per-month capital metrics + all-month total for live charts."""
@@ -131,30 +217,34 @@ def build_capital_curve_by_month(
             multiplier=multiplier,
             margin_rate=margin_rate,
         )
-        item = {"month": month, **metrics}
-        points.append(item)
+        points.append({"month": month, **metrics})
 
-    # Aggregate totals across months (OI-weighted already inside each month).
     total = {
         "premium_total": sum(float(p.get("premium_total") or 0.0) for p in points),
-        "margin_total": sum(float(p.get("margin_total") or 0.0) for p in points),
+        "margin_long_total": sum(float(p.get("margin_long_total") or 0.0) for p in points),
+        "margin_short_total": sum(float(p.get("margin_short_total") or 0.0) for p in points),
+        "margin_total": sum(float(p.get("margin_short_total") or 0.0) for p in points),
         "intrinsic_total": sum(float(p.get("intrinsic_total") or 0.0) for p in points),
         "time_value_total": sum(float(p.get("time_value_total") or 0.0) for p in points),
         "notional": sum(float(p.get("notional") or 0.0) for p in points),
         "total_oi": sum(float(p.get("total_oi") or 0.0) for p in points),
         "margin_rate": margin_rate,
+        "margin_floor_rate": _SHORT_MARGIN_FLOOR_PCT,
         "multiplier": multiplier,
         "underlying": underlying,
     }
-    total["premium_margin_ratio"] = _ratio(total["premium_total"], total["margin_total"])
+    total["long_short_ratio"] = _ratio(total["margin_long_total"], total["margin_short_total"])
+    total["premium_margin_ratio"] = _ratio(total["premium_total"], total["margin_short_total"])
     total["time_value_premium_ratio"] = _ratio(total["time_value_total"], total["premium_total"])
     total["intrinsic_premium_ratio"] = _ratio(total["intrinsic_total"], total["premium_total"])
     return {
         "points": points,
         "total": total,
         "note": (
-            "权利金=期权中间价×持仓×合约乘数；"
-            "保证金≈持仓×标的价×合约乘数×卖方保证金率；"
+            "权利金=期权价格×持仓×合约乘数；"
+            "多头保证金=权利仓应付权利金；"
+            "空头保证金=交易所ETF期权义务仓开仓保证金（15%/7%公式）；"
+            "多头/空头=多头保证金÷空头保证金；"
             "内在价值/时间价值按持仓加权。"
         ),
     }
@@ -180,7 +270,7 @@ def build_etf_options_capital_history(
     bars: int = 60,
     month: str = "all",
 ) -> Dict[str, Any]:
-    """Historical premium/margin/ratio curves from ClickHouse option slices."""
+    """Historical premium / long-short margin curves from ClickHouse slices."""
     from app.services.etf_options_clickhouse import (
         build_strike_chains_by_month,
         ch_ping,
@@ -246,7 +336,7 @@ def build_etf_options_capital_history(
             chains,
             underlying=spot,
             multiplier=_DEFAULT_MULT,
-            margin_rate=_DEFAULT_MARGIN_RATE,
+            margin_rate=_SHORT_MARGIN_PCT,
         )
         total = curve.get("total") or {}
         asof = _parse_ts(ts)
@@ -256,9 +346,12 @@ def build_etf_options_capital_history(
                 "ts": ts,
                 "underlying": spot,
                 "premium_total": total.get("premium_total"),
-                "margin_total": total.get("margin_total"),
+                "margin_long_total": total.get("margin_long_total"),
+                "margin_short_total": total.get("margin_short_total"),
+                "margin_total": total.get("margin_short_total"),
                 "intrinsic_total": total.get("intrinsic_total"),
                 "time_value_total": total.get("time_value_total"),
+                "long_short_ratio": total.get("long_short_ratio"),
                 "premium_margin_ratio": total.get("premium_margin_ratio"),
                 "time_value_premium_ratio": total.get("time_value_premium_ratio"),
                 "intrinsic_premium_ratio": total.get("intrinsic_premium_ratio"),
@@ -267,9 +360,10 @@ def build_etf_options_capital_history(
         )
 
     note = (
-        f"按 {interval_n} 取最近 {bars_n} 根，用 ClickHouse 期权切片回放权利金/保证金及比率。"
-        " 日级时间戳取各交易日最后一根期权报价分钟（通常≈14:55–14:56），"
-        " 保证金为卖方保证金近似（持仓×标的×乘数×保证金率）。"
+        f"按 {interval_n} 取最近 {bars_n} 根，用 ClickHouse 期权切片回放权利金/多空保证金。"
+        " 日级时间戳取各交易日最后一根期权报价分钟（通常≈14:55–14:56）。"
+        " 多头保证金=权利金；空头保证金=交易所义务仓开仓保证金（15%/7%）；"
+        " 多头/空头=多头保证金÷空头保证金。"
         " 到期月切换日总量可能因整月合约摘牌而台阶式变化。"
     )
     if meta.get("error"):

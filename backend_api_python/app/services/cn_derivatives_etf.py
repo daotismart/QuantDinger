@@ -402,7 +402,8 @@ def _assemble_etf_options_panel(
     )
 
     mult = 10000.0
-    margin_rate = 0.12
+    # Short-margin pct for ETF options opening-margin formula (peer uses 15%).
+    margin_rate = 0.15
     month_series: List[Dict[str, Any]] = []
     chains_for_agg: List[List[Dict[str, Any]]] = []
     underlyings: List[float] = []
