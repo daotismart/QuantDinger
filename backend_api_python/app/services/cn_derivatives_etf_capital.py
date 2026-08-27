@@ -196,6 +196,195 @@ def compute_option_capital_metrics(
     }
 
 
+def _days_to_expiry_from_T(T: float) -> int:
+    """Convert year-fraction T (≈ days/365) to calendar days for peer annualization."""
+    try:
+        days = int(round(float(T) * 365.0))
+    except Exception:
+        days = 1
+    return max(days, 1)
+
+
+def _tv_annual_yield(time_value: float, short_margin: float, days: int) -> Optional[float]:
+    """Peer formula: (TV×unit / 义务仓保证金) × (365.25 / max(days,1)).
+
+    ``short_margin`` is already in 元/张 (includes contract unit).
+    ``time_value`` is the unit option price's time value (premium − intrinsic).
+    """
+    if short_margin is None or short_margin <= 0:
+        return None
+    d = max(int(days or 1), 1)
+    # time_value is per underlying unit; margin already includes multiplier,
+    # so convert TV to yuan with the same unit embedded in short_margin / price space:
+    # caller passes tv_yuan = time_value * multiplier.
+    return (float(time_value) / float(short_margin)) * (365.25 / float(d))
+
+
+def compute_etf_time_value_annualized_yield(
+    chain: List[Dict[str, Any]],
+    *,
+    underlying: float,
+    multiplier: float = _DEFAULT_MULT,
+    margin_rate: float = _SHORT_MARGIN_PCT,
+    T: float,
+    month: str,
+) -> Dict[str, Any]:
+    """ETF option time-value annualized yield — same口径 as etf_options.
+
+    Per contract:
+      TV = price − intrinsic (can be negative, matching peer mid−intrinsic)
+      AY = (TV × multiplier / short_margin) × (365.25 / days)
+
+    Market composite:
+      weighted average of AY by OI × short_margin (义务仓保证金),
+      falling back to short_margin-only then notional (price×multiplier).
+    """
+    spot = _safe_float(underlying)
+    mult = _safe_float(multiplier, _DEFAULT_MULT) or _DEFAULT_MULT
+    pct = _safe_float(margin_rate, _SHORT_MARGIN_PCT) or _SHORT_MARGIN_PCT
+    t_years = max(_safe_float(T), 1.0 / 365.0)
+    days = _days_to_expiry_from_T(t_years)
+    call_points: List[Dict[str, Any]] = []
+    put_points: List[Dict[str, Any]] = []
+    if spot <= 0 or mult <= 0:
+        return {
+            "month": month,
+            "T": t_years,
+            "days_to_expiry": days,
+            "call": [],
+            "put": [],
+            "market_yield": None,
+            "market_yield_weight": "",
+            "note": "invalid underlying/multiplier",
+        }
+
+    weight_rows: List[Dict[str, float]] = []
+
+    for row in chain or []:
+        k = _safe_float(row.get("strike"))
+        if k <= 0:
+            continue
+        for side, is_call in (("call", True), ("put", False)):
+            px = _option_price(row, side)
+            if px <= 0:
+                continue
+            oi = max(_safe_float(row.get(f"{side}_oi")), 0.0)
+            intrinsic = max(spot - k, 0.0) if is_call else max(k - spot, 0.0)
+            # Peer keeps signed time value (mid − intrinsic); do not floor at 0.
+            tv = px - intrinsic
+            short_m = initial_margin_short_per_contract(
+                px, spot, k, is_call=is_call, multiplier=mult, pct=pct
+            )
+            tv_yuan = tv * mult
+            ay = _tv_annual_yield(tv_yuan, short_m, days)
+            point = {
+                "strike": k,
+                "time_value": tv,
+                "premium": px,
+                "margin": short_m,
+                "oi": oi,
+                "weight": oi * short_m if short_m > 0 else 0.0,
+                "yield": ay,
+                "side": side,
+                "month": month,
+            }
+            if side == "call":
+                call_points.append(point)
+            else:
+                put_points.append(point)
+            if ay is not None:
+                weight_rows.append(
+                    {
+                        "yield": float(ay),
+                        "oi_margin": float(oi * short_m) if short_m > 0 else 0.0,
+                        "margin": float(short_m) if short_m > 0 else 0.0,
+                        "notional": float(px * mult),
+                    }
+                )
+
+    market_yield = None
+    weight_label = ""
+    if weight_rows:
+        candidates = [
+            ("oi_margin", "OI×义务仓保证金加权"),
+            ("margin", "义务仓保证金加权"),
+            ("notional", "名义(价格×乘数)加权"),
+        ]
+        for key, label in candidates:
+            num = 0.0
+            den = 0.0
+            for r in weight_rows:
+                w = float(r.get(key) or 0.0)
+                if w <= 0:
+                    continue
+                num += float(r["yield"]) * w
+                den += w
+            if den > 0:
+                market_yield = num / den
+                weight_label = label
+                break
+
+    return {
+        "month": month,
+        "T": t_years,
+        "days_to_expiry": days,
+        "call": call_points,
+        "put": put_points,
+        "market_yield": market_yield,
+        "market_yield_weight": weight_label,
+        "note": (
+            "时间价值年化=(时间价值×合约乘数/义务仓保证金)×(365.25/剩余自然日)；"
+            "全市场综合按 OI×义务仓保证金加权（回退：义务仓保证金 / 名义）。"
+        ),
+    }
+
+
+def combine_market_tv_yields(tv_payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Combine per-month TV/AY payloads into one market composite (OI×margin weights)."""
+    weight_rows: List[Dict[str, float]] = []
+    for payload in tv_payloads or []:
+        for side in ("call", "put"):
+            for p in payload.get(side) or []:
+                ay = p.get("yield")
+                if ay is None:
+                    continue
+                short_m = _safe_float(p.get("margin"))
+                oi = max(_safe_float(p.get("oi")), 0.0)
+                px = max(_safe_float(p.get("premium")), 0.0)
+                # Reconstruct notional weight from premium when multiplier unknown:
+                # point.weight was oi*margin; notional≈premium is unit price — use
+                # margin as yuan and premium*implied via weight when possible.
+                weight_rows.append(
+                    {
+                        "yield": float(ay),
+                        "oi_margin": float(oi * short_m) if short_m > 0 else float(p.get("weight") or 0.0),
+                        "margin": float(short_m) if short_m > 0 else 0.0,
+                        # premium here is unit price; without mult use oi*margin fallback only
+                        "notional": float(p.get("weight") or 0.0) if short_m <= 0 else float(px) * max(oi, 1.0),
+                    }
+                )
+    market_yield = None
+    weight_label = ""
+    if weight_rows:
+        for key, label in (
+            ("oi_margin", "OI×义务仓保证金加权"),
+            ("margin", "义务仓保证金加权"),
+            ("notional", "名义加权"),
+        ):
+            num = den = 0.0
+            for r in weight_rows:
+                w = float(r.get(key) or 0.0)
+                if w <= 0:
+                    continue
+                num += float(r["yield"]) * w
+                den += w
+            if den > 0:
+                market_yield = num / den
+                weight_label = label
+                break
+    return {"market_yield": market_yield, "market_yield_weight": weight_label}
+
+
 def build_capital_curve_by_month(
     month_chains: Dict[str, List[Dict[str, Any]]],
     *,

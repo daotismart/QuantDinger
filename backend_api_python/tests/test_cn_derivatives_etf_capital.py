@@ -66,3 +66,55 @@ def test_build_etf_options_capital_history_empty_without_ch(monkeypatch):
     data = capital.build_etf_options_capital_history("510300", bars=30, interval="day")
     assert data["points"] == []
     assert "unavailable" in (data.get("note") or "").lower() or "ClickHouse" in (data.get("note") or "")
+
+
+def test_etf_time_value_annualized_yield_matches_peer_formula():
+    # Peer: AY = (TV × unit / short_margin) × (365.25 / days)
+    # put K=4.2 S=4.653 px=0.0643 → short≈3583, TV=0.0643 (OTM)
+    chain = [
+        {
+            "strike": 4.2,
+            "put_last": 0.0643,
+            "put_oi": 100,
+            "call_last": 0.0,
+            "call_oi": 0,
+        }
+    ]
+    out = capital.compute_etf_time_value_annualized_yield(
+        chain,
+        underlying=4.653,
+        multiplier=10000,
+        margin_rate=0.15,
+        T=30 / 365.0,
+        month="202609",
+    )
+    assert out["days_to_expiry"] == 30
+    assert len(out["put"]) == 1
+    expected = (0.0643 * 10000 / 3583.0) * (365.25 / 30.0)
+    assert abs(out["put"][0]["yield"] - expected) < 1e-9
+    assert abs(out["market_yield"] - expected) < 1e-9
+    assert "OI" in (out.get("market_yield_weight") or "")
+
+
+def test_combine_market_tv_yields_oi_margin_weights():
+    a = capital.compute_etf_time_value_annualized_yield(
+        [{"strike": 4.2, "put_last": 0.0643, "put_oi": 10, "call_last": 0, "call_oi": 0}],
+        underlying=4.653,
+        multiplier=10000,
+        margin_rate=0.15,
+        T=30 / 365.0,
+        month="m1",
+    )
+    b = capital.compute_etf_time_value_annualized_yield(
+        [{"strike": 4.2, "put_last": 0.0643, "put_oi": 90, "call_last": 0, "call_oi": 0}],
+        underlying=4.653,
+        multiplier=10000,
+        margin_rate=0.15,
+        T=30 / 365.0,
+        month="m2",
+    )
+    # Same AY per contract → combined equals either
+    combo = capital.combine_market_tv_yields([a, b])
+    assert combo["market_yield"] is not None
+    assert abs(combo["market_yield"] - a["market_yield"]) < 1e-9
+    assert "OI" in (combo.get("market_yield_weight") or "")

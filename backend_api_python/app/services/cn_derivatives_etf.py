@@ -411,6 +411,7 @@ def _assemble_etf_options_panel(
 
     from app.services.cn_derivatives_etf_capital import (
         build_capital_curve_by_month,
+        combine_market_tv_yields,
         compute_option_capital_metrics,
     )
 
@@ -564,6 +565,17 @@ def _assemble_etf_options_panel(
         months=[ms["month"] for ms in month_series],
     )
 
+    tv_primary = primary.get("time_value_yield") or {}
+    if not isinstance(tv_primary, dict):
+        tv_primary = {}
+    market_combo = combine_market_tv_yields(
+        [ms.get("time_value_yield") or {} for ms in month_series]
+    )
+    if market_combo.get("market_yield") is not None:
+        tv_primary = dict(tv_primary)
+        tv_primary["market_yield"] = market_combo.get("market_yield")
+        tv_primary["market_yield_weight"] = market_combo.get("market_yield_weight") or ""
+
     return {
         "root": code6,
         "name_cn": name_cn,
@@ -581,7 +593,7 @@ def _assemble_etf_options_panel(
         "gex_distribution": gex_distribution,
         "iv_smile": iv_smile,
         "max_pain": max_pain,
-        "time_value_yield": primary.get("time_value_yield") or [],
+        "time_value_yield": tv_primary,
         "month_series": month_series,
         "capital_curve": capital_curve,
         "indicators": {"gex": gex_indicator},
@@ -596,9 +608,11 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         _ak,
         _mid,
         _safe_float,
-        _time_value_annualized_yield,
         compute_gex,
         compute_max_pain,
+    )
+    from app.services.cn_derivatives_etf_capital import (
+        compute_etf_time_value_annualized_yield,
     )
     from app.services.etf_options_clickhouse import (
         etf_options_panel_cache_ttl,
@@ -610,7 +624,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         raise ValueError("underlying ETF code is required")
 
     month_raw = (month or "all").strip().lower()
-    cache_key = f"etf_options_panel:v2:{code6}:{month_raw or 'all'}"
+    cache_key = f"etf_options_panel:v3:{code6}:{month_raw or 'all'}"
     cache_ttl = etf_options_panel_cache_ttl()
     cached = _etf_options_cache_get(cache_key)
     if cached:
@@ -639,7 +653,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
             month_meta=ch_bundle.get("month_meta") or {},
             compute_gex=compute_gex,
             compute_max_pain=compute_max_pain,
-            time_value_fn=_time_value_annualized_yield,
+            time_value_fn=compute_etf_time_value_annualized_yield,
             data_source="clickhouse",
         )
         if panel.get("month_series"):
@@ -692,7 +706,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         month_meta=month_meta,
         compute_gex=compute_gex,
         compute_max_pain=compute_max_pain,
-        time_value_fn=_time_value_annualized_yield,
+        time_value_fn=compute_etf_time_value_annualized_yield,
         data_source="sina",
     )
     if panel.get("month_series"):

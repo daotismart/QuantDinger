@@ -1172,10 +1172,45 @@ export default {
           series.push({ name: `Call ${item.month || ''}`.trim(), type: 'line', showSymbol: false, data: (tvData.call || []).map(r => [r.strike, r.yield]), itemStyle: { color } })
           series.push({ name: `Put ${item.month || ''}`.trim(), type: 'line', showSymbol: false, data: (tvData.put || []).map(r => [r.strike, r.yield]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
         })
+        const marketTv = (this.optionsData && this.optionsData.time_value_yield) || {}
+        const marketYield = marketTv.market_yield
+        const marketWeight = marketTv.market_yield_weight || this.$t('marketComposite.futures.options.tvYieldMarketWeight')
+        if (marketYield != null && Number.isFinite(Number(marketYield))) {
+          series.push({
+            name: this.$t('marketComposite.futures.options.tvYieldMarket'),
+            type: 'line',
+            markLine: {
+              symbol: 'none',
+              label: {
+                formatter: () => `${this.$t('marketComposite.futures.options.tvYieldMarket')}=${(Number(marketYield) * 100).toFixed(2)}% (${marketWeight})`,
+                color: '#f97316',
+                position: 'insideStartTop'
+              },
+              lineStyle: { color: '#f97316', width: 2, type: 'solid' },
+              data: [{ yAxis: Number(marketYield) }]
+            },
+            data: []
+          })
+        }
         tv.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
           grid: { left: 56, right: 24, top: 56, bottom: 40 },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params) => {
+              const rows = Array.isArray(params) ? params : [params]
+              if (!rows.length) return ''
+              const head = rows[0].axisValueLabel || rows[0].name || ''
+              const lines = rows.map((row) => {
+                const val = row.data && Array.isArray(row.data) ? row.data[1] : row.data
+                const text = val == null || val === '' ? '-' : `${(Number(val) * 100).toFixed(2)}%`
+                return `${row.marker}${row.seriesName}: ${text}`
+              })
+              return [head].concat(lines).join('<br/>')
+            }
+          },
           xAxis: { type: 'value', name: this.$t('marketComposite.futures.options.strike'), scale: true, axisLabel: { color: this.chartText } },
           yAxis: {
             type: 'value',
@@ -1646,11 +1681,39 @@ export default {
           series.push({ name: item.month, type: 'line', data: curve.map(r => [r.strike, r.pain]), itemStyle: { color } })
         }
       })
+      if (key === 'options.tv') {
+        const marketTv = (slice.time_value_yield || (this.optionsData && this.optionsData.time_value_yield) || {})
+        const marketYield = marketTv.market_yield
+        const marketWeight = marketTv.market_yield_weight || this.$t('marketComposite.futures.options.tvYieldMarketWeight')
+        if (marketYield != null && Number.isFinite(Number(marketYield))) {
+          series.push({
+            name: this.$t('marketComposite.futures.options.tvYieldMarket'),
+            type: 'line',
+            markLine: {
+              symbol: 'none',
+              label: {
+                formatter: () => `${this.$t('marketComposite.futures.options.tvYieldMarket')}=${(Number(marketYield) * 100).toFixed(2)}% (${marketWeight})`,
+                color: '#f97316',
+                position: 'insideStartTop'
+              },
+              lineStyle: { color: '#f97316', width: 2, type: 'solid' },
+              data: [{ yAxis: Number(marketYield) }]
+            },
+            data: []
+          })
+        }
+      }
       chart.setOption({
         ...this.baseChartOption(),
         legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         xAxis: { type: 'value', scale: true, axisLabel: { color: this.chartText } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        yAxis: {
+          type: 'value',
+          axisLabel: key === 'options.tv' || key === 'options.iv'
+            ? { formatter: v => `${(Number(v) * 100).toFixed(0)}%`, color: this.chartText }
+            : { color: this.chartText },
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        },
         series
       }, true)
     },
