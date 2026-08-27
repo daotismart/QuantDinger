@@ -392,8 +392,11 @@ export default {
     isCapitalHistory () {
       return this.historyKey === 'options.capital'
     },
+    isSurfaceHistory () {
+      return ['options.iv', 'options.oi', 'options.tv', 'options.maxPain'].includes(this.historyKey)
+    },
     isPlaybackHistory () {
-      return this.isGexHistory || this.isCapitalHistory
+      return this.isGexHistory || this.isCapitalHistory || this.isSurfaceHistory
     },
     isEtfMetricsHistory () {
       return String(this.historyKey || '').startsWith('etf.')
