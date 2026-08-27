@@ -268,7 +268,9 @@ def build_etf_options_capital_history(
 
     note = (
         f"按 {interval_n} 取最近 {bars_n} 根，用 ClickHouse 期权切片回放权利金/保证金及比率。"
+        " 日级时间戳取各交易日最后一根期权报价分钟（通常≈14:55–14:56），"
         " 保证金为卖方保证金近似（持仓×标的×乘数×保证金率）。"
+        " 到期月切换日总量可能因整月合约摘牌而台阶式变化。"
     )
     if meta.get("error"):
         note += f" meta_error={meta.get('error')}"

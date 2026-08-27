@@ -1,8 +1,11 @@
 """Unit tests for ETF options ClickHouse chain shaping helpers."""
 
+from unittest.mock import patch
+
 from app.services.etf_options_clickhouse import (
     _month_key_from_expire,
     build_strike_chains_by_month,
+    list_playback_timestamps,
 )
 
 
@@ -49,3 +52,18 @@ def test_build_strike_chains_by_month_pairs_calls_and_puts():
     assert row["put_mid"] == 0.08
     assert row["call_oi"] == 10
     assert row["put_oi"] == 7
+
+
+def test_list_playback_timestamps_day_uses_quotes_table():
+    captured = {}
+
+    def fake_query(sql, timeout=30.0):
+        captured["sql"] = sql
+        return ["bucket_ts"], [["2026-08-26 14:56:00"], ["2026-08-25 14:55:00"]]
+
+    with patch("app.services.etf_options_clickhouse._ch_query", side_effect=fake_query):
+        out = list_playback_timestamps("510300", interval="day", bars=60)
+
+    assert "opt_quotes_bar_1m" in captured["sql"]
+    assert "opt_underlying_1m" not in captured["sql"]
+    assert out == ["2026-08-25 14:55:00", "2026-08-26 14:56:00"]

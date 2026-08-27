@@ -492,21 +492,23 @@ def list_playback_timestamps(
     if not code6:
         return []
 
+    # Playback stamps must come from opt_quotes_bar_1m, not opt_underlying_1m.
+    # Underlying bars often extend to 15:00 while option quotes stop ~14:56;
+    # using underlying max yields empty chains and gaps in capital/GEX history.
     if interval == "1m":
         sql = f"""
         SELECT ts_minute AS bucket_ts
-        FROM opt_underlying_1m
+        FROM opt_quotes_bar_1m
         WHERE underlying_code = '{code6}'
-          AND ifNull(last_price, close) > 0
-        ORDER BY ts_minute DESC
+        GROUP BY ts_minute
+        ORDER BY bucket_ts DESC
         LIMIT {bars}
         """
     elif interval == "30m":
         sql = f"""
         SELECT max(ts_minute) AS bucket_ts
-        FROM opt_underlying_1m
+        FROM opt_quotes_bar_1m
         WHERE underlying_code = '{code6}'
-          AND ifNull(last_price, close) > 0
         GROUP BY toStartOfInterval(ts_minute, INTERVAL 30 MINUTE)
         ORDER BY bucket_ts DESC
         LIMIT {bars}
@@ -514,9 +516,8 @@ def list_playback_timestamps(
     elif interval == "week":
         sql = f"""
         SELECT max(ts_minute) AS bucket_ts
-        FROM opt_underlying_1m
+        FROM opt_quotes_bar_1m
         WHERE underlying_code = '{code6}'
-          AND ifNull(last_price, close) > 0
         GROUP BY toStartOfWeek(toDate(ts_minute), 1)
         ORDER BY bucket_ts DESC
         LIMIT {bars}
@@ -524,9 +525,8 @@ def list_playback_timestamps(
     else:  # day
         sql = f"""
         SELECT max(ts_minute) AS bucket_ts
-        FROM opt_underlying_1m
+        FROM opt_quotes_bar_1m
         WHERE underlying_code = '{code6}'
-          AND ifNull(last_price, close) > 0
         GROUP BY toDate(ts_minute)
         ORDER BY bucket_ts DESC
         LIMIT {bars}
