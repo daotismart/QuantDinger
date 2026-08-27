@@ -546,6 +546,86 @@ def list_playback_timestamps(
     return out
 
 
+def list_playback_bucket_bounds(
+    code6: str,
+    *,
+    interval: str = "day",
+    bars: int = 60,
+) -> List[Dict[str, str]]:
+    """Return ascending bucket open/close timestamps for OHLC aggregation.
+
+    Each item: ``{"open_ts": ..., "close_ts": ..., "label": close_ts}``.
+    For ``1m`` buckets open_ts == close_ts.
+    """
+    code6 = str(code6 or "").strip()
+    interval = normalize_playback_interval(interval)
+    bars = normalize_playback_bars(bars)
+    if not code6:
+        return []
+
+    if interval == "1m":
+        sql = f"""
+        SELECT
+          ts_minute AS open_ts,
+          ts_minute AS close_ts
+        FROM opt_quotes_bar_1m
+        WHERE underlying_code = '{code6}'
+        GROUP BY ts_minute
+        ORDER BY close_ts DESC
+        LIMIT {bars}
+        """
+    elif interval == "30m":
+        sql = f"""
+        SELECT
+          min(ts_minute) AS open_ts,
+          max(ts_minute) AS close_ts
+        FROM opt_quotes_bar_1m
+        WHERE underlying_code = '{code6}'
+        GROUP BY toStartOfInterval(ts_minute, INTERVAL 30 MINUTE)
+        ORDER BY close_ts DESC
+        LIMIT {bars}
+        """
+    elif interval == "week":
+        sql = f"""
+        SELECT
+          min(ts_minute) AS open_ts,
+          max(ts_minute) AS close_ts
+        FROM opt_quotes_bar_1m
+        WHERE underlying_code = '{code6}'
+        GROUP BY toStartOfWeek(toDate(ts_minute), 1)
+        ORDER BY close_ts DESC
+        LIMIT {bars}
+        """
+    else:  # day
+        sql = f"""
+        SELECT
+          min(ts_minute) AS open_ts,
+          max(ts_minute) AS close_ts
+        FROM opt_quotes_bar_1m
+        WHERE underlying_code = '{code6}'
+        GROUP BY toDate(ts_minute)
+        ORDER BY close_ts DESC
+        LIMIT {bars}
+        """
+    try:
+        cols, rows = _ch_query(sql, timeout=30.0)
+    except Exception as exc:
+        logger.warning("list_playback_bucket_bounds failed code=%s: %s", code6, exc)
+        return []
+    out: List[Dict[str, str]] = []
+    for raw in rows:
+        row = dict(zip(cols, raw))
+        open_ts = str(row.get("open_ts") or "").strip()[:19]
+        close_ts = str(row.get("close_ts") or "").strip()[:19]
+        if not close_ts:
+            continue
+        if not open_ts:
+            open_ts = close_ts
+        out.append({"open_ts": open_ts, "close_ts": close_ts, "label": close_ts})
+    out.reverse()
+    return out
+
+
 def fetch_underlying_series(
     code6: str,
     timestamps: List[str],

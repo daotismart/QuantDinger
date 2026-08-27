@@ -262,7 +262,7 @@
       :title="historyTitle"
       :visible="historyVisible"
       :footer="null"
-      :width="isGexHistory ? 1100 : 920"
+      :width="(isGexHistory || isIvHistory) ? 1100 : 920"
       destroy-on-close
       @cancel="closeHistory"
     >
@@ -313,9 +313,13 @@
             @change="onHistorySliceChange"
           />
         </div>
-        <div ref="historyChart" class="fda-chart" :class="isGexHistory ? 'fda-chart-history-gex' : 'fda-chart-history'" />
         <div
-          v-show="isGexHistory"
+          ref="historyChart"
+          class="fda-chart"
+          :class="(isGexHistory || isIvHistory) ? 'fda-chart-history-gex' : 'fda-chart-history'"
+        />
+        <div
+          v-show="isGexHistory || isIvHistory"
           ref="historyLevelsChart"
           class="fda-chart fda-chart-history-levels"
         />
@@ -378,6 +382,7 @@ export default {
       historySlices: [],
       historySliceIndex: 0,
       historyLevelsSeries: [],
+      historyNearMonthIvKlines: [],
       etfHistoryPoints: [],
       etfMetricsNote: ''
     }
@@ -388,6 +393,9 @@ export default {
     }),
     isGexHistory () {
       return this.historyKey === 'options.gex'
+    },
+    isIvHistory () {
+      return this.historyKey === 'options.iv'
     },
     isCapitalHistory () {
       return this.historyKey === 'options.capital'
@@ -1387,6 +1395,7 @@ export default {
       this.historySlices = []
       this.historySliceIndex = 0
       this.historyLevelsSeries = []
+      this.historyNearMonthIvKlines = []
       ;['historyChart', 'historyLevelsChart'].forEach(key => {
         if (this.charts[key]) {
           this.charts[key].dispose()
@@ -1400,6 +1409,7 @@ export default {
     },
     onHistorySliceChange () {
       this.renderHistorySlice()
+      if (this.isIvHistory) this.renderNearMonthIvKlines()
     },
     async loadHistory () {
       if (!this.selectedRoot || !this.historyKey) return
@@ -1423,12 +1433,14 @@ export default {
         const data = (res && res.data) || {}
         this.historyNote = data.note || ''
         this.historyLevelsSeries = data.levels_series || []
+        this.historyNearMonthIvKlines = data.near_month_iv_klines || []
         if (data.mode === 'slices' || data.mode === 'gex_playback') {
           this.historySlices = data.slices || []
           this.historySliceIndex = Math.max(this.historySlices.length - 1, 0)
           this.$nextTick(() => {
             this.renderHistorySlice()
             if (this.isGexHistory) this.renderGexLevelsHistory()
+            if (this.isIvHistory) this.renderNearMonthIvKlines()
           })
         } else {
           this.historySlices = []
@@ -1474,6 +1486,70 @@ export default {
           { name: 'Put Wall', type: 'line', showSymbol: false, data: rows.map(r => r.put_wall), itemStyle: { color: '#ff4d4f' } },
           { name: 'Gamma Flip', type: 'line', showSymbol: false, data: rows.map(r => r.flip), itemStyle: { color: '#faad14' }, lineStyle: { type: 'dashed' } },
           { name: 'Gamma Pin', type: 'line', showSymbol: false, data: rows.map(r => r.pin), itemStyle: { color: '#722ed1' }, lineStyle: { type: 'dotted' } }
+        ]
+      }, true)
+    },
+    renderNearMonthIvKlines () {
+      const chart = this.ensureChart('historyLevelsChart')
+      if (!chart) return
+      const rows = this.historyNearMonthIvKlines || []
+      const labels = rows.map(r => r.label || r.ts)
+      const candles = rows.map(r => {
+        if (r.open == null || r.close == null) return [null, null, null, null]
+        return [r.open, r.close, r.low, r.high]
+      })
+      const slice = this.historySlices[this.historySliceIndex] || {}
+      const markLabel = slice.label || slice.ts || labels[this.historySliceIndex]
+      const month = (rows.find(r => r.month) || {}).month
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 24, top: 48, bottom: 48 },
+        xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
+        yAxis: {
+          type: 'value',
+          scale: true,
+          axisLabel: { formatter: v => `${(Number(v) * 100).toFixed(1)}%`, color: this.chartText },
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'cross' },
+          formatter: params => {
+            const item = Array.isArray(params) ? params[0] : params
+            if (!item || !item.data) return ''
+            const [o, c, l, h] = item.data
+            if (o == null) return `${item.axisValue}<br/>--`
+            const pct = v => `${(Number(v) * 100).toFixed(2)}%`
+            return [
+              item.axisValue,
+              `O ${pct(o)} / C ${pct(c)}`,
+              `L ${pct(l)} / H ${pct(h)}`
+            ].join('<br/>')
+          }
+        },
+        series: [
+          {
+            name: month
+              ? `${this.$t('marketComposite.futures.options.nearMonthIvKline')} (${month})`
+              : this.$t('marketComposite.futures.options.nearMonthIvKline'),
+            type: 'candlestick',
+            data: candles,
+            itemStyle: {
+              color: '#ef5350',
+              color0: '#26a69a',
+              borderColor: '#ef5350',
+              borderColor0: '#26a69a'
+            },
+            markLine: labels.length && markLabel
+              ? {
+                symbol: 'none',
+                label: { formatter: String(markLabel), color: this.chartText },
+                lineStyle: { color: '#8c8c8c', type: 'dashed' },
+                data: [{ xAxis: markLabel }]
+              }
+              : undefined
+          }
         ]
       }, true)
     },

@@ -41,23 +41,42 @@
       <!-- ETF -->
       <div v-else-if="activeTab === 'etf'" class="fda-panel">
         <div class="fda-metrics">
-          <div class="fda-metric">
-            <span>{{ $t('marketComposite.futures.spot.spotPrice') }}</span>
-            <strong>{{ fmt(spotData && spotData.spot_price) }}</strong>
-          </div>
-          <div class="fda-metric" v-if="spotData && spotData.spot && spotData.spot.etf && spotData.spot.etf.iopv">
-            <span>IOPV</span>
-            <strong>{{ fmt(spotData.spot.etf.iopv, 4) }}</strong>
-          </div>
-          <div class="fda-metric" v-if="spotData && spotData.spot && spotData.spot.index">
-            <span>{{ spotData.spot.index.name || 'Index' }}</span>
-            <strong>{{ fmt(spotData.spot.index.price) }}</strong>
-          </div>
-          <div class="fda-metric" v-if="spotData && spotData.spot && spotData.spot.etf">
-            <span>折价率</span>
-            <strong>{{ fmt(spotData.spot.etf.premium_rate, 2) }}%</strong>
+          <div class="fda-metric" v-for="item in etfMetricCards" :key="item.key">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.display }}</strong>
           </div>
         </div>
+        <div class="fda-charts fda-charts-etf">
+          <div class="fda-chart-box">
+            <div class="fda-chart-head">
+              <h3>{{ $t('marketComposite.etf.metrics.priceTrend') }}</h3>
+              <a-button size="small" @click="openHistory('etf.price')">{{ $t('marketComposite.futures.history') }}</a-button>
+            </div>
+            <div ref="etfPriceChart" class="fda-chart" />
+          </div>
+          <div class="fda-chart-box">
+            <div class="fda-chart-head">
+              <h3>{{ $t('marketComposite.etf.metrics.volumeAmountTrend') }}</h3>
+              <a-button size="small" @click="openHistory('etf.volume')">{{ $t('marketComposite.futures.history') }}</a-button>
+            </div>
+            <div ref="etfVolumeChart" class="fda-chart" />
+          </div>
+          <div class="fda-chart-box">
+            <div class="fda-chart-head">
+              <h3>{{ $t('marketComposite.etf.metrics.scaleTrend') }}</h3>
+              <a-button size="small" @click="openHistory('etf.scale')">{{ $t('marketComposite.futures.history') }}</a-button>
+            </div>
+            <div ref="etfScaleChart" class="fda-chart" />
+          </div>
+          <div class="fda-chart-box">
+            <div class="fda-chart-head">
+              <h3>{{ $t('marketComposite.etf.metrics.feeProfitTrend') }}</h3>
+              <a-button size="small" @click="openHistory('etf.metrics')">{{ $t('marketComposite.futures.history') }}</a-button>
+            </div>
+            <div ref="etfFeeProfitChart" class="fda-chart" />
+          </div>
+        </div>
+        <p v-if="etfMetricsNote" class="fda-muted fda-etf-note">{{ etfMetricsNote }}</p>
         <div class="fda-section">
           <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
           <ul class="fda-analysis">
@@ -213,6 +232,13 @@
               </div>
               <div ref="tvYieldChart" class="fda-chart fda-chart-tall" />
             </div>
+            <div class="fda-chart-box fda-chart-box-wide">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.futures.options.capitalCurve') }}</h3>
+                <a-button size="small" @click="openHistory('options.capital')">{{ $t('marketComposite.futures.history') }}</a-button>
+              </div>
+              <div ref="capitalCurveChart" class="fda-chart fda-chart-tall" />
+            </div>
             <div class="fda-chart-box">
               <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.ivSmile') }}</h3>
@@ -236,12 +262,12 @@
       :title="historyTitle"
       :visible="historyVisible"
       :footer="null"
-      :width="isGexHistory ? 1100 : 920"
+      :width="(isGexHistory || isIvHistory) ? 1100 : 920"
       destroy-on-close
       @cancel="closeHistory"
     >
       <div class="fda-history-toolbar">
-        <template v-if="isGexHistory">
+        <template v-if="isPlaybackHistory">
           <span>回看条数</span>
           <a-radio-group v-model="historyBars" button-style="solid" size="small" @change="loadHistory">
             <a-radio-button :value="30">30</a-radio-button>
@@ -287,9 +313,13 @@
             @change="onHistorySliceChange"
           />
         </div>
-        <div ref="historyChart" class="fda-chart" :class="isGexHistory ? 'fda-chart-history-gex' : 'fda-chart-history'" />
         <div
-          v-show="isGexHistory"
+          ref="historyChart"
+          class="fda-chart"
+          :class="(isGexHistory || isIvHistory) ? 'fda-chart-history-gex' : 'fda-chart-history'"
+        />
+        <div
+          v-show="isGexHistory || isIvHistory"
           ref="historyLevelsChart"
           class="fda-chart fda-chart-history-levels"
         />
@@ -351,7 +381,10 @@ export default {
       historyTitle: '',
       historySlices: [],
       historySliceIndex: 0,
-      historyLevelsSeries: []
+      historyLevelsSeries: [],
+      historyNearMonthIvKlines: [],
+      etfHistoryPoints: [],
+      etfMetricsNote: ''
     }
   },
   computed: {
@@ -361,12 +394,50 @@ export default {
     isGexHistory () {
       return this.historyKey === 'options.gex'
     },
+    isIvHistory () {
+      return this.historyKey === 'options.iv'
+    },
+    isCapitalHistory () {
+      return this.historyKey === 'options.capital'
+    },
+    isSurfaceHistory () {
+      return ['options.iv', 'options.oi', 'options.tv', 'options.maxPain'].includes(this.historyKey)
+    },
+    isPlaybackHistory () {
+      return this.isGexHistory || this.isCapitalHistory || this.isSurfaceHistory
+    },
+    isEtfMetricsHistory () {
+      return String(this.historyKey || '').startsWith('etf.')
+    },
     historySliceLabel () {
       const slice = this.historySlices[this.historySliceIndex]
       return (slice && (slice.label || slice.ts || slice.date)) || '--'
     },
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
+    },
+    etfSpot () {
+      return (this.spotData && this.spotData.spot && this.spotData.spot.etf) || {}
+    },
+    etfMetricCards () {
+      const etf = this.etfSpot
+      const fee = etf.total_fee_pct
+      const feeParts = []
+      if (etf.management_fee_pct != null) feeParts.push(`${this.fmt(etf.management_fee_pct, 2)}%`)
+      if (etf.custodian_fee_pct != null) feeParts.push(`${this.fmt(etf.custodian_fee_pct, 2)}%`)
+      const feeDisplay = fee != null
+        ? `${this.fmt(fee, 2)}%${feeParts.length ? ` (${feeParts.join('+')})` : ''}`
+        : '-'
+      return [
+        { key: 'scale', label: this.$t('marketComposite.etf.metrics.scale'), display: this.fmtMoney(etf.scale) },
+        { key: 'price', label: this.$t('marketComposite.etf.metrics.price'), display: this.fmt(this.spotData && this.spotData.spot_price, 4) },
+        { key: 'volume', label: this.$t('marketComposite.etf.metrics.volume'), display: this.fmtCompact(etf.volume) },
+        { key: 'amount', label: this.$t('marketComposite.etf.metrics.amount'), display: this.fmtMoney(etf.amount) },
+        { key: 'fee', label: this.$t('marketComposite.etf.metrics.fee'), display: feeDisplay },
+        { key: 'profit', label: this.$t('marketComposite.etf.metrics.constituentProfit'), display: this.fmtMoney(etf.constituent_profit_sum) },
+        { key: 'iopv', label: 'IOPV', display: this.fmt(etf.iopv, 4) },
+        { key: 'premium', label: this.$t('marketComposite.etf.metrics.premiumRate'), display: etf.premium_rate != null ? `${this.fmt(etf.premium_rate, 2)}%` : '-' }
+      ]
     },
     optionMonths () {
       return (this.optionsData && this.optionsData.months) || []
@@ -525,6 +596,24 @@ export default {
       if (!Number.isFinite(n)) return '-'
       return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 })
     },
+    fmtCompact (value) {
+      if (value === null || value === undefined || value === '') return '-'
+      const n = Number(value)
+      if (!Number.isFinite(n)) return '-'
+      const abs = Math.abs(n)
+      if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`
+      if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万`
+      return this.fmt(n, 0)
+    },
+    fmtMoney (value) {
+      if (value === null || value === undefined || value === '') return '-'
+      const n = Number(value)
+      if (!Number.isFinite(n)) return '-'
+      const abs = Math.abs(n)
+      if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿元`
+      if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万元`
+      return `${this.fmt(n, 0)}元`
+    },
     pct (value) {
       if (value === null || value === undefined || value === '') return '-'
       const n = Number(value)
@@ -650,10 +739,135 @@ export default {
       try {
         const res = await getSpotPanel(this.spotRequestRoot(), this.spotRequestParams())
         this.spotData = (res && res.data) || null
+        await this.loadEtfMetricsHistory()
       } catch (e) {
         this.$message.error((e && e.message) || this.$t('marketComposite.futures.loadFailed'))
       } finally {
         this.loadingTab = false
+      }
+    },
+    async loadEtfMetricsHistory () {
+      if (!this.selectedRoot) return
+      try {
+        const res = await getChartHistory({
+          root: this.spotRequestRoot(),
+          chart: 'etf.metrics',
+          days: 180,
+          frequency: 'day',
+          ...this.etfScopeParams()
+        })
+        const data = (res && res.data) || {}
+        this.etfHistoryPoints = data.points || []
+        this.etfMetricsNote = data.note || ''
+        this.$nextTick(() => {
+          this.renderEtfMetricsCharts()
+          requestAnimationFrame(() => this.resizeCharts())
+        })
+      } catch (e) {
+        this.etfHistoryPoints = []
+        this.etfMetricsNote = ''
+      }
+    },
+    renderEtfMetricsCharts () {
+      const points = this.etfHistoryPoints || []
+      const dates = points.map(p => p.date)
+      const axisLabel = { color: this.chartText, hideOverlap: true }
+      const splitLine = { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+
+      const price = this.ensureChart('etfPriceChart')
+      if (price) {
+        price.setOption({
+          ...this.baseChartOption(),
+          grid: { left: 52, right: 24, top: 36, bottom: 36 },
+          xAxis: { type: 'category', data: dates, axisLabel },
+          yAxis: { type: 'value', scale: true, splitLine },
+          series: [{
+            name: this.$t('marketComposite.etf.metrics.price'),
+            type: 'line',
+            showSymbol: false,
+            data: points.map(p => p.price),
+            itemStyle: { color: '#1677ff' }
+          }]
+        }, true)
+      }
+
+      const volume = this.ensureChart('etfVolumeChart')
+      if (volume) {
+        volume.setOption({
+          ...this.baseChartOption(),
+          legend: { top: 0, textStyle: { color: this.chartText } },
+          grid: { left: 52, right: 56, top: 40, bottom: 36 },
+          xAxis: { type: 'category', data: dates, axisLabel },
+          yAxis: [
+            { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
+            { type: 'value', name: this.$t('marketComposite.etf.metrics.amount'), splitLine: { show: false } }
+          ],
+          series: [
+            {
+              name: this.$t('marketComposite.etf.metrics.volume'),
+              type: 'bar',
+              data: points.map(p => p.volume),
+              itemStyle: { color: '#69c0ff', opacity: 0.55 }
+            },
+            {
+              name: this.$t('marketComposite.etf.metrics.amount'),
+              type: 'line',
+              yAxisIndex: 1,
+              showSymbol: false,
+              data: points.map(p => p.amount),
+              itemStyle: { color: '#fa8c16' }
+            }
+          ]
+        }, true)
+      }
+
+      const scale = this.ensureChart('etfScaleChart')
+      if (scale) {
+        scale.setOption({
+          ...this.baseChartOption(),
+          grid: { left: 56, right: 24, top: 36, bottom: 36 },
+          xAxis: { type: 'category', data: dates, axisLabel },
+          yAxis: { type: 'value', scale: true, splitLine },
+          series: [{
+            name: this.$t('marketComposite.etf.metrics.scale'),
+            type: 'line',
+            showSymbol: false,
+            areaStyle: { opacity: 0.12 },
+            data: points.map(p => p.scale),
+            itemStyle: { color: '#13c2c2' }
+          }]
+        }, true)
+      }
+
+      const feeProfit = this.ensureChart('etfFeeProfitChart')
+      if (feeProfit) {
+        feeProfit.setOption({
+          ...this.baseChartOption(),
+          legend: { top: 0, textStyle: { color: this.chartText } },
+          grid: { left: 56, right: 56, top: 40, bottom: 36 },
+          xAxis: { type: 'category', data: dates, axisLabel },
+          yAxis: [
+            { type: 'value', name: this.$t('marketComposite.etf.metrics.fee'), splitLine },
+            { type: 'value', name: this.$t('marketComposite.etf.metrics.constituentProfit'), splitLine: { show: false } }
+          ],
+          series: [
+            {
+              name: this.$t('marketComposite.etf.metrics.fee'),
+              type: 'line',
+              showSymbol: false,
+              data: points.map(p => p.fee_pct),
+              itemStyle: { color: '#722ed1' }
+            },
+            {
+              name: this.$t('marketComposite.etf.metrics.constituentProfit'),
+              type: 'line',
+              yAxisIndex: 1,
+              showSymbol: false,
+              data: points.map(p => p.constituent_profit_sum),
+              itemStyle: { color: '#eb2f96' }
+            }
+          ]
+        }, true)
       }
     },
     async loadFutures () {
@@ -969,10 +1183,45 @@ export default {
           series.push({ name: `Call ${item.month || ''}`.trim(), type: 'line', showSymbol: false, data: (tvData.call || []).map(r => [r.strike, r.yield]), itemStyle: { color } })
           series.push({ name: `Put ${item.month || ''}`.trim(), type: 'line', showSymbol: false, data: (tvData.put || []).map(r => [r.strike, r.yield]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
         })
+        const marketTv = (this.optionsData && this.optionsData.time_value_yield) || {}
+        const marketYield = marketTv.market_yield
+        const marketWeight = marketTv.market_yield_weight || this.$t('marketComposite.futures.options.tvYieldMarketWeight')
+        if (marketYield != null && Number.isFinite(Number(marketYield))) {
+          series.push({
+            name: this.$t('marketComposite.futures.options.tvYieldMarket'),
+            type: 'line',
+            markLine: {
+              symbol: 'none',
+              label: {
+                formatter: () => `${this.$t('marketComposite.futures.options.tvYieldMarket')}=${(Number(marketYield) * 100).toFixed(2)}% (${marketWeight})`,
+                color: '#f97316',
+                position: 'insideStartTop'
+              },
+              lineStyle: { color: '#f97316', width: 2, type: 'solid' },
+              data: [{ yAxis: Number(marketYield) }]
+            },
+            data: []
+          })
+        }
         tv.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
           grid: { left: 56, right: 24, top: 56, bottom: 40 },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params) => {
+              const rows = Array.isArray(params) ? params : [params]
+              if (!rows.length) return ''
+              const head = rows[0].axisValueLabel || rows[0].name || ''
+              const lines = rows.map((row) => {
+                const val = row.data && Array.isArray(row.data) ? row.data[1] : row.data
+                const text = val == null || val === '' ? '-' : `${(Number(val) * 100).toFixed(2)}%`
+                return `${row.marker}${row.seriesName}: ${text}`
+              })
+              return [head].concat(lines).join('<br/>')
+            }
+          },
           xAxis: { type: 'value', name: this.$t('marketComposite.futures.options.strike'), scale: true, axisLabel: { color: this.chartText } },
           yAxis: {
             type: 'value',
@@ -1008,6 +1257,11 @@ export default {
         }, true)
       }
 
+      const capital = this.ensureChart('capitalCurveChart')
+      if (capital) {
+        this.renderCapitalCurveChart(capital, this.optionsData.capital_curve)
+      }
+
       const pain = this.ensureChart('painChart')
       if (pain) {
         const series = []
@@ -1025,9 +1279,112 @@ export default {
         }, true)
       }
     },
+    renderCapitalCurveChart (chart, capitalCurve, xKey = 'month') {
+      if (!chart) return
+      const points = (capitalCurve && capitalCurve.points) || []
+      const labels = points.map(p => p[xKey] || p.date || p.ts || '')
+      const splitLine = { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 56, top: 48, bottom: 40 },
+        tooltip: {
+          trigger: 'axis',
+          confine: true,
+          formatter: (params) => {
+            const rows = Array.isArray(params) ? params : [params]
+            if (!rows.length) return ''
+            const head = rows[0].axisValueLabel || rows[0].name || ''
+            const lines = rows.map((row) => {
+              const val = row.data
+              const name = String(row.seriesName || '')
+              const isRatio = name.includes('/') || name.toLowerCase().includes('long')
+              const text = val == null || val === ''
+                ? '-'
+                : (isRatio ? Number(val).toFixed(4) : this.fmtCompact(val))
+              return `${row.marker}${row.seriesName}: ${text}`
+            })
+            return [head].concat(lines).join('<br/>')
+          }
+        },
+        xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
+        yAxis: [
+          {
+            type: 'value',
+            name: this.$t('marketComposite.futures.options.capitalAmountAxis'),
+            scale: true,
+            splitLine
+          },
+          {
+            type: 'value',
+            name: this.$t('marketComposite.futures.options.capitalRatioAxis'),
+            scale: true,
+            min: 0,
+            axisLabel: { formatter: v => Number(v).toFixed(2) },
+            splitLine: { show: false }
+          }
+        ],
+        series: [
+          {
+            name: this.$t('marketComposite.futures.options.marginShortTotal'),
+            type: 'line',
+            showSymbol: true,
+            symbolSize: 4,
+            data: points.map(p => p.margin_short_total != null ? p.margin_short_total : p.margin_total),
+            itemStyle: { color: '#ef4444' },
+            lineStyle: { width: 2 }
+          },
+          {
+            name: this.$t('marketComposite.futures.options.premiumTotal'),
+            type: 'line',
+            showSymbol: true,
+            symbolSize: 4,
+            data: points.map(p => p.premium_total),
+            itemStyle: { color: '#2563eb' },
+            lineStyle: { width: 2 }
+          },
+          {
+            name: this.$t('marketComposite.futures.options.timeValueTotal'),
+            type: 'line',
+            showSymbol: false,
+            data: points.map(p => p.time_value_total),
+            itemStyle: { color: '#f97316' },
+            lineStyle: { type: 'dotted', width: 2 }
+          },
+          {
+            name: this.$t('marketComposite.futures.options.intrinsicTotal'),
+            type: 'line',
+            showSymbol: false,
+            data: points.map(p => p.intrinsic_total),
+            itemStyle: { color: '#22c55e' },
+            lineStyle: { type: 'dotted', width: 2 }
+          },
+          {
+            name: this.$t('marketComposite.futures.options.longShortRatio'),
+            type: 'line',
+            yAxisIndex: 1,
+            showSymbol: true,
+            symbolSize: 4,
+            data: points.map(p => p.long_short_ratio != null ? p.long_short_ratio : p.premium_margin_ratio),
+            itemStyle: { color: '#7c3aed' },
+            lineStyle: { type: 'dashed', width: 2 }
+          }
+        ]
+      }, true)
+    },
     openHistory (chartKey) {
       this.historyKey = chartKey
-      this.historyTitle = `${this.$t('marketComposite.futures.history')} · ${chartKey}`
+      const titleMap = {
+        'etf.metrics': this.$t('marketComposite.etf.metrics.historyAll'),
+        'etf.price': this.$t('marketComposite.etf.metrics.priceTrend'),
+        'etf.volume': this.$t('marketComposite.etf.metrics.volumeAmountTrend'),
+        'etf.amount': this.$t('marketComposite.etf.metrics.volumeAmountTrend'),
+        'etf.scale': this.$t('marketComposite.etf.metrics.scaleTrend'),
+        'etf.fee': this.$t('marketComposite.etf.metrics.feeProfitTrend'),
+        'etf.profit': this.$t('marketComposite.etf.metrics.feeProfitTrend'),
+        'options.capital': this.$t('marketComposite.futures.options.capitalCurve')
+      }
+      this.historyTitle = `${this.$t('marketComposite.futures.history')} · ${titleMap[chartKey] || chartKey}`
       this.historySlices = []
       this.historySliceIndex = 0
       this.historyVisible = true
@@ -1038,6 +1395,7 @@ export default {
       this.historySlices = []
       this.historySliceIndex = 0
       this.historyLevelsSeries = []
+      this.historyNearMonthIvKlines = []
       ;['historyChart', 'historyLevelsChart'].forEach(key => {
         if (this.charts[key]) {
           this.charts[key].dispose()
@@ -1051,6 +1409,7 @@ export default {
     },
     onHistorySliceChange () {
       this.renderHistorySlice()
+      if (this.isIvHistory) this.renderNearMonthIvKlines()
     },
     async loadHistory () {
       if (!this.selectedRoot || !this.historyKey) return
@@ -1062,7 +1421,7 @@ export default {
           month: this.selectedMonth || 'all',
           ...this.etfScopeParams()
         }
-        if (this.isGexHistory) {
+        if (this.isPlaybackHistory) {
           params.bars = this.historyBars
           params.interval = this.historyInterval
           params.frequency = this.historyInterval
@@ -1074,12 +1433,14 @@ export default {
         const data = (res && res.data) || {}
         this.historyNote = data.note || ''
         this.historyLevelsSeries = data.levels_series || []
+        this.historyNearMonthIvKlines = data.near_month_iv_klines || []
         if (data.mode === 'slices' || data.mode === 'gex_playback') {
           this.historySlices = data.slices || []
           this.historySliceIndex = Math.max(this.historySlices.length - 1, 0)
           this.$nextTick(() => {
             this.renderHistorySlice()
             if (this.isGexHistory) this.renderGexLevelsHistory()
+            if (this.isIvHistory) this.renderNearMonthIvKlines()
           })
         } else {
           this.historySlices = []
@@ -1125,6 +1486,70 @@ export default {
           { name: 'Put Wall', type: 'line', showSymbol: false, data: rows.map(r => r.put_wall), itemStyle: { color: '#ff4d4f' } },
           { name: 'Gamma Flip', type: 'line', showSymbol: false, data: rows.map(r => r.flip), itemStyle: { color: '#faad14' }, lineStyle: { type: 'dashed' } },
           { name: 'Gamma Pin', type: 'line', showSymbol: false, data: rows.map(r => r.pin), itemStyle: { color: '#722ed1' }, lineStyle: { type: 'dotted' } }
+        ]
+      }, true)
+    },
+    renderNearMonthIvKlines () {
+      const chart = this.ensureChart('historyLevelsChart')
+      if (!chart) return
+      const rows = this.historyNearMonthIvKlines || []
+      const labels = rows.map(r => r.label || r.ts)
+      const candles = rows.map(r => {
+        if (r.open == null || r.close == null) return [null, null, null, null]
+        return [r.open, r.close, r.low, r.high]
+      })
+      const slice = this.historySlices[this.historySliceIndex] || {}
+      const markLabel = slice.label || slice.ts || labels[this.historySliceIndex]
+      const month = (rows.find(r => r.month) || {}).month
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 24, top: 48, bottom: 48 },
+        xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
+        yAxis: {
+          type: 'value',
+          scale: true,
+          axisLabel: { formatter: v => `${(Number(v) * 100).toFixed(1)}%`, color: this.chartText },
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'cross' },
+          formatter: params => {
+            const item = Array.isArray(params) ? params[0] : params
+            if (!item || !item.data) return ''
+            const [o, c, l, h] = item.data
+            if (o == null) return `${item.axisValue}<br/>--`
+            const pct = v => `${(Number(v) * 100).toFixed(2)}%`
+            return [
+              item.axisValue,
+              `O ${pct(o)} / C ${pct(c)}`,
+              `L ${pct(l)} / H ${pct(h)}`
+            ].join('<br/>')
+          }
+        },
+        series: [
+          {
+            name: month
+              ? `${this.$t('marketComposite.futures.options.nearMonthIvKline')} (${month})`
+              : this.$t('marketComposite.futures.options.nearMonthIvKline'),
+            type: 'candlestick',
+            data: candles,
+            itemStyle: {
+              color: '#ef5350',
+              color0: '#26a69a',
+              borderColor: '#ef5350',
+              borderColor0: '#26a69a'
+            },
+            markLine: labels.length && markLabel
+              ? {
+                symbol: 'none',
+                label: { formatter: String(markLabel), color: this.chartText },
+                lineStyle: { color: '#8c8c8c', type: 'dashed' },
+                data: [{ xAxis: markLabel }]
+              }
+              : undefined
+          }
         ]
       }, true)
     },
@@ -1335,11 +1760,39 @@ export default {
           series.push({ name: item.month, type: 'line', data: curve.map(r => [r.strike, r.pain]), itemStyle: { color } })
         }
       })
+      if (key === 'options.tv') {
+        const marketTv = (slice.time_value_yield || (this.optionsData && this.optionsData.time_value_yield) || {})
+        const marketYield = marketTv.market_yield
+        const marketWeight = marketTv.market_yield_weight || this.$t('marketComposite.futures.options.tvYieldMarketWeight')
+        if (marketYield != null && Number.isFinite(Number(marketYield))) {
+          series.push({
+            name: this.$t('marketComposite.futures.options.tvYieldMarket'),
+            type: 'line',
+            markLine: {
+              symbol: 'none',
+              label: {
+                formatter: () => `${this.$t('marketComposite.futures.options.tvYieldMarket')}=${(Number(marketYield) * 100).toFixed(2)}% (${marketWeight})`,
+                color: '#f97316',
+                position: 'insideStartTop'
+              },
+              lineStyle: { color: '#f97316', width: 2, type: 'solid' },
+              data: [{ yAxis: Number(marketYield) }]
+            },
+            data: []
+          })
+        }
+      }
       chart.setOption({
         ...this.baseChartOption(),
         legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         xAxis: { type: 'value', scale: true, axisLabel: { color: this.chartText } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        yAxis: {
+          type: 'value',
+          axisLabel: key === 'options.tv' || key === 'options.iv'
+            ? { formatter: v => `${(Number(v) * 100).toFixed(0)}%`, color: this.chartText }
+            : { color: this.chartText },
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        },
         series
       }, true)
     },
@@ -1348,6 +1801,14 @@ export default {
       if (!chart) return
       if (data.mode === 'daily') {
         const points = data.points || []
+        if (this.isEtfMetricsHistory) {
+          this.renderEtfHistoryModal(chart, points)
+          return
+        }
+        if (this.isCapitalHistory) {
+          this.renderCapitalCurveChart(chart, { points }, 'date')
+          return
+        }
         chart.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, textStyle: { color: this.chartText } },
@@ -1365,8 +1826,57 @@ export default {
         }, true)
       }
     },
+    renderEtfHistoryModal (chart, points) {
+      const key = this.historyKey
+      const dates = points.map(p => p.date)
+      const axisLabel = { color: this.chartText, hideOverlap: true }
+      const splitLine = { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+      let series = []
+      let yAxis = { type: 'value', scale: true, splitLine }
+
+      if (key === 'etf.price') {
+        series = [{ name: this.$t('marketComposite.etf.metrics.price'), type: 'line', showSymbol: false, data: points.map(p => p.price) }]
+      } else if (key === 'etf.scale') {
+        series = [{ name: this.$t('marketComposite.etf.metrics.scale'), type: 'line', showSymbol: false, areaStyle: { opacity: 0.12 }, data: points.map(p => p.scale) }]
+      } else if (key === 'etf.volume' || key === 'etf.amount') {
+        yAxis = [
+          { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
+          { type: 'value', name: this.$t('marketComposite.etf.metrics.amount'), splitLine: { show: false } }
+        ]
+        series = [
+          { name: this.$t('marketComposite.etf.metrics.volume'), type: 'bar', data: points.map(p => p.volume), itemStyle: { opacity: 0.45 } },
+          { name: this.$t('marketComposite.etf.metrics.amount'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.amount) }
+        ]
+      } else if (key === 'etf.fee') {
+        series = [{ name: this.$t('marketComposite.etf.metrics.fee'), type: 'line', showSymbol: false, data: points.map(p => p.fee_pct) }]
+      } else if (key === 'etf.profit') {
+        series = [{ name: this.$t('marketComposite.etf.metrics.constituentProfit'), type: 'line', showSymbol: false, data: points.map(p => p.constituent_profit_sum) }]
+      } else {
+        yAxis = [
+          { type: 'value', name: this.$t('marketComposite.etf.metrics.price'), splitLine },
+          { type: 'value', name: this.$t('marketComposite.etf.metrics.scale'), splitLine: { show: false } }
+        ]
+        series = [
+          { name: this.$t('marketComposite.etf.metrics.price'), type: 'line', showSymbol: false, data: points.map(p => p.price) },
+          { name: this.$t('marketComposite.etf.metrics.volume'), type: 'bar', data: points.map(p => p.volume), itemStyle: { opacity: 0.3 } },
+          { name: this.$t('marketComposite.etf.metrics.scale'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.scale) },
+          { name: this.$t('marketComposite.etf.metrics.fee'), type: 'line', showSymbol: false, data: points.map(p => p.fee_pct) },
+          { name: this.$t('marketComposite.etf.metrics.constituentProfit'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.constituent_profit_sum) }
+        ]
+      }
+
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 56, top: 48, bottom: 40 },
+        xAxis: { type: 'category', data: dates, axisLabel },
+        yAxis,
+        series
+      }, true)
+    },
     renderActiveCharts () {
       if (this.activeTab === 'index') this.renderFuturesCharts()
+      if (this.activeTab === 'etf') this.renderEtfMetricsCharts()
       if (this.activeTab === 'etfOptions') this.renderOptionsCharts()
     },
     scheduleOptionsChartRender () {
@@ -1555,6 +2065,14 @@ export default {
 
 .fda-metrics-gex {
   margin-bottom: 16px;
+}
+
+.fda-etf-note {
+  margin: 0 0 12px;
+}
+
+.fda-charts-etf {
+  margin-bottom: 8px;
 }
 
 .fda-analysis {
