@@ -402,11 +402,18 @@ def _assemble_etf_options_panel(
     )
 
     mult = 10000.0
-    margin_rate = 0.12
+    # Short-margin pct for ETF options opening-margin formula (peer uses 15%).
+    margin_rate = 0.15
     month_series: List[Dict[str, Any]] = []
     chains_for_agg: List[List[Dict[str, Any]]] = []
     underlyings: List[float] = []
     Ts: List[float] = []
+
+    from app.services.cn_derivatives_etf_capital import (
+        build_capital_curve_by_month,
+        combine_market_tv_yields,
+        compute_option_capital_metrics,
+    )
 
     def _gex_fields(chain: List[Dict[str, Any]], *, spot: float, T: float, label: str) -> Dict[str, Any]:
         indicator = run_gex_indicator(
@@ -453,6 +460,12 @@ def _assemble_etf_options_panel(
             T=T,
             month=m,
         )
+        capital_metrics = compute_option_capital_metrics(
+            chain,
+            underlying=underlying,
+            multiplier=mult,
+            margin_rate=margin_rate,
+        )
         month_series.append(
             {
                 "month": m,
@@ -464,6 +477,7 @@ def _assemble_etf_options_panel(
                 "iv_smile": gex_fields.get("iv_smile") or [],
                 "max_pain": max_pain,
                 "time_value_yield": tv_yield,
+                "capital_metrics": capital_metrics,
                 "indicators": gex_fields.get("indicators") or {},
             }
         )
@@ -490,6 +504,7 @@ def _assemble_etf_options_panel(
             "iv_smile": [],
             "max_pain": None,
             "time_value_yield": [],
+            "capital_curve": {"points": [], "total": {}, "note": ""},
             "indicators": {"gex": empty_ind},
             "message": "已连接期权数据源，但当前月份链截面为空。",
             "data_source": data_source,
@@ -541,6 +556,26 @@ def _assemble_etf_options_panel(
             T=t_avg,
             name="GEX",
         )
+
+    capital_curve = build_capital_curve_by_month(
+        {ms["month"]: (chains_by_month.get(ms["month"]) or []) for ms in month_series},
+        underlying=float(underlying or u_avg or 0.0),
+        multiplier=mult,
+        margin_rate=margin_rate,
+        months=[ms["month"] for ms in month_series],
+    )
+
+    tv_primary = primary.get("time_value_yield") or {}
+    if not isinstance(tv_primary, dict):
+        tv_primary = {}
+    market_combo = combine_market_tv_yields(
+        [ms.get("time_value_yield") or {} for ms in month_series]
+    )
+    if market_combo.get("market_yield") is not None:
+        tv_primary = dict(tv_primary)
+        tv_primary["market_yield"] = market_combo.get("market_yield")
+        tv_primary["market_yield_weight"] = market_combo.get("market_yield_weight") or ""
+
     return {
         "root": code6,
         "name_cn": name_cn,
@@ -558,8 +593,9 @@ def _assemble_etf_options_panel(
         "gex_distribution": gex_distribution,
         "iv_smile": iv_smile,
         "max_pain": max_pain,
-        "time_value_yield": primary.get("time_value_yield") or [],
+        "time_value_yield": tv_primary,
         "month_series": month_series,
+        "capital_curve": capital_curve,
         "indicators": {"gex": gex_indicator},
         "data_source": data_source,
         "asof": datetime.now().isoformat(timespec="seconds"),
@@ -572,9 +608,11 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         _ak,
         _mid,
         _safe_float,
-        _time_value_annualized_yield,
         compute_gex,
         compute_max_pain,
+    )
+    from app.services.cn_derivatives_etf_capital import (
+        compute_etf_time_value_annualized_yield,
     )
     from app.services.etf_options_clickhouse import (
         etf_options_panel_cache_ttl,
@@ -586,7 +624,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         raise ValueError("underlying ETF code is required")
 
     month_raw = (month or "all").strip().lower()
-    cache_key = f"etf_options_panel:v2:{code6}:{month_raw or 'all'}"
+    cache_key = f"etf_options_panel:v3:{code6}:{month_raw or 'all'}"
     cache_ttl = etf_options_panel_cache_ttl()
     cached = _etf_options_cache_get(cache_key)
     if cached:
@@ -615,7 +653,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
             month_meta=ch_bundle.get("month_meta") or {},
             compute_gex=compute_gex,
             compute_max_pain=compute_max_pain,
-            time_value_fn=_time_value_annualized_yield,
+            time_value_fn=compute_etf_time_value_annualized_yield,
             data_source="clickhouse",
         )
         if panel.get("month_series"):
@@ -668,7 +706,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         month_meta=month_meta,
         compute_gex=compute_gex,
         compute_max_pain=compute_max_pain,
-        time_value_fn=_time_value_annualized_yield,
+        time_value_fn=compute_etf_time_value_annualized_yield,
         data_source="sina",
     )
     if panel.get("month_series"):
