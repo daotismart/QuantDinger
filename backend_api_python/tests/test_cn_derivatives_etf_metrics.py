@@ -106,6 +106,32 @@ def test_holdings_profit_metrics_aggregates(monkeypatch):
     monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
     monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
     monkeypatch.setattr(metrics, "_ak", lambda: FakeAk())
+    monkeypatch.setattr(
+        metrics,
+        "_load_constituent_base_rows",
+        lambda code6: (
+            [
+                {
+                    "code": "600519",
+                    "name": "贵州茅台",
+                    "weight_pct": 10.0,
+                    "shares": 100,
+                    "market_value": 1_000_000,
+                    "quarter": "2024-12-31",
+                },
+                {
+                    "code": "000858",
+                    "name": "五粮液",
+                    "weight_pct": 5.0,
+                    "shares": 200,
+                    "market_value": 500_000,
+                    "quarter": "2024-12-31",
+                },
+            ],
+            "fund_portfolio_hold_em",
+            "2024-12-31",
+        ),
+    )
 
     def _snap(code):
         if metrics._code6(code) == "600519":
@@ -132,6 +158,22 @@ def test_holdings_profit_metrics_aggregates(monkeypatch):
     assert out["constituent_profit_sum"] == 150.0
     assert out["avg_pe"] == 13.33
     assert out["avg_profit_margin"] == 16.67
+
+
+def test_load_constituent_base_rows_prefers_index(monkeypatch):
+    monkeypatch.setattr(metrics, "_benchmark_index_code", lambda code6: "000300")
+    monkeypatch.setattr(
+        metrics,
+        "_load_index_constituent_rows",
+        lambda index_code: [
+            {"code": "600519", "name": "贵州茅台", "weight_pct": 5.0, "quarter": "000300 index 2026-07-31"}
+        ],
+    )
+    monkeypatch.setattr(metrics, "_load_fund_portfolio_rows", lambda code6: [])
+    rows, source, _ = metrics._load_constituent_base_rows("510300")
+    assert source == "index_stock_cons_weight_csindex"
+    assert len(rows) == 1
+    assert rows[0]["code"] == "600519"
 
 
 def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
