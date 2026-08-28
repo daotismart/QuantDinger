@@ -265,7 +265,7 @@ def build_gex_playback_history(
     multiplier: float = _DEFAULT_MULT,
 ) -> Dict[str, Any]:
     """Build GEX playback slices + Call/Put Wall / Flip / Pin time series."""
-    code6 = str(code6 or "").strip()
+    code6 = _surface_code6(code6)
     interval = normalize_playback_interval(interval)
     bars = normalize_playback_bars(bars)
     asof = datetime.now().isoformat(timespec="seconds")
