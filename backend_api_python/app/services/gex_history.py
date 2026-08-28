@@ -265,7 +265,7 @@ def build_gex_playback_history(
     multiplier: float = _DEFAULT_MULT,
 ) -> Dict[str, Any]:
     """Build GEX playback slices + Call/Put Wall / Flip / Pin time series."""
-    code6 = str(code6 or "").strip()
+    code6 = _surface_code6(code6)
     interval = normalize_playback_interval(interval)
     bars = normalize_playback_bars(bars)
     asof = datetime.now().isoformat(timespec="seconds")
@@ -550,6 +550,48 @@ def _near_month_atm_iv_from_flat(
     return near_month, smile_iv
 
 
+def _near_month_max_pain_point(slice_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract near-month max-pain strike + underlying from one surface slice."""
+    month_series = list(slice_row.get("month_series") or [])
+    month_key = None
+    max_pain = None
+    if month_series:
+        month_key = month_series[0].get("month")
+        max_pain = month_series[0].get("max_pain")
+    if not isinstance(max_pain, dict):
+        max_pain = slice_row.get("max_pain")
+    strike = None
+    if isinstance(max_pain, dict) and max_pain.get("strike") is not None:
+        try:
+            strike = float(max_pain.get("strike"))
+        except (TypeError, ValueError):
+            strike = None
+    underlying = slice_row.get("underlying")
+    if underlying is None:
+        underlying = slice_row.get("current_price")
+    try:
+        underlying_f = float(underlying) if underlying is not None else None
+    except (TypeError, ValueError):
+        underlying_f = None
+    if underlying_f is not None and underlying_f <= 0:
+        underlying_f = None
+    return {
+        "ts": slice_row.get("ts"),
+        "label": slice_row.get("label") or slice_row.get("ts"),
+        "date": str(slice_row.get("date") or (slice_row.get("ts") or ""))[:10],
+        "month": month_key,
+        "max_pain": strike,
+        "underlying": underlying_f,
+    }
+
+
+def _build_near_month_max_pain_series(
+    slices: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Time series of near-month max pain vs underlying over playback slices."""
+    return [_near_month_max_pain_point(item) for item in (slices or [])]
+
+
 def _build_near_month_iv_klines(
     bounds: List[Dict[str, str]],
     by_ts: Dict[str, List[Dict[str, Any]]],
@@ -814,6 +856,7 @@ def build_etf_options_surface_history(
     bars_n = normalize_playback_bars(bars)
     asof = datetime.now().isoformat(timespec="seconds")
     want_iv_klines = chart == "options.iv"
+    want_max_pain_series = chart in {"options.maxPain", "options.max_pain"}
     empty: Dict[str, Any] = {
         "root": code6,
         "chart_key": chart,
@@ -822,6 +865,7 @@ def build_etf_options_surface_history(
         "bars": bars_n,
         "slices": [],
         "near_month_iv_klines": [],
+        "near_month_max_pain_series": [],
         "note": "",
         "asof": asof,
     }
@@ -869,6 +913,8 @@ def build_etf_options_surface_history(
             )
             if want_iv_klines:
                 empty["near_month_iv_klines"] = _fallback_klines(live)
+            if want_max_pain_series:
+                empty["near_month_max_pain_series"] = _build_near_month_max_pain_series([live])
         except Exception as exc:
             empty["note"] = f"ETF options history unavailable: {exc}"
         return empty
@@ -898,6 +944,8 @@ def build_etf_options_surface_history(
             empty["note"] = "ClickHouse 无回放时间点，已回退为当前截面。"
             if want_iv_klines:
                 empty["near_month_iv_klines"] = _fallback_klines(live)
+            if want_max_pain_series:
+                empty["near_month_max_pain_series"] = _build_near_month_max_pain_series([live])
         except Exception as exc:
             empty["note"] = f"no playback timestamps: {exc}"
         return empty
@@ -1007,6 +1055,11 @@ def build_etf_options_surface_history(
         f"按 {interval_n} 取最近 {bars_n} 根，用 ClickHouse 期权分钟切片回放 "
         f"IV Smile / OI / 时间价值年化 / Max Pain；loaded={loaded}/{len(timestamps)}。"
     )
+    near_month_max_pain_series: List[Dict[str, Any]] = []
+    if want_max_pain_series:
+        near_month_max_pain_series = _build_near_month_max_pain_series(slices)
+        filled_mp = sum(1 for p in near_month_max_pain_series if p.get("max_pain") is not None)
+        note += f" 近月MaxPain折线={filled_mp}/{len(near_month_max_pain_series)}。"
     if want_iv_klines:
         filled = sum(1 for c in near_month_iv_klines if c.get("close") is not None)
         note += f" 近月IV K线={filled}/{len(near_month_iv_klines)}。"
@@ -1026,5 +1079,7 @@ def build_etf_options_surface_history(
     }
     if want_iv_klines:
         result["near_month_iv_klines"] = near_month_iv_klines
+    if want_max_pain_series:
+        result["near_month_max_pain_series"] = near_month_max_pain_series
     return result
 

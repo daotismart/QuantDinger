@@ -165,3 +165,62 @@ def test_surface_history_includes_near_month_iv_klines_on_fallback(monkeypatch):
     klines = hist.get("near_month_iv_klines") or []
     assert len(klines) == 1
     assert abs(klines[0]["close"] - 0.2) < 1e-9
+
+
+def test_near_month_max_pain_point_prefers_first_month():
+    point = surface._near_month_max_pain_point(
+        {
+            "ts": "2026-08-28 14:50:00",
+            "label": "2026-08-28 14:50:00",
+            "date": "2026-08-28",
+            "underlying": 4.67,
+            "max_pain": {"strike": 4.8, "pain": 9.0, "curve": []},
+            "month_series": [
+                {"month": "202609", "max_pain": {"strike": 4.6, "pain": 1.0, "curve": []}},
+                {"month": "202610", "max_pain": {"strike": 4.9, "pain": 2.0, "curve": []}},
+            ],
+        }
+    )
+    assert point["month"] == "202609"
+    assert abs(point["max_pain"] - 4.6) < 1e-9
+    assert abs(point["underlying"] - 4.67) < 1e-9
+
+
+def test_surface_history_includes_near_month_max_pain_series_on_fallback(monkeypatch):
+    monkeypatch.setattr(surface, "etf_options_ch_enabled", lambda: False)
+    monkeypatch.setattr(surface, "ch_ping", lambda: False)
+
+    def _fake_panel(code, month="all"):
+        return {
+            "current_price": 4.55,
+            "underlying": 4.55,
+            "iv_smile": [],
+            "gex_distribution": [],
+            "month_series": [
+                {
+                    "month": "202609",
+                    "iv_smile": [],
+                    "time_value_yield": {"call": [], "put": []},
+                    "max_pain": {"strike": 4.5, "pain": 1.0, "curve": []},
+                }
+            ],
+            "max_pain": {"strike": 4.5, "pain": 1.0, "curve": []},
+            "time_value_yield": {"call": [], "put": []},
+            "month": "202609",
+        }
+
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf.build_etf_options_panel",
+        _fake_panel,
+    )
+    hist = surface.build_etf_options_surface_history(
+        "510300",
+        chart_key="options.maxPain",
+        interval="day",
+        bars=30,
+    )
+    series = hist.get("near_month_max_pain_series") or []
+    assert len(series) == 1
+    assert series[0]["month"] == "202609"
+    assert abs(series[0]["max_pain"] - 4.5) < 1e-9
+    assert abs(series[0]["underlying"] - 4.55) < 1e-9
