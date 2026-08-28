@@ -329,6 +329,19 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
             f"成份股最新财报净利润合计约 {float(etf['constituent_profit_sum']):,.0f} 元"
             f"（覆盖前部持仓 {coverage} 只）。"
         )
+    if etf.get("constituent_market_value_sum") is not None:
+        analysis.append(
+            f"披露持仓市值合计约 {float(etf['constituent_market_value_sum']):,.0f} 元。"
+        )
+    if etf.get("avg_pe") is not None:
+        analysis.append(
+            f"前部成份加权平均 PE 约 {float(etf['avg_pe']):.2f}"
+            f"（覆盖 {int(etf.get('pe_coverage') or 0)} 只）。"
+        )
+    if etf.get("avg_profit_margin") is not None:
+        analysis.append(
+            f"前部成份加权平均利润率约 {float(etf['avg_profit_margin']):.2f}%。"
+        )
     if index_row and index_price > 0:
         analysis.append(f"基准指数 {index_row.get('name')} 最新 {index_price:.2f}。")
     if not analysis:

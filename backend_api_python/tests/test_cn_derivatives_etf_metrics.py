@@ -54,6 +54,86 @@ def test_build_etf_metrics_history_shape(monkeypatch):
     assert "新浪" in data["note"]
 
 
+def test_weighted_avg():
+    rows = [
+        {"weight_pct": 50, "pe_ratio": 10, "profit_margin": 20},
+        {"weight_pct": 30, "pe_ratio": 20, "profit_margin": 10},
+        {"weight_pct": 20, "pe_ratio": None, "profit_margin": 30},
+    ]
+    assert metrics._weighted_avg(rows, "pe_ratio") == 13.75
+    assert metrics._weighted_avg(rows, "profit_margin") == 19.0
+
+
+def test_holdings_profit_metrics_aggregates(monkeypatch):
+    class _FakeFrame:
+        empty = False
+
+        def iterrows(self):
+            return iter(
+                [
+                    (
+                        0,
+                        {
+                            "股票代码": "600519",
+                            "股票名称": "贵州茅台",
+                            "占净值比例": 10.0,
+                            "持股数": 100,
+                            "持仓市值": 1_000_000,
+                            "季度": "2024-12-31",
+                        },
+                    ),
+                    (
+                        1,
+                        {
+                            "股票代码": "000858",
+                            "股票名称": "五粮液",
+                            "占净值比例": 5.0,
+                            "持股数": 200,
+                            "持仓市值": 500_000,
+                            "季度": "2024-12-31",
+                        },
+                    ),
+                ]
+            )
+
+        def __len__(self):
+            return 2
+
+    class FakeAk:
+        def fund_portfolio_hold_em(self, symbol, date):
+            return _FakeFrame()
+
+    monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
+    monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(metrics, "_ak", lambda: FakeAk())
+
+    def _snap(code):
+        if metrics._code6(code) == "600519":
+            return {
+                "net_profit": 100.0,
+                "profit_margin": 20.0,
+                "pe_ratio": 10.0,
+                "market_cap": 2_000_000.0,
+            }
+        return {
+            "net_profit": 50.0,
+            "profit_margin": 10.0,
+            "pe_ratio": 20.0,
+            "market_cap": 800_000.0,
+        }
+
+    monkeypatch.setattr(metrics, "_stock_constituent_snapshot", _snap)
+
+    out = metrics._holdings_profit_metrics("510300", top_n=2)
+    assert out["holdings_count"] == 2
+    assert len(out["holdings"]) == 2
+    assert out["constituent_market_value_sum"] == 1_500_000.0
+    assert out["constituent_market_cap_sum"] == 2_800_000.0
+    assert out["constituent_profit_sum"] == 150.0
+    assert out["avg_pe"] == 13.33
+    assert out["avg_profit_margin"] == 16.67
+
+
 def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
     monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
     monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
@@ -86,8 +166,27 @@ def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
             "constituent_profit_sum": 12345,
             "constituent_profit_weighted": 1000,
             "constituent_profit_coverage": 3,
+            "constituent_market_value_sum": 9e8,
+            "constituent_market_cap_sum": 1.2e11,
+            "avg_pe": 15.5,
+            "avg_profit_margin": 12.3,
+            "pe_coverage": 3,
+            "margin_coverage": 3,
+            "market_cap_coverage": 3,
             "holdings_count": 3,
             "holdings_quarter": "2024-12-31",
+            "holdings": [
+                {
+                    "code": "600519",
+                    "name": "贵州茅台",
+                    "weight_pct": 10.0,
+                    "market_value": 1e8,
+                    "net_profit": 1e10,
+                    "pe_ratio": 20.0,
+                    "profit_margin": 15.0,
+                    "market_cap": 2e11,
+                }
+            ],
             "holdings_sample": [],
             "source": "mock",
         },
@@ -98,3 +197,6 @@ def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
     assert out["amount"] == 888
     assert out["total_fee_pct"] == 0.6
     assert out["constituent_profit_sum"] == 12345
+    assert out["constituent_market_value_sum"] == 9e8
+    assert out["avg_pe"] == 15.5
+    assert len(out["holdings"]) == 1

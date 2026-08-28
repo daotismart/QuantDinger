@@ -77,6 +77,18 @@
           </div>
         </div>
         <p v-if="etfMetricsNote" class="fda-muted fda-etf-note">{{ etfMetricsNote }}</p>
+        <div v-if="etfHoldings.length" class="fda-section fda-constituents">
+          <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
+          <p v-if="etfHoldingsMeta" class="fda-muted">{{ etfHoldingsMeta }}</p>
+          <a-table
+            class="fda-table"
+            size="small"
+            :pagination="etfHoldingsPagination"
+            :columns="etfConstituentColumns"
+            :data-source="etfHoldings"
+            row-key="code"
+          />
+        </div>
         <div class="fda-section">
           <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
           <ul class="fda-analysis">
@@ -419,6 +431,33 @@ export default {
     etfSpot () {
       return (this.spotData && this.spotData.spot && this.spotData.spot.etf) || {}
     },
+    etfHoldings () {
+      const etf = this.etfSpot
+      return etf.holdings || etf.holdings_sample || []
+    },
+    etfHoldingsMeta () {
+      const etf = this.etfSpot
+      const parts = []
+      if (etf.holdings_count) {
+        parts.push(`${etf.holdings_count}${this.$t('marketComposite.etf.metrics.constituentCountUnit')}`)
+      }
+      if (etf.holdings_quarter) parts.push(etf.holdings_quarter)
+      if (etf.pe_coverage) {
+        parts.push(`${this.$t('marketComposite.etf.metrics.peCoverage')}: ${etf.pe_coverage}`)
+      }
+      if (etf.margin_coverage) {
+        parts.push(`${this.$t('marketComposite.etf.metrics.marginCoverage')}: ${etf.margin_coverage}`)
+      }
+      return parts.join(' · ')
+    },
+    etfHoldingsPagination () {
+      return {
+        pageSize: 20,
+        showSizeChanger: true,
+        pageSizeOptions: ['20', '50', '100'],
+        showTotal: total => `${total}`
+      }
+    },
     etfMetricCards () {
       const etf = this.etfSpot
       const fee = etf.total_fee_pct
@@ -435,6 +474,10 @@ export default {
         { key: 'amount', label: this.$t('marketComposite.etf.metrics.amount'), display: this.fmtMoney(etf.amount) },
         { key: 'fee', label: this.$t('marketComposite.etf.metrics.fee'), display: feeDisplay },
         { key: 'profit', label: this.$t('marketComposite.etf.metrics.constituentProfit'), display: this.fmtMoney(etf.constituent_profit_sum) },
+        { key: 'holdingValue', label: this.$t('marketComposite.etf.metrics.constituentMarketValue'), display: this.fmtMoney(etf.constituent_market_value_sum) },
+        { key: 'marketCap', label: this.$t('marketComposite.etf.metrics.constituentMarketCap'), display: this.fmtMoney(etf.constituent_market_cap_sum) },
+        { key: 'avgMargin', label: this.$t('marketComposite.etf.metrics.avgProfitMargin'), display: etf.avg_profit_margin != null ? `${this.fmt(etf.avg_profit_margin, 2)}%` : '-' },
+        { key: 'avgPe', label: this.$t('marketComposite.etf.metrics.avgPe'), display: etf.avg_pe != null ? this.fmt(etf.avg_pe, 2) : '-' },
         { key: 'iopv', label: 'IOPV', display: this.fmt(etf.iopv, 4) },
         { key: 'premium', label: this.$t('marketComposite.etf.metrics.premiumRate'), display: etf.premium_rate != null ? `${this.fmt(etf.premium_rate, 2)}%` : '-' }
       ]
@@ -471,6 +514,50 @@ export default {
         { title: this.$t('marketComposite.futures.futures.price'), dataIndex: 'price', customRender: v => this.fmt(v) },
         { title: this.$t('marketComposite.futures.futures.volume'), dataIndex: 'volume', customRender: v => this.fmt(v, 0) },
         { title: this.$t('marketComposite.futures.futures.openInterest'), dataIndex: 'open_interest', customRender: v => this.fmt(v, 0) }
+      ]
+    },
+    etfConstituentColumns () {
+      return [
+        { title: this.$t('marketComposite.etf.metrics.colCode'), dataIndex: 'code', width: 92 },
+        { title: this.$t('marketComposite.etf.metrics.colName'), dataIndex: 'name', ellipsis: true },
+        {
+          title: this.$t('marketComposite.etf.metrics.colWeight'),
+          dataIndex: 'weight_pct',
+          width: 88,
+          customRender: v => (v != null ? `${this.fmt(v, 2)}%` : '-')
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colHoldingValue'),
+          dataIndex: 'market_value',
+          customRender: v => this.fmtMoney(v)
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colShares'),
+          dataIndex: 'shares',
+          customRender: v => this.fmtCompact(v)
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colNetProfit'),
+          dataIndex: 'net_profit',
+          customRender: v => this.fmtMoney(v)
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colMarketCap'),
+          dataIndex: 'market_cap',
+          customRender: v => this.fmtMoney(v)
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colPe'),
+          dataIndex: 'pe_ratio',
+          width: 72,
+          customRender: v => (v != null ? this.fmt(v, 2) : '-')
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colProfitMargin'),
+          dataIndex: 'profit_margin',
+          width: 96,
+          customRender: v => (v != null ? `${this.fmt(v, 2)}%` : '-')
+        }
       ]
     },
     greeksMetrics () {

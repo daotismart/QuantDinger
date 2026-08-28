@@ -6,7 +6,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from app.utils.logger import get_logger
 
@@ -146,6 +146,83 @@ def _stock_board_symbol(code6: str) -> str:
     return f"SZ{code6}"
 
 
+def _tencent_code(code6: str) -> str:
+    code6 = _code6(code6)
+    if not code6:
+        return ""
+    if code6.startswith(("5", "6", "9")):
+        return f"sh{code6}"
+    return f"sz{code6}"
+
+
+def _weighted_avg(
+    rows: List[Dict[str, Any]],
+    value_key: str,
+    *,
+    weight_key: str = "weight_pct",
+) -> Optional[float]:
+    """Weight-weighted average using portfolio weight %."""
+    w_total = 0.0
+    v_total = 0.0
+    for row in rows or []:
+        weight = _safe_float(row.get(weight_key)) or 0.0
+        if weight <= 0:
+            continue
+        value = _safe_float(row.get(value_key))
+        if value is None:
+            continue
+        if value_key == "pe_ratio" and value <= 0:
+            continue
+        w_total += weight
+        v_total += float(value) * weight
+    if w_total <= 0:
+        return None
+    return round(v_total / w_total, 2)
+
+
+def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
+    """Per-stock profit, margin, PE, and total market cap (best-effort)."""
+    code6 = _code6(stock_code)
+    if not code6:
+        return {}
+    cache_key = f"etf:constituent_snapshot:{code6}"
+    cached = _cache_get(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    out: Dict[str, Any] = {
+        "net_profit": None,
+        "profit_margin": None,
+        "pe_ratio": None,
+        "market_cap": None,
+    }
+    ni = _latest_net_profit(code6)
+    out["net_profit"] = ni
+    try:
+        frame = _ak().stock_profit_sheet_by_report_em(symbol=_stock_board_symbol(code6))
+        if frame is not None and not getattr(frame, "empty", True):
+            row0 = frame.iloc[0]
+            rev = _safe_float(row0.get("营业总收入")) or _safe_float(row0.get("TOTALOPERATEREVE"))
+            if ni is not None and rev and rev > 0:
+                out["profit_margin"] = round(float(ni) / float(rev) * 100, 2)
+    except Exception as exc:
+        logger.debug("constituent margin %s failed: %s", code6, exc)
+
+    try:
+        from app.data_sources.cn_hk_fundamentals import fetch_cn_fundamental_akshare
+
+        fund = fetch_cn_fundamental_akshare(_tencent_code(code6))
+        if fund.get("pe_ratio") is not None:
+            out["pe_ratio"] = fund.get("pe_ratio")
+        if fund.get("market_cap") is not None:
+            out["market_cap"] = fund.get("market_cap")
+    except Exception as exc:
+        logger.debug("constituent fundamentals %s failed: %s", code6, exc)
+
+    _cache_set(cache_key, out, _PROFIT_CACHE_TTL)
+    return out
+
+
 def _latest_net_profit(stock_code: str) -> Optional[float]:
     code6 = _code6(stock_code)
     if not code6:
@@ -173,7 +250,7 @@ def _latest_net_profit(stock_code: str) -> Optional[float]:
     return value
 
 
-def _holdings_profit_metrics(code6: str, *, top_n: int = 12) -> Dict[str, Any]:
+def _holdings_profit_metrics(code6: str, *, top_n: int = 40) -> Dict[str, Any]:
     cache_key = f"etf:holdings_profit:{code6}:{top_n}"
     cached = _cache_get(cache_key)
     if isinstance(cached, dict):
@@ -185,6 +262,14 @@ def _holdings_profit_metrics(code6: str, *, top_n: int = 12) -> Dict[str, Any]:
         "constituent_profit_sum": None,
         "constituent_profit_weighted": None,
         "constituent_profit_coverage": 0,
+        "constituent_market_value_sum": None,
+        "constituent_market_cap_sum": None,
+        "avg_pe": None,
+        "avg_profit_margin": None,
+        "pe_coverage": 0,
+        "margin_coverage": 0,
+        "market_cap_coverage": 0,
+        "holdings": [],
         "holdings_sample": [],
         "source": "fund_portfolio_hold_em",
     }
@@ -201,12 +286,12 @@ def _holdings_profit_metrics(code6: str, *, top_n: int = 12) -> Dict[str, Any]:
     if frame is None or getattr(frame, "empty", True):
         return out
 
-    rows: List[Dict[str, Any]] = []
-    for _, row in frame.head(max(top_n, 1)).iterrows():
+    base_rows: List[Dict[str, Any]] = []
+    for _, row in frame.iterrows():
         stock = _code6(row.get("股票代码"))
         if not stock:
             continue
-        rows.append(
+        base_rows.append(
             {
                 "code": stock,
                 "name": str(row.get("股票名称") or stock),
@@ -216,46 +301,81 @@ def _holdings_profit_metrics(code6: str, *, top_n: int = 12) -> Dict[str, Any]:
                 "quarter": str(row.get("季度") or ""),
             }
         )
+    base_rows.sort(key=lambda r: float(r.get("weight_pct") or 0.0), reverse=True)
     out["holdings_count"] = int(len(frame))
-    if rows:
-        out["holdings_quarter"] = str(rows[0].get("quarter") or "")
+    if base_rows:
+        out["holdings_quarter"] = str(base_rows[0].get("quarter") or "")
 
-    profits: List[Tuple[Dict[str, Any], Optional[float]]] = []
-    workers = min(6, max(1, len(rows)))
+    mv_sum = 0.0
+    mv_have = 0
+    for row in base_rows:
+        mv = _safe_float(row.get("market_value"))
+        if mv is not None:
+            mv_sum += float(mv)
+            mv_have += 1
+    if mv_have:
+        out["constituent_market_value_sum"] = mv_sum
+
+    enrich_n = min(max(int(top_n or 40), 1), len(base_rows))
+    enrich_targets = base_rows[:enrich_n]
+    snapshots: Dict[str, Dict[str, Any]] = {}
+    workers = min(8, max(1, len(enrich_targets)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_latest_net_profit, r["code"]): r for r in rows}
+        futures = {pool.submit(_stock_constituent_snapshot, r["code"]): r["code"] for r in enrich_targets}
         try:
-            # Keep ETF spot panel responsive; profit is best-effort.
-            for fut in as_completed(futures, timeout=12):
-                holding = futures[fut]
+            for fut in as_completed(futures, timeout=25):
+                code = futures[fut]
                 try:
-                    ni = fut.result(timeout=0)
+                    snapshots[code] = fut.result(timeout=0) or {}
                 except Exception:
-                    ni = None
-                profits.append((holding, ni))
+                    snapshots[code] = {}
         except Exception as exc:
-            logger.warning("holdings profit gather failed %s: %s", code6, exc)
+            logger.warning("holdings constituent gather failed %s: %s", code6, exc)
 
-    total = 0.0
-    weighted = 0.0
-    have = 0
-    sample: List[Dict[str, Any]] = []
-    for holding, ni in profits:
-        item = dict(holding)
-        item["net_profit"] = ni
-        sample.append(item)
-        if ni is None:
-            continue
-        have += 1
-        total += float(ni)
-        w = float(holding.get("weight_pct") or 0.0)
-        weighted += float(ni) * (w / 100.0)
-    sample.sort(key=lambda r: float(r.get("weight_pct") or 0.0), reverse=True)
-    out["holdings_sample"] = sample[:10]
-    out["constituent_profit_coverage"] = have
-    if have:
-        out["constituent_profit_sum"] = total
-        out["constituent_profit_weighted"] = weighted
+    holdings: List[Dict[str, Any]] = []
+    profit_total = 0.0
+    profit_weighted = 0.0
+    profit_have = 0
+    cap_sum = 0.0
+    cap_have = 0
+    enriched_for_avg: List[Dict[str, Any]] = []
+
+    for row in base_rows:
+        item = dict(row)
+        snap = snapshots.get(row["code"]) or {}
+        for key in ("net_profit", "profit_margin", "pe_ratio", "market_cap"):
+            if snap.get(key) is not None:
+                item[key] = snap.get(key)
+        holdings.append(item)
+        if item.get("net_profit") is not None:
+            ni = float(item["net_profit"])
+            profit_have += 1
+            profit_total += ni
+            w = float(item.get("weight_pct") or 0.0)
+            profit_weighted += ni * (w / 100.0)
+        if item.get("market_cap") is not None:
+            cap_sum += float(item["market_cap"])
+            cap_have += 1
+        if any(item.get(k) is not None for k in ("pe_ratio", "profit_margin")):
+            enriched_for_avg.append(item)
+
+    out["holdings"] = holdings
+    out["holdings_sample"] = holdings[:10]
+    out["constituent_profit_coverage"] = profit_have
+    if profit_have:
+        out["constituent_profit_sum"] = profit_total
+        out["constituent_profit_weighted"] = profit_weighted
+    if cap_have:
+        out["constituent_market_cap_sum"] = cap_sum
+        out["market_cap_coverage"] = cap_have
+
+    pe_cov = sum(1 for r in enriched_for_avg if r.get("pe_ratio") is not None)
+    margin_cov = sum(1 for r in enriched_for_avg if r.get("profit_margin") is not None)
+    out["pe_coverage"] = pe_cov
+    out["margin_coverage"] = margin_cov
+    out["avg_pe"] = _weighted_avg(enriched_for_avg, "pe_ratio")
+    out["avg_profit_margin"] = _weighted_avg(enriched_for_avg, "profit_margin")
+
     _cache_set(cache_key, out, _PROFIT_CACHE_TTL)
     return out
 
@@ -280,8 +400,16 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
         "constituent_profit_sum": None,
         "constituent_profit_weighted": None,
         "constituent_profit_coverage": 0,
+        "constituent_market_value_sum": None,
+        "constituent_market_cap_sum": None,
+        "avg_pe": None,
+        "avg_profit_margin": None,
+        "pe_coverage": 0,
+        "margin_coverage": 0,
+        "market_cap_coverage": 0,
         "holdings_count": 0,
         "holdings_quarter": "",
+        "holdings": [],
         "holdings_sample": [],
         "source": "skipped",
     }
@@ -314,8 +442,16 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
         "constituent_profit_sum": holdings.get("constituent_profit_sum"),
         "constituent_profit_weighted": holdings.get("constituent_profit_weighted"),
         "constituent_profit_coverage": holdings.get("constituent_profit_coverage"),
+        "constituent_market_value_sum": holdings.get("constituent_market_value_sum"),
+        "constituent_market_cap_sum": holdings.get("constituent_market_cap_sum"),
+        "avg_pe": holdings.get("avg_pe"),
+        "avg_profit_margin": holdings.get("avg_profit_margin"),
+        "pe_coverage": holdings.get("pe_coverage"),
+        "margin_coverage": holdings.get("margin_coverage"),
+        "market_cap_coverage": holdings.get("market_cap_coverage"),
         "holdings_count": holdings.get("holdings_count"),
         "holdings_quarter": holdings.get("holdings_quarter"),
+        "holdings": holdings.get("holdings") or [],
         "holdings_sample": holdings.get("holdings_sample") or [],
         "metrics_asof": datetime.now().isoformat(timespec="seconds"),
         "metrics_sources": {
@@ -331,7 +467,7 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
     if base.get("price") in (None, 0) and price is not None:
         metrics["price"] = price
 
-    # Retry sooner when holdings profit is still missing.
+    # Retry sooner when holdings enrichment is still missing.
     bundle_ttl = 900 if metrics.get("constituent_profit_sum") is not None else 120
     _cache_set(cache_key, {"code": code6, "metrics": metrics}, bundle_ttl)
     merged = dict(base)
@@ -467,6 +603,10 @@ def build_etf_metrics_history(
             "custodian_fee_pct": metrics.get("custodian_fee_pct"),
             "constituent_profit_sum": metrics.get("constituent_profit_sum"),
             "constituent_profit_weighted": metrics.get("constituent_profit_weighted"),
+            "constituent_market_value_sum": metrics.get("constituent_market_value_sum"),
+            "constituent_market_cap_sum": metrics.get("constituent_market_cap_sum"),
+            "avg_pe": metrics.get("avg_pe"),
+            "avg_profit_margin": metrics.get("avg_profit_margin"),
             "holdings_count": metrics.get("holdings_count"),
             "holdings_quarter": metrics.get("holdings_quarter"),
         },
