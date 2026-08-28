@@ -180,6 +180,26 @@ def _weighted_avg(
     return round(v_total / w_total, 2)
 
 
+def _individual_info_map(symbol_6: str) -> Dict[str, Any]:
+    """Lightweight Eastmoney individual info (market cap, industry)."""
+    out: Dict[str, Any] = {}
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(_ak().stock_individual_info_em, symbol=symbol_6)
+            df = fut.result(timeout=8)
+    except Exception as exc:
+        logger.debug("stock_individual_info_em failed %s: %s", symbol_6, exc)
+        return out
+    if df is None or getattr(df, "empty", True) or len(df.columns) < 2:
+        return out
+    kcol, vcol = df.columns[0], df.columns[1]
+    for _, row in df.iterrows():
+        k = str(row[kcol]).strip()
+        if k:
+            out[k] = row[vcol]
+    return out
+
+
 def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
     """Per-stock profit, margin, PE, and total market cap (best-effort)."""
     code6 = _code6(stock_code)
@@ -209,12 +229,20 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
         logger.debug("constituent margin %s failed: %s", code6, exc)
 
     try:
+        info = _individual_info_map(code6)
+        mcap = _safe_float(info.get("总市值"))
+        if mcap is not None:
+            out["market_cap"] = mcap
+    except Exception as exc:
+        logger.debug("constituent market cap %s failed: %s", code6, exc)
+
+    try:
         from app.data_sources.cn_hk_fundamentals import fetch_cn_fundamental_akshare
 
         fund = fetch_cn_fundamental_akshare(_tencent_code(code6))
         if fund.get("pe_ratio") is not None:
             out["pe_ratio"] = fund.get("pe_ratio")
-        if fund.get("market_cap") is not None:
+        if out.get("market_cap") is None and fund.get("market_cap") is not None:
             out["market_cap"] = fund.get("market_cap")
     except Exception as exc:
         logger.debug("constituent fundamentals %s failed: %s", code6, exc)
@@ -250,7 +278,7 @@ def _latest_net_profit(stock_code: str) -> Optional[float]:
     return value
 
 
-def _holdings_profit_metrics(code6: str, *, top_n: int = 40) -> Dict[str, Any]:
+def _holdings_profit_metrics(code6: str, *, top_n: int = 20) -> Dict[str, Any]:
     cache_key = f"etf:holdings_profit:{code6}:{top_n}"
     cached = _cache_get(cache_key)
     if isinstance(cached, dict):
@@ -323,7 +351,7 @@ def _holdings_profit_metrics(code6: str, *, top_n: int = 40) -> Dict[str, Any]:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_stock_constituent_snapshot, r["code"]): r["code"] for r in enrich_targets}
         try:
-            for fut in as_completed(futures, timeout=25):
+            for fut in as_completed(futures, timeout=35):
                 code = futures[fut]
                 try:
                     snapshots[code] = fut.result(timeout=0) or {}
@@ -416,7 +444,7 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
             fut = pool.submit(_holdings_profit_metrics, code6)
-            holdings = fut.result(timeout=15)
+            holdings = fut.result(timeout=50)
     except Exception as exc:
         logger.warning("enrich holdings profit timed out/failed %s: %s", code6, exc)
 
