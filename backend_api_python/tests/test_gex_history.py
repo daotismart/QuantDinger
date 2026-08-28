@@ -184,3 +184,24 @@ def test_build_gex_playback_history_aligns_slices_and_levels():
     assert "call_wall" in data["levels_series"][0]
     assert "flip" in data["levels_series"][0]
     assert "pin" in data["levels_series"][0]
+
+
+def test_build_gex_playback_history_normalizes_exchange_suffix():
+    """510300.SH from the UI must query ClickHouse as 510300."""
+    stamps = ["2026-03-10 14:30:00"]
+
+    with patch("app.services.gex_history.etf_options_ch_enabled", return_value=True), patch(
+        "app.services.gex_history.ch_ping", return_value=True
+    ), patch(
+        "app.services.gex_history.list_playback_timestamps", return_value=stamps
+    ) as list_ts, patch(
+        "app.services.gex_history.fetch_underlying_series", return_value={stamps[0]: 4.2}
+    ), patch(
+        "app.services.gex_history.fetch_option_chain_rows_at_timestamps",
+        return_value=({stamps[0]: []}, {"source": "mock"}),
+    ):
+        data = build_gex_playback_history("510300.SH", interval="day", bars=30)
+
+    list_ts.assert_called_once_with("510300", interval="day", bars=30)
+    assert data["root"] == "510300"
+    assert data.get("note") != "no playback timestamps in ClickHouse for this underlying/interval"
