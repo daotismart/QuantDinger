@@ -210,6 +210,20 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
     if isinstance(cached, dict):
         return cached
 
+    # Durable fallback: prefer prefetched Postgres snapshot over live AkShare.
+    try:
+        from app.services.cn_etf_constituent_store import load_snapshot as _load_db_snapshot
+
+        db_snap = _load_db_snapshot(code6)
+        if isinstance(db_snap, dict) and any(
+            db_snap.get(k) is not None
+            for k in ("net_profit", "pe_ratio", "market_cap", "profit_margin")
+        ):
+            _cache_set(cache_key, db_snap, _PROFIT_CACHE_TTL)
+            return db_snap
+    except Exception as exc:
+        logger.debug("constituent db snapshot %s failed: %s", code6, exc)
+
     out: Dict[str, Any] = {
         "net_profit": None,
         "profit_margin": None,
@@ -248,6 +262,13 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
         logger.debug("constituent fundamentals %s failed: %s", code6, exc)
 
     _cache_set(cache_key, out, _PROFIT_CACHE_TTL)
+    if any(out.get(k) is not None for k in ("net_profit", "pe_ratio", "market_cap", "profit_margin")):
+        try:
+            from app.services.cn_etf_constituent_store import upsert_snapshot as _upsert_db_snapshot
+
+            _upsert_db_snapshot(code6, out, source="live")
+        except Exception as exc:
+            logger.debug("constituent db upsert %s failed: %s", code6, exc)
     return out
 
 
@@ -403,6 +424,24 @@ def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 90.0, ba
             snapshots[code] = cached
         else:
             pending.append(code)
+
+    # Second pass: durable Postgres snapshots written by the prefetch job.
+    if pending:
+        try:
+            from app.services.cn_etf_constituent_store import load_snapshots as _load_db_snapshots
+
+            db_map = _load_db_snapshots(pending)
+            still_pending: List[str] = []
+            for code in pending:
+                db_snap = db_map.get(code) or {}
+                if db_snap:
+                    snapshots[code] = db_snap
+                    _cache_set(f"etf:constituent_snapshot:{code}", db_snap, _PROFIT_CACHE_TTL)
+                else:
+                    still_pending.append(code)
+            pending = still_pending
+        except Exception as exc:
+            logger.debug("constituent db batch load failed: %s", exc)
 
     if not pending:
         return snapshots

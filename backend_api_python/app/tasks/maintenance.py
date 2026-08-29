@@ -133,3 +133,28 @@ def run_market_data_retention_maint(self):
 
     return run_retention_cycle(trigger="celery-beat")
 
+
+@celery_app.task(
+    bind=True,
+    name="quantdinger.tasks.etf_constituent_prefetch",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=2,
+)
+def run_etf_constituent_prefetch(self):
+    """Warm ETF-option constituent history + profit/PE caches."""
+    del self
+    if not _enabled("ETF_CONSTITUENT_PREFETCH_ENABLED", "false"):
+        return {"skipped": True, "reason": "disabled"}
+    from app.services.cn_etf_constituent_prefetch import run_etf_constituent_prefetch_cycle
+
+    force = _enabled("ETF_CONSTITUENT_PREFETCH_FORCE", "false")
+    include_history = _enabled("ETF_CONSTITUENT_PREFETCH_HISTORY", "true")
+    return run_etf_constituent_prefetch_cycle(
+        force=force,
+        include_history=include_history,
+        warm_bundles=True,
+        trigger="celery-beat",
+    )
+
