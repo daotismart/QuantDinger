@@ -43,24 +43,50 @@ def _code6(value: Any) -> str:
 
 def list_etf_option_underlyings(*, include_listed: bool = True) -> List[str]:
     """ETF codes that have (or historically had) listed options."""
-    from app.markets.cn_options import KNOWN_ETF_UNDERLYINGS
-
     codes: List[str] = []
     seen: Set[str] = set()
-    for code in KNOWN_ETF_UNDERLYINGS.keys():
+
+    def _add(code: Any) -> None:
         c = _code6(code)
         if c and c not in seen:
             seen.add(c)
             codes.append(c)
+
+    # Prefer module constants when present (hotfix image may lag).
+    try:
+        from app.markets import cn_options as cn_opt
+
+        known = getattr(cn_opt, "KNOWN_ETF_UNDERLYINGS", None)
+        if isinstance(known, dict):
+            for code in known.keys():
+                _add(code)
+        bench = getattr(cn_opt, "ETF_BENCHMARK_INDEX", None)
+        if isinstance(bench, dict):
+            for code in bench.keys():
+                _add(code)
+    except Exception as exc:
+        logger.debug("cn_options known underlyings unavailable: %s", exc)
+
+    # Hardcoded safety net for common SSE/SZSE ETF option underlyings.
+    for code in (
+        "510050",
+        "510300",
+        "510500",
+        "588000",
+        "588080",
+        "159901",
+        "159915",
+        "159919",
+        "159922",
+    ):
+        _add(code)
+
     if include_listed:
         try:
             from app.services.cn_options_chain import listed_etf_underlying_codes
 
             for code in listed_etf_underlying_codes() or []:
-                c = _code6(code)
-                if c and c not in seen:
-                    seen.add(c)
-                    codes.append(c)
+                _add(code)
         except Exception as exc:
             logger.warning("listed_etf_underlying_codes failed: %s", exc)
     codes.sort()
@@ -111,10 +137,13 @@ def collect_constituent_universe(
 
 
 def _stock_board_symbol(code6: str) -> str:
-    from app.markets.cn_options import cn_symbol_with_board
-
     board = "SH" if code6.startswith(("5", "6", "9")) else "SZ"
-    return cn_symbol_with_board(code6, board)
+    try:
+        from app.markets.cn_options import cn_symbol_with_board
+        return cn_symbol_with_board(code6, board)
+    except Exception:
+        return f"{code6}.{board}"
+
 
 
 def register_constituent_history_watch(
