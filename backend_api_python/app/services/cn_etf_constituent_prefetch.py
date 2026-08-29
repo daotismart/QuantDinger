@@ -219,6 +219,7 @@ def warm_constituent_snapshots(
 
     pending: List[str] = []
     cached_hits = 0
+    name_map = names or {}
     if force:
         pending = list(unique)
     else:
@@ -229,6 +230,16 @@ def warm_constituent_snapshots(
                 hit.get(k) is not None
                 for k in ("net_profit", "pe_ratio", "market_cap", "profit_margin")
             ):
+                if persist and code not in db_map:
+                    try:
+                        store.upsert_snapshot(
+                            code,
+                            hit,
+                            name=name_map.get(code, ""),
+                            source="redis-rehydrate",
+                        )
+                    except Exception:
+                        pass
                 cached_hits += 1
                 continue
             db_hit = db_map.get(code) or {}
@@ -252,8 +263,7 @@ def warm_constituent_snapshots(
     warmed = 0
     failed = 0
     persisted = 0
-    name_map = names or {}
-
+    
     def _one(code: str) -> Dict[str, Any]:
         snap = metrics._stock_constituent_snapshot(code) or {}
         if persist and snap:
