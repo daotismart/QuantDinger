@@ -57,6 +57,7 @@ celery_app.conf.update(
         "quantdinger.tasks.cleanup_runtime_metadata": {"queue": "maintenance"},
         "quantdinger.tasks.market_data_historical_maint": {"queue": "maintenance"},
         "quantdinger.tasks.market_data_retention_maint": {"queue": "maintenance"},
+        "quantdinger.tasks.etf_constituent_prefetch": {"queue": "maintenance"},
     },
     beat_schedule={
         "reflection-cycle": {
@@ -86,6 +87,13 @@ celery_app.conf.update(
         "market-data-retention-maint": {
             "task": "quantdinger.tasks.market_data_retention_maint",
             "schedule": max(3600, int(os.getenv("MARKET_DATA_MAINT_RETENTION_INTERVAL_SEC", "86400"))),
+        },
+        "etf-constituent-prefetch": {
+            "task": "quantdinger.tasks.etf_constituent_prefetch",
+            "schedule": max(
+                1800,
+                int(os.getenv("ETF_CONSTITUENT_PREFETCH_INTERVAL_SEC", "21600")),
+            ),
         },
     },
 )
