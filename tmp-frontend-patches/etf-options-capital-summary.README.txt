@@ -1,0 +1,16 @@
+ETF options capital summary (top metrics)
+
+Adds three summary cards above the options charts:
+- 总保证金 (margin_total / margin_short_total)
+- 权利金 (premium_total)
+- 时间价值 (time_value_total)
+
+Source of truth in API: optionsData.capital_curve.total
+
+Apply on QuantDinger-Vue:
+  - Merge etf-derivatives.vue capitalSummaryMetrics + fda-metrics-capital block
+  - Add i18n key marketComposite.futures.options.totalMargin
+
+Production hotpatch:
+  python3 tmp-frontend-patches/patch_etf_capital_summary.py
+  (targets fe-compat etf-derivatives-h8andvEF.js + zh-CN-DeugDBb3.js)

@@ -1,0 +1,7 @@
+marketComposite.futures.options.totalMargin: 总保证金
+Already present nearby:
+7629:  "marketComposite.futures.options.marginShortTotal": "空头保证金",
+7630:  "marketComposite.futures.options.marginTotal": "空头保证金",
+7631:  "marketComposite.futures.options.totalMargin": "总保证金",
+7632:  "marketComposite.futures.options.timeValueTotal": "时间价值",
+7633:  "marketComposite.futures.options.intrinsicTotal": "内在价值",
