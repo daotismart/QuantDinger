@@ -1,0 +1,11 @@
+ETF analysis constituent holdings table (production hotfix)
+
+Backend already returns spot.etf.holdings (full index constituents).
+Production Vue chunk previously lacked the table UI (rolled back / never shipped).
+
+Hotfix:
+  python3 tmp-frontend-patches/patch_etf_constituent_table.py
+  targets fe-compat etf-derivatives-h8andvEF.js + zh-CN-DeugDBb3.js
+
+Source Vue (QuantDinger-Vue): etfHoldings / fda-constituents block in etf-derivatives.vue
+Related PRs: #44 (full constituents), #45 (prefetch)
