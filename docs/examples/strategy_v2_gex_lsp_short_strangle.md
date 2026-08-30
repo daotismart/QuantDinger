@@ -26,13 +26,25 @@
 | 配置标的 | **ETF**（期权标的）；默认 510050 |
 | GEX walls | 选 OTM call≈call wall、OTM put≈put wall；优先现货在墙内开仓 |
 | High IV | `iv_rank ≥ iv_rank_min` 才开仓 |
-| Kelly | `f* = 2p − 1` 作为 **保证金/权益** 比例；按单组宽跨保证金换算张数 |
+| Kelly | `f* = 2p − 1`；**p 来自 BS 期权腿胜率**（短 call/put 到期虚值概率，权利金加权）；再换算保证金/权益与张数 |
 | Risk control | 保证金占用与张数硬顶；LSP skew 后若超 Kelly 预算则缩仓 |
 | LSP score | 决定净 delta 敞口；`score > 0` 偏多 → 多卖 put / 少卖 call |
 | Spot | **不下单**；标的仅用于 LSP / wall / IV 代理信号 |
 | 合约月份 | **每次开仓次月合约**（第二近月） |
 | 移仓换月 | **到期前 15 个自然日**平仓并换入新的次月 |
 | 退出 | 破墙、到期前移仓、最长持有、期权腿被 skew 平光 |
+
+
+## Kelly 胜率（BS 期权腿）
+
+卖权“胜利”= 到期仍为虚值（权利金全部赚到）：
+
+- 短 call 胜率 \(p_c = N(-d2_c) = P(S_T < K_c)\)
+- 短 put 胜率 \(p_p = N(d2_p) = P(S_T > K_p)\)
+- 默认 Kelly \(p\) = 权利金加权：\((C\cdot p_c + P\cdot p_p)/(C+P)\)
+- 可选：`average` 两腿均值；`both_otm` = 两腿同时虚值 \(p_c+p_p-1\)
+
+\(\sigma\) 优先用 ATM IV，缺失时用现货实现波动；\(T\) 用剩余到期年化；行权价用 GEX 墙/腿行权价。
 
 ## Files
 

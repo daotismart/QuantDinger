@@ -1,5 +1,5 @@
 """GEX+LSP+Kelly Dynamic Short Strangle (options-only)
-GEX walls set short call/put strikes; enter only when IV is rich; Kelly (premium odds 1:1) sets margin/equity ratio with hard caps;
+GEX walls set short call/put strikes; enter only when IV is rich; Kelly (premium odds 1:1) sets margin/equity ratio; win rate p from BS short-leg OTM probs;
 LSP sets net delta exposure; call/put skew realizes that delta.
 No underlying hedge.
 Opens on next-month (次月) contracts and rolls 15 DTE before expiry.
@@ -28,7 +28,9 @@ import math
 # @param iv_rank_min float 0.6 Min ATM IV-rank proxy to sell premium range=0:1:0.05
 # @param kelly_max_fraction float 0.25 Hard Kelly fraction cap (risk control) range=0.05:0.5:0.05
 # @param kelly_max_lots int 5 Max base lots after Kelly range=1:20:1
-# @param kelly_prior_p float 0.55 Prior win probability for Kelly range=0.4:0.7:0.01
+# @param kelly_win_prob_mode str credit_weighted BS leg win mix: credit_weighted|average|both_otm
+# @param kelly_rate float 0.0 Risk-free rate for BS d2 range=0:0.1:0.01
+# @param kelly_prior_p float 0.55 Fallback win prob only if BS inputs fail range=0.4:0.7:0.01
 
 PERSIST_RUNTIME_STATE = True
 
@@ -79,6 +81,8 @@ def handle_data(context, data):
     iv_rank_min = max(_f(context.params.get("iv_rank_min", 0.6), 0.6), 0.0)
     kelly_max_f = max(_f(context.params.get("kelly_max_fraction", 0.25), 0.25), 0.0)
     kelly_max_lots = max(int(context.params.get("kelly_max_lots", 5) or 5), 0)
+    kelly_mode = str(context.params.get("kelly_win_prob_mode", "credit_weighted") or "credit_weighted")
+    kelly_rate = max(_f(context.params.get("kelly_rate", 0.0), 0.0), 0.0)
     prior_p = min(max(_f(context.params.get("kelly_prior_p", 0.55), 0.55), 0.01), 0.99)
 
     hist = get_history(max(days_2 * 3, 40), BAR_FREQUENCY, ["open", "high", "low", "close", "volume"], g.underlying_symbol)
@@ -98,8 +102,19 @@ def handle_data(context, data):
     iv_rank = _iv_rank_proxy(hist)
     high_iv_ok = iv_rank is None or iv_rank >= iv_rank_min
     equity = float(context.portfolio.total_value or 0.0)
-    # Prior-only win prob in sandbox (research engine tracks closed PnLs).
-    base_lots = _kelly_base_lots(equity, call_px, put_px, prior_p, kelly_max_f, kelly_max_lots)
+    # Kelly p from BS short-leg OTM probs (walls as strikes; realized vol as sigma).
+    t_years = max(float(g.hold_dte) if g.in_trade else 45.0, 1.0) / 365.0
+    vol = _realized_vol(hist)
+    win_p = prior_p
+    if vol is not None and vol > 0:
+        bs = _bs_leg_win_probs(
+            spot, call_wall, put_wall, t_years, vol, call_px, put_px, kelly_rate, kelly_mode
+        )
+        if bs is not None:
+            win_p = float(bs["win_prob"])
+            g.bs_call_win = float(bs["call_win_prob"])
+            g.bs_put_win = float(bs["put_win_prob"])
+    base_lots = _kelly_base_lots(equity, call_px, put_px, win_p, kelly_max_f, kelly_max_lots)
     if base_lots <= 0:
         base_lots = 0
     call_lots, put_lots = _skew_lots(lsp_score, max(base_lots, 1) if base_lots > 0 else 0, max_skew)
@@ -248,3 +263,50 @@ def _kelly_base_lots(equity, call_px, put_px, win_prob, max_fraction, max_lots):
         return 0
     lots = int((equity * fraction) // capital_per_lot)
     return int(min(max(lots, 0), int(max_lots)))
+
+
+def _realized_vol(hist):
+    closes = [float(x) for x in hist["close"].tolist()]
+    if len(closes) < 8:
+        return None
+    rets = []
+    for i in range(1, len(closes)):
+        if closes[i - 1] > 0:
+            rets.append(math.log(closes[i] / closes[i - 1]))
+    if len(rets) < 5:
+        return None
+    mu = sum(rets) / len(rets)
+    var = sum((x - mu) ** 2 for x in rets) / max(len(rets) - 1, 1)
+    return math.sqrt(max(var, 0.0)) * math.sqrt(252.0)
+
+
+def _norm_cdf(x):
+    return 0.5 * (1.0 + math.erf(float(x) / math.sqrt(2.0)))
+
+
+def _bs_d2(spot, strike, t_years, vol, rate=0.0):
+    if spot <= 0 or strike <= 0 or t_years <= 0 or vol <= 0:
+        return None
+    return (math.log(spot / strike) + (rate - 0.5 * vol * vol) * t_years) / (vol * math.sqrt(t_years))
+
+
+def _bs_leg_win_probs(spot, call_k, put_k, t_years, vol, call_px, put_px, rate, mode):
+    """Short-leg win = expire OTM under BS: call N(-d2), put N(d2)."""
+    d2_c = _bs_d2(spot, call_k, t_years, vol, rate=rate)
+    d2_p = _bs_d2(spot, put_k, t_years, vol, rate=rate)
+    if d2_c is None or d2_p is None:
+        return None
+    p_call = _norm_cdf(-d2_c)
+    p_put = _norm_cdf(d2_p)
+    both = max(0.0, min(1.0, p_call + p_put - 1.0))
+    mode_u = str(mode or "credit_weighted").lower()
+    if mode_u in {"both_otm", "both_otm"}:
+        win_p = both
+    elif mode_u == "average":
+        win_p = 0.5 * (p_call + p_put)
+    else:
+        w_c = max(float(call_px), 0.0)
+        w_p = max(float(put_px), 0.0)
+        win_p = 0.5 * (p_call + p_put) if (w_c + w_p) <= 0 else (w_c * p_call + w_p * p_put) / (w_c + w_p)
+    win_p = min(max(float(win_p), 1e-6), 1.0 - 1e-6)
+    return {"win_prob": win_p, "call_win_prob": float(p_call), "put_win_prob": float(p_put), "both_otm_prob": float(both)}
