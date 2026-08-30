@@ -8,12 +8,15 @@ from app.services.gex_lsp_strangle.engine import (
 from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
 from app.services.gex_lsp_strangle.kelly import (
     KellySizingResult,
+    estimate_strangle_margin,
     estimate_win_prob,
     kelly_fraction,
+    size_by_kelly_margin,
     size_short_premium_lots,
 )
 from app.services.gex_lsp_strangle.lsp import (
     compute_lsp_features,
+    lsp_delta_exposure_shares,
     lsp_option_skew_lots,
     lsp_target_delta_shares,
 )
@@ -24,11 +27,14 @@ __all__ = [
     "ShortStrangleBacktestResult",
     "compute_gex_walls",
     "compute_lsp_features",
+    "estimate_strangle_margin",
     "estimate_win_prob",
     "kelly_fraction",
+    "lsp_delta_exposure_shares",
     "lsp_option_skew_lots",
     "lsp_target_delta_shares",
     "run_short_strangle_backtest",
     "select_strangle_strikes",
+    "size_by_kelly_margin",
     "size_short_premium_lots",
 ]

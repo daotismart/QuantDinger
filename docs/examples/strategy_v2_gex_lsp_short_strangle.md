@@ -4,8 +4,8 @@
 
 1. **GEX wall** 决定 **安全行权价**（call wall / put wall 附近卖出宽跨式）。
 2. **高 IV** 过滤：ATM IV rank 达阈值才卖权（权利金偏贵时做空波动）。
-3. **Kelly（权利金 1:1）** 决定 **基础张数 / 投入比例**；超出 `max_fraction` / `max_lots` 做风控封顶。
-4. **LSP** 决定 **方向 delta 敞口**，用 call/put 张数 skew 表达，**不交易现货**。
+3. **Kelly（权利金盈亏比 1:1）** 决定账户 **保证金占用比例** `f*=2p−1`，再换算可开张数；超出比例/`max_lots` 风控封顶。
+4. **LSP** 单独决定 **净 delta 敞口**（按保证金预算缩放），再用 call/put 张数 skew 实现；**不交易现货**。
 
 ## 规则摘要
 
@@ -13,9 +13,9 @@
 |------|------|
 | GEX walls | 选 OTM call≈call wall、OTM put≈put wall；优先现货在墙内开仓 |
 | High IV | `iv_rank ≥ iv_rank_min` 才开仓 |
-| Kelly | `f* = 2p − 1`（盈亏比按权利金 1:1）；预算不足一手则跳过 |
-| Risk control | `f*` 与张数硬顶；超限 clamp，不追加杠杆 |
-| LSP score | `score > 0` 偏多 → 多卖 put / 少卖 call；`score < 0` 相反 |
+| Kelly | `f* = 2p − 1` 作为 **保证金/权益** 比例；按单组宽跨保证金换算张数 |
+| Risk control | 保证金占用与张数硬顶；LSP skew 后若超 Kelly 预算则缩仓 |
+| LSP score | 决定净 delta 敞口；`score > 0` 偏多 → 多卖 put / 少卖 call |
 | Spot | **不下单**；标的仅用于 LSP / wall / IV 代理信号 |
 | 退出 | 破墙、DTE 下限、最长持有、期权腿被 skew 平光 |
 

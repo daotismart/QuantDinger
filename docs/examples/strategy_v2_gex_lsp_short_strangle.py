@@ -1,6 +1,6 @@
 """GEX+LSP+Kelly Dynamic Short Strangle (options-only)
-GEX walls set short call/put strikes; enter only when IV is rich; Kelly (premium
-odds 1:1) sizes base lots with hard caps; LSP skews call/put for net delta.
+GEX walls set short call/put strikes; enter only when IV is rich; Kelly (premium odds 1:1) sets margin/equity ratio with hard caps;
+LSP sets net delta exposure; call/put skew realizes that delta.
 No underlying hedge.
 
 Universe is source-owned for Strategy API V2 sandboxes. For research with full

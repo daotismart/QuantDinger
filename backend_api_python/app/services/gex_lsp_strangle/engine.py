@@ -1,8 +1,9 @@
 """Daily short-vol backtest for ETF options short strangles.
 
-GEX walls pick safe OTM strikes; sell only when IV rank is high; LSP sets
-directional delta via call/put lot skew; Kelly (premium odds 1:1) sets base
-lot exposure with hard fraction/lot caps as risk control. No spot hedge.
+GEX walls pick safe OTM strikes; sell only when IV rank is high.
+Kelly (premium odds 1:1) sets the account **margin utilization ratio**;
+LSP sets the **net delta exposure**; call/put lot skew realizes that delta.
+Margin above the Kelly budget is scaled down as risk control. No spot hedge.
 """
 
 from __future__ import annotations
@@ -14,9 +15,14 @@ import numpy as np
 import pandas as pd
 
 from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
-from app.services.gex_lsp_strangle.kelly import estimate_win_prob, size_short_premium_lots
+from app.services.gex_lsp_strangle.kelly import (
+    estimate_strangle_margin,
+    estimate_win_prob,
+    size_by_kelly_margin,
+)
 from app.services.gex_lsp_strangle.lsp import (
     compute_lsp_features,
+    lsp_delta_exposure_shares,
     lsp_option_skew_lots,
     lsp_target_delta_shares,
 )
@@ -50,14 +56,17 @@ class ShortStrangleBacktestConfig:
     require_high_iv: bool = True
     iv_lookback: int = 60
     iv_rank_min: float = 0.60
-    # Kelly sizing with 1:1 premium odds; LSP only skews the resulting base lots.
+    # Kelly (premium odds 1:1) → margin/equity ratio; LSP sets delta exposure.
     use_kelly_sizing: bool = True
     kelly_odds_b: float = 1.0
     kelly_prior_win_prob: float = 0.55
     kelly_prior_strength: float = 10.0
-    kelly_max_fraction: float = 0.25
+    kelly_max_fraction: float = 0.25  # hard cap on margin / equity
     kelly_max_lots: int = 10
     kelly_min_lots: int = 1
+    # ETF option short-leg margin rates (SSE-style research approx).
+    option_margin_rate: float = 0.12
+    option_margin_floor_rate: float = 0.07
 
 
 @dataclass
@@ -554,9 +563,15 @@ def run_short_strangle_backtest(
             call_delta = float(pick.get("call_delta") or 0.25)
             put_delta = float(pick.get("put_delta") or -0.25)
             entry_allowed = bool(high_iv_ok)
+            margin_budget = 0.0
+            call_strike = float(pick.get("call_strike") or pick.get("call_wall") or spot)
+            put_strike = float(pick.get("put_strike") or pick.get("put_wall") or spot)
             if cfg.use_kelly_sizing and call_px and put_px:
-                kelly = size_short_premium_lots(
+                kelly = size_by_kelly_margin(
                     equity=cash,
+                    spot=spot,
+                    call_strike=call_strike,
+                    put_strike=put_strike,
                     call_premium=float(call_px),
                     put_premium=float(put_px),
                     multiplier=cfg.multiplier,
@@ -565,17 +580,20 @@ def run_short_strangle_backtest(
                     max_kelly_fraction=cfg.kelly_max_fraction,
                     max_lots=cfg.kelly_max_lots,
                     min_lots=cfg.kelly_min_lots,
+                    margin_rate=cfg.option_margin_rate,
+                    floor_rate=cfg.option_margin_floor_rate,
                 )
                 kelly_info = kelly.to_dict()
                 kelly_info["ivRank"] = None if iv_rank is None else round(float(iv_rank), 4)
                 kelly_info["highIvOk"] = bool(high_iv_ok)
+                margin_budget = float(kelly.margin_budget)
                 if kelly.blocked or kelly.base_lots <= 0:
                     entry_allowed = False
                     base_lots = 0
                 else:
                     base_lots = int(kelly.base_lots)
                     if kelly.capped:
-                        kelly_info["riskControl"] = "clamped_to_max"
+                        kelly_info["riskControl"] = "clamped_to_max_margin"
                 if not high_iv_ok:
                     entry_allowed = False
                     kelly_info["blocked"] = True
@@ -584,13 +602,40 @@ def run_short_strangle_backtest(
                 entry_allowed = False
                 kelly_info["blocked"] = True
                 kelly_info["reason"] = "iv_rank_too_low"
+            else:
+                margin_budget = float(
+                    estimate_strangle_margin(
+                        spot=spot,
+                        call_strike=call_strike,
+                        put_strike=put_strike,
+                        call_premium=float(call_px or 0.0),
+                        put_premium=float(put_px or 0.0),
+                        multiplier=cfg.multiplier,
+                        call_lots=base_lots,
+                        put_lots=base_lots,
+                        margin_rate=cfg.option_margin_rate,
+                        floor_rate=cfg.option_margin_floor_rate,
+                    )
+                )
+                kelly_info["marginBudget"] = round(margin_budget, 2)
+                kelly_info["marginRatio"] = round(margin_budget / cash, 6) if cash > 0 else 0.0
+                kelly_info["fraction"] = kelly_info["marginRatio"]
 
-            target_delta = lsp_target_delta_shares(
-                lsp_score,
-                lots=max(base_lots, 1),
-                multiplier=cfg.multiplier,
-                max_abs_delta=cfg.lsp_max_abs_delta,
-            )
+            # LSP owns directional delta exposure; Kelly only set the margin budget.
+            if margin_budget > 0 and spot > 0:
+                target_delta = lsp_delta_exposure_shares(
+                    lsp_score,
+                    margin_budget=margin_budget,
+                    spot=spot,
+                    max_abs_delta=cfg.lsp_max_abs_delta,
+                )
+            else:
+                target_delta = lsp_target_delta_shares(
+                    lsp_score,
+                    lots=max(base_lots, 1),
+                    multiplier=cfg.multiplier,
+                    max_abs_delta=cfg.lsp_max_abs_delta,
+                )
             desired_call_lots, desired_put_lots = _lots_for_option_hedge(
                 lsp_score=lsp_score,
                 target_delta_shares=target_delta,
@@ -602,6 +647,49 @@ def run_short_strangle_backtest(
             )
             if base_lots <= 0:
                 desired_call_lots, desired_put_lots = 0, 0
+            # Risk control: scale lots down if LSP skew exceeds Kelly margin budget.
+            if (
+                entry_allowed
+                and margin_budget > 0
+                and desired_call_lots + desired_put_lots > 0
+                and call_px
+                and put_px
+            ):
+                used = estimate_strangle_margin(
+                    spot=spot,
+                    call_strike=call_strike,
+                    put_strike=put_strike,
+                    call_premium=float(call_px),
+                    put_premium=float(put_px),
+                    multiplier=cfg.multiplier,
+                    call_lots=desired_call_lots,
+                    put_lots=desired_put_lots,
+                    margin_rate=cfg.option_margin_rate,
+                    floor_rate=cfg.option_margin_floor_rate,
+                )
+                if used > margin_budget * 1.001 and used > 0:
+                    scale = margin_budget / used
+                    desired_call_lots = int(desired_call_lots * scale)
+                    desired_put_lots = int(desired_put_lots * scale)
+                    used = estimate_strangle_margin(
+                        spot=spot,
+                        call_strike=call_strike,
+                        put_strike=put_strike,
+                        call_premium=float(call_px),
+                        put_premium=float(put_px),
+                        multiplier=cfg.multiplier,
+                        call_lots=desired_call_lots,
+                        put_lots=desired_put_lots,
+                        margin_rate=cfg.option_margin_rate,
+                        floor_rate=cfg.option_margin_floor_rate,
+                    )
+                    kelly_info["riskControl"] = "scaled_to_kelly_margin"
+                kelly_info["marginUsed"] = round(float(used), 2)
+                if desired_call_lots + desired_put_lots <= 0:
+                    entry_allowed = False
+                    kelly_info["blocked"] = True
+                    kelly_info["reason"] = "margin_scale_flat"
+
             if (
                 entry_allowed
                 and ((not cfg.require_inside_walls) or inside)
@@ -680,9 +768,13 @@ def run_short_strangle_backtest(
                 "ivRank": kelly_info.get("ivRank"),
                 "highIvOk": kelly_info.get("highIvOk"),
                 "kellyFraction": kelly_info.get("fraction"),
+                "kellyMarginRatio": kelly_info.get("marginRatio", kelly_info.get("fraction")),
                 "kellyBaseLots": kelly_info.get("baseLots"),
                 "kellyBlocked": kelly_info.get("blocked"),
                 "kellyReason": kelly_info.get("reason"),
+                "marginBudget": kelly_info.get("marginBudget"),
+                "marginUsed": kelly_info.get("marginUsed"),
+                "marginPerLot": kelly_info.get("marginPerLot"),
             }
         )
 
@@ -725,7 +817,7 @@ def run_short_strangle_backtest(
         "winRate": round(len(wins) / len(trades), 4) if trades else 0.0,
         "avgTradePnl": round(float(np.mean([t["pnl"] for t in trades])), 2) if trades else 0.0,
         "hedgeMode": "options_only",
-        "sizingMode": "kelly_1to1_premium" if cfg.use_kelly_sizing else "fixed_lots",
+        "sizingMode": "kelly_margin_ratio" if cfg.use_kelly_sizing else "fixed_lots",
         "requireHighIv": bool(cfg.require_high_iv),
         "kellyOddsB": float(cfg.kelly_odds_b),
         "config": asdict(cfg),

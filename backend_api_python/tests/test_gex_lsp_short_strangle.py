@@ -8,8 +8,10 @@ import pandas as pd
 from app.services.gex_lsp_strangle.engine import ShortStrangleBacktestConfig, run_short_strangle_backtest
 from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
 from app.services.gex_lsp_strangle.kelly import (
+    estimate_strangle_margin,
     estimate_win_prob,
     kelly_fraction,
+    size_by_kelly_margin,
     size_short_premium_lots,
 )
 from app.services.gex_lsp_strangle.lsp import (
@@ -154,8 +156,12 @@ def test_kelly_fraction_and_win_prob():
 
 
 def test_kelly_sizing_caps_and_blocks():
-    ok = size_short_premium_lots(
+    # Margin-ratio Kelly: f*=0.4 → capped to 0.25 of equity as margin budget.
+    ok = size_by_kelly_margin(
         equity=1_000_000,
+        spot=3.0,
+        call_strike=3.1,
+        put_strike=2.9,
         call_premium=0.02,
         put_premium=0.02,
         multiplier=10000,
@@ -166,12 +172,17 @@ def test_kelly_sizing_caps_and_blocks():
     )
     assert not ok.blocked
     assert ok.capped
-    assert ok.fraction == 0.25
+    assert ok.margin_ratio == 0.25
     assert ok.base_lots == 5
     assert ok.reason == "capped"
+    assert ok.margin_budget == 250_000.0
 
-    exact = size_short_premium_lots(
-        equity=10_000,
+    # Equity 100k * f*=0.1 = 10k margin budget; one strangle lot margin ~ a few k → >=1 lot.
+    exact = size_by_kelly_margin(
+        equity=100_000,
+        spot=3.0,
+        call_strike=3.1,
+        put_strike=2.9,
         call_premium=0.05,
         put_premium=0.05,
         multiplier=10000,
@@ -182,10 +193,14 @@ def test_kelly_sizing_caps_and_blocks():
         min_lots=1,
     )
     assert not exact.blocked
-    assert exact.base_lots == 1
+    assert exact.base_lots >= 1
+    assert exact.margin_used <= exact.margin_budget + 1e-6
 
-    no_edge = size_short_premium_lots(
+    no_edge = size_by_kelly_margin(
         equity=1_000_000,
+        spot=3.0,
+        call_strike=3.1,
+        put_strike=2.9,
         call_premium=0.02,
         put_premium=0.02,
         multiplier=10000,
@@ -194,6 +209,15 @@ def test_kelly_sizing_caps_and_blocks():
     )
     assert no_edge.blocked
     assert no_edge.base_lots == 0
+
+
+def test_lsp_delta_exposure_scales_with_margin_budget():
+    from app.services.gex_lsp_strangle.lsp import lsp_delta_exposure_shares
+
+    d1 = lsp_delta_exposure_shares(1.0, margin_budget=100_000, spot=2.5, max_abs_delta=0.5)
+    d2 = lsp_delta_exposure_shares(-0.5, margin_budget=100_000, spot=2.5, max_abs_delta=0.5)
+    assert abs(d1 - (100_000 / 2.5) * 0.5) < 1e-6
+    assert abs(d2 - (-0.5 * 0.5 * (100_000 / 2.5))) < 1e-6
 
 
 def _synthetic_panel(n_days: int = 40, iv_fn=None):
@@ -273,7 +297,7 @@ def test_rising_iv_allows_kelly_entry():
         ),
     )
     assert result.summary["trades"] >= 1
-    assert result.summary.get("sizingMode") == "kelly_1to1_premium"
+    assert result.summary.get("sizingMode") == "kelly_margin_ratio"
     kelly_days = [d for d in result.daily if d.get("kellyBaseLots")]
     assert kelly_days
     assert all(int(d["kellyBaseLots"]) <= 2 for d in kelly_days if d.get("kellyBaseLots") is not None)
