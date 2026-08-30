@@ -195,12 +195,26 @@ def _snapshot_is_usable(snap: Optional[Dict[str, Any]]) -> bool:
 
 
 def _snapshot_is_complete(snap: Optional[Dict[str, Any]]) -> bool:
-    """Require profit + margin + market cap + price (price enables share estimates)."""
+    """Require profit + margin + market cap + price + PB (price enables share estimates)."""
     data = snap if isinstance(snap, dict) else {}
     return all(
         data.get(k) is not None
-        for k in ("net_profit", "profit_margin", "market_cap", "price")
+        for k in ("net_profit", "profit_margin", "market_cap", "price", "pb_ratio")
     )
+
+
+def _constituent_snapshot_cache_key(code6: str) -> str:
+    return f"etf:constituent_snapshot:v2:{code6}"
+
+
+def _derive_net_assets(snap: Dict[str, Any]) -> None:
+    """Book value ≈ market_cap / PB when both are present."""
+    if not isinstance(snap, dict) or snap.get("net_assets") is not None:
+        return
+    mcap = _safe_float(snap.get("market_cap"))
+    pb = _safe_float(snap.get("pb_ratio"))
+    if mcap and mcap > 0 and pb and pb > 0:
+        snap["net_assets"] = round(float(mcap) / float(pb), 2)
 
 
 def _individual_info_map(symbol_6: str) -> Dict[str, Any]:
@@ -224,8 +238,8 @@ def _individual_info_map(symbol_6: str) -> Dict[str, Any]:
 
 
 def _stock_value_em_fields(code6: str) -> Dict[str, Any]:
-    """Fast Eastmoney valuation row: market cap / PE / price / shares / PS."""
-    cache_key = f"etf:stock_value_em:{code6}"
+    """Fast Eastmoney valuation row: market cap / PE / PB / price / shares / PS."""
+    cache_key = f"etf:stock_value_em:v2:{code6}"
     cached = _cache_get(cache_key)
     if isinstance(cached, dict) and cached:
         return cached
@@ -241,9 +255,11 @@ def _stock_value_em_fields(code6: str) -> Dict[str, Any]:
         row = frame.iloc[-1]
     except Exception:
         return out
+    pb = _safe_float(row.get("市净率"))
     out = {
         "market_cap": _safe_float(row.get("总市值")),
         "pe_ratio": _safe_float(row.get("PE(TTM)")) or _safe_float(row.get("PE(静)")),
+        "pb_ratio": pb if pb is not None and pb > 0 else None,
         "price": _safe_float(row.get("当日收盘价")),
         "total_shares": _safe_float(row.get("总股本")),
         "ps_ratio": _safe_float(row.get("市销率")),
@@ -287,16 +303,18 @@ def _profit_sheet_revenue(code6: str) -> Optional[float]:
 
 
 def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
-    """Per-stock profit, margin, PE, and total market cap (best-effort, gap-filling)."""
+    """Per-stock profit, margin, PE/PB, market cap and book value (best-effort)."""
     code6 = _code6(stock_code)
     if not code6:
         return {}
-    cache_key = f"etf:constituent_snapshot:{code6}"
+    cache_key = _constituent_snapshot_cache_key(code6)
     out: Dict[str, Any] = {
         "net_profit": None,
         "profit_margin": None,
         "pe_ratio": None,
+        "pb_ratio": None,
         "market_cap": None,
+        "net_assets": None,
         "price": None,
         "total_shares": None,
     }
@@ -309,7 +327,7 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
                 out[meta] = cached.get(meta)
 
     # Durable fallback seeds missing fields; never treat partial rows as final.
-    if _snapshot_missing_fields(out):
+    if _snapshot_missing_fields(out) or out.get("pb_ratio") is None:
         try:
             from app.services.cn_etf_constituent_store import load_snapshot as _load_db_snapshot
 
@@ -324,8 +342,8 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
     if out.get("net_profit") is None:
         out["net_profit"] = _latest_net_profit(code6)
 
-    # Prefer fast valuation endpoint for PE / market cap / price / PS.
-    if any(out.get(k) is None for k in ("market_cap", "pe_ratio", "price", "profit_margin")):
+    # Prefer fast valuation endpoint for PE / PB / market cap / price / PS.
+    if any(out.get(k) is None for k in ("market_cap", "pe_ratio", "pb_ratio", "price", "profit_margin")):
         val = _stock_value_em_fields(code6)
         if out.get("market_cap") is None and val.get("market_cap") is not None:
             out["market_cap"] = val.get("market_cap")
@@ -333,6 +351,10 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
             pe = _safe_float(val.get("pe_ratio"))
             if pe is not None and pe > 0:
                 out["pe_ratio"] = pe
+        if out.get("pb_ratio") is None and val.get("pb_ratio") is not None:
+            pb = _safe_float(val.get("pb_ratio"))
+            if pb is not None and pb > 0:
+                out["pb_ratio"] = pb
         if out.get("price") is None and val.get("price") is not None:
             out["price"] = val.get("price")
         if out.get("total_shares") is None and val.get("total_shares") is not None:
@@ -345,7 +367,7 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
                 # margin% ≈ net_profit / (market_cap / PS) * 100
                 out["profit_margin"] = round(float(ni) * float(ps) / float(mcap) * 100.0, 2)
 
-    if out.get("market_cap") is None or out.get("pe_ratio") is None:
+    if out.get("market_cap") is None or out.get("pe_ratio") is None or out.get("pb_ratio") is None:
         try:
             info = _individual_info_map(code6)
             if out.get("market_cap") is None:
@@ -354,12 +376,16 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
                 pe = _safe_float(info.get("市盈率-动态")) or _safe_float(info.get("市盈率"))
                 if pe is not None and pe > 0:
                     out["pe_ratio"] = pe
+            if out.get("pb_ratio") is None:
+                pb = _safe_float(info.get("市净率")) or _safe_float(info.get("市净率-动态"))
+                if pb is not None and pb > 0:
+                    out["pb_ratio"] = pb
             if out.get("total_shares") is None:
                 out["total_shares"] = _safe_float(info.get("总股本"))
         except Exception as exc:
             logger.debug("constituent market cap %s failed: %s", code6, exc)
 
-    if out.get("pe_ratio") is None or out.get("market_cap") is None:
+    if out.get("pe_ratio") is None or out.get("market_cap") is None or out.get("pb_ratio") is None:
         try:
             from app.data_sources.cn_hk_fundamentals import fetch_cn_fundamental_akshare
 
@@ -368,6 +394,10 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
                 pe = _safe_float(fund.get("pe_ratio"))
                 if pe is not None and pe > 0:
                     out["pe_ratio"] = pe
+            if out.get("pb_ratio") is None and fund.get("pb_ratio") is not None:
+                pb = _safe_float(fund.get("pb_ratio"))
+                if pb is not None and pb > 0:
+                    out["pb_ratio"] = pb
             if out.get("market_cap") is None and fund.get("market_cap") is not None:
                 out["market_cap"] = fund.get("market_cap")
         except Exception as exc:
@@ -379,6 +409,7 @@ def _stock_constituent_snapshot(stock_code: str) -> Dict[str, Any]:
         if ni is not None and rev and rev > 0:
             out["profit_margin"] = round(float(ni) / float(rev) * 100.0, 2)
 
+    _derive_net_assets(out)
     out["source"] = out.get("source") or "live"
     _cache_set(cache_key, out, _PROFIT_CACHE_TTL)
     if _snapshot_is_usable(out):
@@ -538,8 +569,9 @@ def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 180.0, b
     # Only treat *complete* cache/DB rows as done; partial rows must gap-fill.
     pending: List[str] = []
     for code in unique:
-        cached = _cache_get(f"etf:constituent_snapshot:{code}")
+        cached = _cache_get(_constituent_snapshot_cache_key(code))
         if isinstance(cached, dict) and _snapshot_is_complete(cached):
+            _derive_net_assets(cached)
             snapshots[code] = cached
         else:
             pending.append(code)
@@ -553,18 +585,20 @@ def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 180.0, b
             for code in pending:
                 db_snap = db_map.get(code) or {}
                 if isinstance(db_snap, dict) and _snapshot_is_complete(db_snap):
+                    _derive_net_assets(db_snap)
                     snapshots[code] = db_snap
-                    _cache_set(f"etf:constituent_snapshot:{code}", db_snap, _PROFIT_CACHE_TTL)
+                    _cache_set(_constituent_snapshot_cache_key(code), db_snap, _PROFIT_CACHE_TTL)
                 else:
                     # Seed partial DB/cache into Redis so snapshot() can reuse net_profit etc.
                     if isinstance(db_snap, dict) and db_snap:
                         seeded = dict(db_snap)
-                        cached = _cache_get(f"etf:constituent_snapshot:{code}")
+                        cached = _cache_get(_constituent_snapshot_cache_key(code))
                         if isinstance(cached, dict):
                             for key, value in cached.items():
                                 if seeded.get(key) is None and value is not None:
                                     seeded[key] = value
-                        _cache_set(f"etf:constituent_snapshot:{code}", seeded, _PROFIT_CACHE_TTL)
+                        _derive_net_assets(seeded)
+                        _cache_set(_constituent_snapshot_cache_key(code), seeded, _PROFIT_CACHE_TTL)
                     still_pending.append(code)
             pending = still_pending
         except Exception as exc:
@@ -585,7 +619,7 @@ def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 180.0, b
                     try:
                         snapshots[code] = fut.result(timeout=0) or {}
                     except Exception:
-                        snapshots[code] = _cache_get(f"etf:constituent_snapshot:{code}") or {}
+                        snapshots[code] = _cache_get(_constituent_snapshot_cache_key(code)) or {}
             except Exception as exc:
                 logger.warning("constituent snapshot batch incomplete: %s", exc)
                 for fut, code in futures.items():
@@ -595,9 +629,9 @@ def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 180.0, b
                         try:
                             snapshots[code] = fut.result(timeout=0) or {}
                         except Exception:
-                            snapshots[code] = _cache_get(f"etf:constituent_snapshot:{code}") or {}
+                            snapshots[code] = _cache_get(_constituent_snapshot_cache_key(code)) or {}
                     else:
-                        snapshots[code] = _cache_get(f"etf:constituent_snapshot:{code}") or {}
+                        snapshots[code] = _cache_get(_constituent_snapshot_cache_key(code)) or {}
     return snapshots
 
 
@@ -625,9 +659,10 @@ def _merge_holdings_metrics(base_rows: List[Dict[str, Any]], snapshots: Dict[str
     for row in base_rows:
         item = dict(row)
         snap = snapshots.get(row["code"]) or snapshots.get(_code6(row.get("code"))) or {}
-        for key in ("net_profit", "profit_margin", "pe_ratio", "market_cap", "price", "total_shares"):
+        for key in ("net_profit", "profit_margin", "pe_ratio", "pb_ratio", "market_cap", "net_assets", "price", "total_shares"):
             if snap.get(key) is not None:
                 item[key] = snap.get(key)
+        _derive_net_assets(item)
         # Index constituents have no disclosed share count; estimate from MV / price.
         if item.get("shares") is None:
             mv = _safe_float(item.get("market_value"))
@@ -660,8 +695,11 @@ def _merge_holdings_metrics(base_rows: List[Dict[str, Any]], snapshots: Dict[str
         "constituent_market_cap_sum": cap_sum if cap_have else None,
         "market_cap_coverage": cap_have,
         "pe_coverage": sum(1 for r in holdings if r.get("pe_ratio") is not None),
+        "pb_coverage": sum(1 for r in holdings if r.get("pb_ratio") is not None),
+        "net_assets_coverage": sum(1 for r in holdings if r.get("net_assets") is not None),
         "margin_coverage": sum(1 for r in holdings if r.get("profit_margin") is not None),
         "avg_pe": _weighted_avg(holdings, "pe_ratio"),
+        "avg_pb": _weighted_avg(holdings, "pb_ratio"),
         "avg_profit_margin": _weighted_avg(holdings, "profit_margin"),
     }
     return out
@@ -705,7 +743,7 @@ def _holdings_profit_metrics(
     top_n: int = 0,
     etf_scale: Optional[float] = None,
 ) -> Dict[str, Any]:
-    cache_key = f"etf:holdings_profit:v5:{code6}"
+    cache_key = f"etf:holdings_profit:v6:{code6}"
     cached = _cache_get(cache_key)
     if isinstance(cached, dict):
         return cached
@@ -719,8 +757,11 @@ def _holdings_profit_metrics(
         "constituent_market_value_sum": None,
         "constituent_market_cap_sum": None,
         "avg_pe": None,
+        "avg_pb": None,
         "avg_profit_margin": None,
         "pe_coverage": 0,
+        "pb_coverage": 0,
+        "net_assets_coverage": 0,
         "margin_coverage": 0,
         "market_cap_coverage": 0,
         "holdings": [],
@@ -759,7 +800,7 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
     if not code6:
         return base
 
-    cache_key = f"etf:metrics_bundle:v3:{code6}"
+    cache_key = f"etf:metrics_bundle:v4:{code6}"
     cached = _cache_get(cache_key)
     if isinstance(cached, dict) and cached.get("code") == code6:
         merged = dict(base)

@@ -1,0 +1,17 @@
+ETF constituent list: add Net Assets + PB columns.
+
+Backend companion branch: cursor/etf-constituent-pb-net-assets-c137
+Base: cursor/etf-constituent-coverage-c137
+
+Apply on QuantDinger-Vue:
+  1) Copy the colNetAssets / colPb columns from etf-derivatives.vue into
+     src/views/market-composite-analysis/etf-derivatives.vue
+  2) Merge locale keys from etf-constituent-pb-net-assets.i18n.txt into zh-CN.js / en-US.js
+
+Backend:
+  - stock_value_em 提供市净率 -> pb_ratio
+  - net_assets = market_cap / pb_ratio
+  - 缓存键升版 holdings_profit:v6 / metrics_bundle:v4 / constituent_snapshot:v2
+
+Production hotfix must patch the existing Vite chunk + i18n bundles in place
+(do not replace whole hashed assets).

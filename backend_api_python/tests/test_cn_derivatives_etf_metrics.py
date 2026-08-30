@@ -242,3 +242,51 @@ def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
     assert out["constituent_market_value_sum"] == 9e8
     assert out["avg_pe"] == 15.5
     assert len(out["holdings"]) == 1
+
+
+def test_derive_net_assets_and_pb_complete():
+    snap = {"market_cap": 100.0, "pb_ratio": 4.0}
+    metrics._derive_net_assets(snap)
+    assert snap["net_assets"] == 25.0
+    # do not overwrite existing book value
+    snap["net_assets"] = 30.0
+    metrics._derive_net_assets(snap)
+    assert snap["net_assets"] == 30.0
+    assert metrics._snapshot_is_complete(
+        {
+            "net_profit": 1,
+            "profit_margin": 1,
+            "market_cap": 1,
+            "price": 1,
+            "pb_ratio": 2,
+        }
+    )
+    assert not metrics._snapshot_is_complete(
+        {
+            "net_profit": 1,
+            "profit_margin": 1,
+            "market_cap": 1,
+            "price": 1,
+        }
+    )
+
+
+def test_merge_holdings_includes_pb_and_net_assets():
+    base = [{"code": "600519", "name": "茅台", "weight_pct": 10.0, "market_value": 1_000_000}]
+    snaps = {
+        "600519": {
+            "net_profit": 100.0,
+            "profit_margin": 20.0,
+            "pe_ratio": 10.0,
+            "pb_ratio": 5.0,
+            "market_cap": 2_000_000.0,
+            "price": 100.0,
+        }
+    }
+    out = metrics._merge_holdings_metrics(base, snaps)
+    row = out["holdings"][0]
+    assert row["pb_ratio"] == 5.0
+    assert row["net_assets"] == 400_000.0
+    assert out["pb_coverage"] == 1
+    assert out["net_assets_coverage"] == 1
+    assert out["avg_pb"] == 5.0
