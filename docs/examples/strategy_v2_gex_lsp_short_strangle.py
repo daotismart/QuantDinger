@@ -4,6 +4,10 @@ LSP sets net delta exposure; call/put skew realizes that delta.
 No underlying hedge.
 Opens on next-month (次月) contracts and rolls 15 DTE before expiry.
 
+Config underlying = the ETF that the ETF options are written on (not the option codes).
+Default: CNStock:510050 (SSE 50 ETF). When configuring / forking, select that ETF;
+swap call/put legs to the matching next-month chain for the same ETF.
+
 Universe is source-owned for Strategy API V2 sandboxes. For research with full
 historical walls, use scripts/backtest_gex_lsp_short_strangle.py.
 """
@@ -28,28 +32,34 @@ import math
 
 PERSIST_RUNTIME_STATE = True
 
-CALL_SYMBOL = "CNIndexOptions:10010975"  # sandbox leg near call wall (replace per roll)
-PUT_SYMBOL = "CNIndexOptions:10010981"  # sandbox leg near put wall (replace per roll)
-UNDERLYING_SYMBOL = "CNStock:510050"
+# Config symbol: ETF underlying of the ETF-option chain (select this when configuring).
+UNDERLYING_SYMBOL = "CNStock:510050"  # SSE 50 ETF — change with call/put legs for other ETFs
+CALL_SYMBOL = "CNIndexOptions:10010975"  # sandbox 510050 call near wall (replace per roll)
+PUT_SYMBOL = "CNIndexOptions:10010981"  # sandbox 510050 put near wall (replace per roll)
 BAR_FREQUENCY = "1d"
 MULTIPLIER = 10000.0
 
 
 def initialize(context):
+    g.underlying_symbol = UNDERLYING_SYMBOL
     g.call_symbol = CALL_SYMBOL
     g.put_symbol = PUT_SYMBOL
-    g.underlying_symbol = UNDERLYING_SYMBOL
     g.bar_index = 0
     g.entry_bar = -1
     g.in_trade = False
     g.hold_dte = 0
     g.lsp_score = 0.0
-    # Underlying is used only for LSP / wall / spot price signals — never traded.
-    context.set_universe([g.call_symbol, g.put_symbol, g.underlying_symbol])
+    # ETF first: config/primary symbol. Options are traded; ETF is signal-only (never bought/sold).
+    context.set_universe([g.underlying_symbol, g.call_symbol, g.put_symbol])
     context.set_benchmark(g.underlying_symbol)
     context.subscribe(frequency=BAR_FREQUENCY, fields=["open", "high", "low", "close", "volume"])
     context.set_warmup(30)
-    context.set_metadata(direction_mode="both", strategy_family="options_short_vol_options_hedge")
+    context.set_metadata(
+        direction_mode="both",
+        strategy_family="options_short_vol_options_hedge",
+        config_symbol=g.underlying_symbol,
+        underlying_etf="510050",
+    )
 
 
 def handle_data(context, data):

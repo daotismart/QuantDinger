@@ -120,6 +120,26 @@ def test_deployment_recovers_legacy_visual_grid_runtime_from_executor_type(monke
     assert trading_config["bot_params"]["amountPerGridPct"] == pytest.approx(0.25)
 
 
+def test_manifest_symbol_prefers_benchmark_etf_for_option_basket():
+    symbol = StrategyV2DeploymentService._manifest_symbol(
+        {
+            "universe": {
+                "instruments": [
+                    {"market": "CNIndexOptions", "symbol": "10010975"},
+                    {"market": "CNIndexOptions", "symbol": "10010981"},
+                    {"market": "CNStock", "symbol": "510050"},
+                ]
+            },
+            "benchmark": {"market": "CNStock", "symbol": "510050"},
+            "metadata": {
+                "config_symbol": "CNStock:510050",
+                "underlying_etf": "510050",
+            },
+        }
+    )
+    assert symbol == "510050"
+
+
 def test_deployment_manifest_overrides_stale_editor_symbol_and_market_type(monkeypatch):
     stock_source = """
 def initialize(context):

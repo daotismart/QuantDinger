@@ -271,12 +271,32 @@ class StrategyV2DeploymentService:
 
     @staticmethod
     def _manifest_symbol(manifest: dict[str, Any]) -> str:
+        """Prefer benchmark / declared config symbol for multi-leg (e.g. ETF options)."""
         universe = manifest.get("universe") or {}
         if universe.get("reference"):
             return f"universe:{universe['reference']}"
+        metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+        for key in ("config_symbol", "configSymbol", "underlying_etf", "underlyingEtf"):
+            raw = str(metadata.get(key) or "").strip()
+            if raw:
+                return raw.split(":")[-1] if ":" in raw and key.lower().endswith("etf") else (
+                    raw.split(":", 1)[1] if raw.startswith(("CNStock:", "CNIndexOptions:", "CNFutures:")) else raw
+                )
+        benchmark = manifest.get("benchmark")
+        if isinstance(benchmark, dict):
+            bench_symbol = str(benchmark.get("symbol") or "").strip()
+            if bench_symbol:
+                return bench_symbol
         instruments = universe.get("instruments") or []
         if len(instruments) == 1:
             return str(instruments[0].get("symbol") or "")
+        # Prefer equity/ETF leg as the config symbol when mixed with options.
+        for item in instruments:
+            market = str(item.get("market") or "")
+            if market in {"CNStock", "USStock", "HKStock"}:
+                symbol = str(item.get("symbol") or "").strip()
+                if symbol:
+                    return symbol
         return f"basket:{len(instruments)}"
 
     @staticmethod

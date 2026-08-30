@@ -562,7 +562,25 @@ def _normalize_field(value: str) -> str:
 
 
 def _manifest_symbol(manifest: StrategyManifest) -> str:
+    """Prefer benchmark / config ETF for multi-leg option strategies."""
     if manifest.universe.reference:
         return f"universe:{manifest.universe.reference}"
+    metadata = manifest.metadata if isinstance(manifest.metadata, dict) else {}
+    for key in ("config_symbol", "configSymbol", "underlying_etf", "underlyingEtf"):
+        raw = str(metadata.get(key) or "").strip()
+        if not raw:
+            continue
+        if key.lower().endswith("etf"):
+            return raw.split(":")[-1]
+        if ":" in raw:
+            return raw.split(":", 1)[1]
+        return raw
+    if manifest.benchmark is not None and str(manifest.benchmark.symbol or "").strip():
+        return str(manifest.benchmark.symbol).strip()
     values = [item.symbol for item in manifest.universe.instruments]
-    return values[0] if len(values) == 1 else f"basket:{len(values)}"
+    if len(values) == 1:
+        return values[0]
+    for item in manifest.universe.instruments:
+        if str(item.market or "") in {"CNStock", "USStock", "HKStock"} and item.symbol:
+            return str(item.symbol)
+    return f"basket:{len(values)}"

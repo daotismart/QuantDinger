@@ -1,5 +1,17 @@
 # GEX + LSP + Kelly Short Strangle（纯期权）
 
+## 配置标的
+
+**策略标的 = ETF 期权对应的现货 ETF**（不是期权合约代码）。
+
+| 项 | 默认值 |
+|----|--------|
+| 配置/基准标的 | `CNStock:510050`（上证50ETF） |
+| 交易品种 | 该 ETF 的次月认购/认沽期权 |
+| 现货 ETF | 只做 LSP / wall / IV 信号，**不下单买卖 ETF** |
+
+配置或分叉策略时：先选定 ETF（如 510050 / 510300 / 159915），再把 call/put 腿换成同一 ETF 次月链上的合约，并同步 wall 行权价。
+
 期权卖方策略分工：
 
 1. **GEX wall** 决定 **安全行权价**（call wall / put wall 附近卖出宽跨式）。
@@ -11,6 +23,7 @@
 
 | 模块 | 作用 |
 |------|------|
+| 配置标的 | **ETF**（期权标的）；默认 510050 |
 | GEX walls | 选 OTM call≈call wall、OTM put≈put wall；优先现货在墙内开仓 |
 | High IV | `iv_rank ≥ iv_rank_min` 才开仓 |
 | Kelly | `f* = 2p − 1` 作为 **保证金/权益** 比例；按单组宽跨保证金换算张数 |
