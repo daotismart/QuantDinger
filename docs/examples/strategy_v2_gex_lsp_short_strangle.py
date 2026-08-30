@@ -1,6 +1,8 @@
-"""GEX+LSP Dynamic Short Strangle (options-only delta hedge)
-LSP sets portfolio net-delta direction and magnitude; GEX walls set short call /
-put strikes; delta is expressed only by call/put lot skew (no underlying hedge).
+"""GEX+LSP+Kelly Dynamic Short Strangle (options-only)
+GEX walls set short call/put strikes; enter only when IV is rich; Kelly (premium odds 1:1) sets margin/equity ratio with hard caps;
+LSP sets net delta exposure; call/put skew realizes that delta.
+No underlying hedge.
+Opens on next-month (次月) contracts and rolls 15 DTE before expiry.
 
 Universe is source-owned for Strategy API V2 sandboxes. For research with full
 historical walls, use scripts/backtest_gex_lsp_short_strangle.py.
@@ -16,7 +18,13 @@ import math
 # @param put_wall float 2.9 GEX put-wall strike range=1:10:0.05
 # @param call_wall float 3.1 GEX call-wall strike range=1:10:0.05
 # @param wall_buffer_pct float 0.005 Buffer around walls for entry/exit range=0:0.05:0.001
-# @param max_hold_bars int 15 Exit after N daily bars range=1:60:1
+# @param max_hold_bars int 60 Exit after N daily bars (prefer roll_before_dte) range=1:90:1
+# @param roll_before_dte int 15 Roll to next-month when DTE <= N range=5:30:1
+# @param expiry_month str next Open on next-month (次月) not front month
+# @param iv_rank_min float 0.6 Min ATM IV-rank proxy to sell premium range=0:1:0.05
+# @param kelly_max_fraction float 0.25 Hard Kelly fraction cap (risk control) range=0.05:0.5:0.05
+# @param kelly_max_lots int 5 Max base lots after Kelly range=1:20:1
+# @param kelly_prior_p float 0.55 Prior win probability for Kelly range=0.4:0.7:0.01
 
 PERSIST_RUNTIME_STATE = True
 
@@ -56,6 +64,10 @@ def handle_data(context, data):
     call_wall = _f(context.params.get("call_wall", 3.1), 3.1)
     wall_buf = max(_f(context.params.get("wall_buffer_pct", 0.005), 0.005), 0.0)
     max_hold = max(int(context.params.get("max_hold_bars", 15) or 15), 1)
+    iv_rank_min = max(_f(context.params.get("iv_rank_min", 0.6), 0.6), 0.0)
+    kelly_max_f = max(_f(context.params.get("kelly_max_fraction", 0.25), 0.25), 0.0)
+    kelly_max_lots = max(int(context.params.get("kelly_max_lots", 5) or 5), 0)
+    prior_p = min(max(_f(context.params.get("kelly_prior_p", 0.55), 0.55), 0.01), 0.99)
 
     hist = get_history(max(days_2 * 3, 40), BAR_FREQUENCY, ["open", "high", "low", "close", "volume"], g.underlying_symbol)
     if hist is None or len(hist) < days_2 + 2:
@@ -71,7 +83,16 @@ def handle_data(context, data):
     g.lsp_score = lsp_score
     # Target delta is informational; hedge is realized only via option lot skew.
     _ = lsp_score * max_abs_delta * lots * MULTIPLIER
-    call_lots, put_lots = _skew_lots(lsp_score, lots, max_skew)
+    iv_rank = _iv_rank_proxy(hist)
+    high_iv_ok = iv_rank is None or iv_rank >= iv_rank_min
+    equity = float(getattr(context.portfolio, "total_value", 0.0) or 0.0)
+    # Prior-only win prob in sandbox (research engine tracks closed PnLs).
+    base_lots = _kelly_base_lots(equity, call_px, put_px, prior_p, kelly_max_f, kelly_max_lots)
+    if base_lots <= 0:
+        base_lots = 0
+    call_lots, put_lots = _skew_lots(lsp_score, max(base_lots, 1) if base_lots > 0 else 0, max_skew)
+    if base_lots <= 0:
+        call_lots, put_lots = 0, 0
     inside = (spot <= call_wall * (1.0 - wall_buf)) and (spot >= put_wall * (1.0 + wall_buf))
     g.bar_index = int(g.bar_index) + 1
 
@@ -97,7 +118,7 @@ def handle_data(context, data):
             g.entry_bar = -1
         return
 
-    if inside and abs(call_qty) < 1e-9 and abs(put_qty) < 1e-9 and (call_lots + put_lots) > 0:
+    if inside and high_iv_ok and abs(call_qty) < 1e-9 and abs(put_qty) < 1e-9 and (call_lots + put_lots) > 0:
         order_target(g.call_symbol, -float(call_lots), reason="short_call_at_gex_wall")
         order_target(g.put_symbol, -float(put_lots), reason="short_put_at_gex_wall")
         order_target(g.underlying_symbol, 0, reason="no_spot_hedge")
@@ -162,3 +183,44 @@ def _f(value, default):
         return out
     except Exception:
         return float(default)
+
+
+def _iv_rank_proxy(hist):
+    """Proxy IV rank from realized vol of underlying closes (sandbox has no chain IV)."""
+    closes = [float(x) for x in hist["close"].tolist()]
+    if len(closes) < 10:
+        return None
+    import math
+    rets = []
+    for i in range(1, len(closes)):
+        if closes[i - 1] > 0:
+            rets.append(math.log(closes[i] / closes[i - 1]))
+    if len(rets) < 5:
+        return None
+    window = rets[-60:] if len(rets) >= 60 else rets
+    vols = []
+    for i in range(4, len(window)):
+        chunk = window[i - 4 : i + 1]
+        mu = sum(chunk) / len(chunk)
+        var = sum((x - mu) ** 2 for x in chunk) / max(len(chunk) - 1, 1)
+        vols.append(math.sqrt(max(var, 0.0)))
+    if len(vols) < 2:
+        return None
+    cur, lo, hi = vols[-1], min(vols), max(vols)
+    if hi <= lo:
+        return 0.5
+    return (cur - lo) / (hi - lo)
+
+
+def _kelly_base_lots(equity, call_px, put_px, win_prob, max_fraction, max_lots):
+    """f* = 2p-1 for 1:1 premium odds; clamp fraction and lots (risk control)."""
+    p = float(win_prob)
+    raw = 2.0 * p - 1.0
+    if raw <= 0 or equity <= 0 or max_lots <= 0:
+        return 0
+    fraction = min(raw, float(max_fraction))
+    capital_per_lot = (max(call_px, 0.0) + max(put_px, 0.0)) * MULTIPLIER
+    if capital_per_lot <= 0:
+        return 0
+    lots = int((equity * fraction) // capital_per_lot)
+    return int(min(max(lots, 0), int(max_lots)))

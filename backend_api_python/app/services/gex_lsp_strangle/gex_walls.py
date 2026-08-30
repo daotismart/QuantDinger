@@ -20,14 +20,100 @@ def _f(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def list_monthly_expiries(
+    chain: pd.DataFrame | Sequence[Mapping[str, Any]],
+    *,
+    asof: Any | None = None,
+    min_dte: int = 1,
+    max_dte: int = 120,
+    min_contracts: int = 8,
+) -> list[pd.Timestamp]:
+    """Sorted monthly expiries available on ``asof`` (DTE within [min_dte, max_dte])."""
+    if isinstance(chain, pd.DataFrame):
+        df = chain.copy()
+    else:
+        df = pd.DataFrame(list(chain))
+    if df.empty:
+        return []
+    lower = {str(c).lower(): c for c in df.columns}
+    if "expire_date" not in df.columns:
+        for name in ("expire_date", "expiry", "expiration"):
+            if name in lower:
+                df = df.rename(columns={lower[name]: "expire_date"})
+                break
+    if "expire_date" not in df.columns:
+        return []
+    df["expire_date"] = pd.to_datetime(df["expire_date"], errors="coerce")
+    if asof is not None:
+        trade_date = pd.to_datetime(asof)
+    elif "trade_date" in df.columns:
+        trade_date = pd.to_datetime(df["trade_date"].iloc[0], errors="coerce")
+    else:
+        trade_date = pd.Timestamp.utcnow().normalize()
+    df["dte"] = (df["expire_date"] - trade_date).dt.days
+    df = df[(df["dte"] >= int(min_dte)) & (df["dte"] <= int(max_dte))]
+    df = df[df["expire_date"].notna()]
+    if df.empty:
+        return []
+    counts = df.groupby("expire_date").size().sort_index()
+    liquid = [pd.Timestamp(exp) for exp, count in counts.items() if int(count) >= int(min_contracts)]
+    if len(liquid) >= 2:
+        return liquid
+    # If books are thin (common in unit tests / sparse dumps), keep every month
+    # with any quotes so 次月 selection still works.
+    if liquid:
+        extras = [pd.Timestamp(exp) for exp in counts.index if pd.Timestamp(exp) not in liquid]
+        return liquid + extras
+    return [pd.Timestamp(e) for e in counts.index]
+
+
+def select_target_expire(
+    chain: pd.DataFrame | Sequence[Mapping[str, Any]],
+    *,
+    asof: Any | None = None,
+    expiry_month: str = "next",
+    min_dte: int = 1,
+    max_dte: int = 120,
+    min_contracts: int = 8,
+    prefer_expire: str | None = None,
+) -> pd.Timestamp | None:
+    """Pick 当月 (front) or 次月 (next) expiry.
+
+    ``expiry_month``:
+      - ``front`` / ``near`` / ``当月``: nearest eligible monthly
+      - ``next`` / ``next_month`` / ``次月``: second nearest (fallback to front)
+    """
+    if prefer_expire:
+        pref = pd.to_datetime(prefer_expire, errors="coerce")
+        if pd.notna(pref):
+            return pd.Timestamp(pref)
+    expiries = list_monthly_expiries(
+        chain,
+        asof=asof,
+        min_dte=min_dte,
+        max_dte=max_dte,
+        min_contracts=min_contracts,
+    )
+    if not expiries:
+        return None
+    mode = str(expiry_month or "next").strip().lower()
+    if mode in ("next", "next_month", "次月", "second"):
+        if len(expiries) >= 2:
+            return expiries[1]
+        return expiries[0]
+    return expiries[0]
+
+
 def compute_gex_walls(
     chain: pd.DataFrame | Sequence[Mapping[str, Any]],
     *,
     underlying: float,
     multiplier: float = 10000.0,
-    min_dte: int = 5,
-    max_dte: int = 60,
+    min_dte: int = 1,
+    max_dte: int = 90,
     prefer_expire: str | None = None,
+    expiry_month: str = "next",
+    min_contracts: int = 8,
 ) -> dict[str, Any]:
     """Compute call/put walls, pin, and flip from a single-day option chain.
 
@@ -38,6 +124,8 @@ def compute_gex_walls(
     Call wall = strike with max call OI; put wall = max put OI; pin = max total OI.
     Flip = first strike (ascending, near/above 0.8× spot) where cumulative net GEX
     changes sign from negative to positive.
+
+    By default selects **次月** (``expiry_month="next"``) rather than front month.
     """
     if isinstance(chain, pd.DataFrame):
         df = chain.copy()
@@ -52,6 +140,7 @@ def compute_gex_walls(
             "expire_date": None,
             "spot": float(underlying),
             "points": [],
+            "expiry_month": expiry_month,
         }
 
     rename = {}
@@ -69,7 +158,7 @@ def compute_gex_walls(
             if name in lower:
                 rename[lower[name]] = want
                 break
-    for want in ("strike", "cp", "gamma", "delta", "trade_date"):
+    for want in ("strike", "cp", "gamma", "delta", "trade_date", "contract_code"):
         if want not in df.columns and want in lower:
             rename[lower[want]] = want
     if rename:
@@ -87,13 +176,11 @@ def compute_gex_walls(
     else:
         trade_date = pd.Timestamp.utcnow().normalize()
     df["dte"] = (df["expire_date"] - trade_date).dt.days
-    df = df[(df["dte"] >= int(min_dte)) & (df["dte"] <= int(max_dte))]
+    # Broad DTE window for listing months; target expiry is chosen below.
+    list_min = min(int(min_dte), 1)
+    list_max = max(int(max_dte), 90)
+    df = df[(df["dte"] >= list_min) & (df["dte"] <= list_max)]
     df = df[df["strike"].notna() & df["cp"].isin(["C", "P"])]
-    if prefer_expire:
-        pref = pd.to_datetime(prefer_expire)
-        subset = df[df["expire_date"] == pref]
-        if not subset.empty:
-            df = subset
     if df.empty:
         return {
             "call_wall": None,
@@ -103,15 +190,42 @@ def compute_gex_walls(
             "expire_date": None,
             "spot": float(underlying),
             "points": [],
+            "expiry_month": expiry_month,
         }
 
-    expiry_counts = df.groupby("expire_date").size().sort_index()
-    expire = expiry_counts.index[0]
-    for exp, count in expiry_counts.items():
-        if count >= 8:
-            expire = exp
-            break
-    df = df[df["expire_date"] == expire].copy()
+    target = select_target_expire(
+        df,
+        asof=trade_date,
+        expiry_month=expiry_month,
+        min_dte=list_min,
+        max_dte=list_max,
+        min_contracts=min_contracts,
+        prefer_expire=prefer_expire,
+    )
+    if target is None:
+        return {
+            "call_wall": None,
+            "put_wall": None,
+            "pin": None,
+            "flip": None,
+            "expire_date": None,
+            "spot": float(underlying),
+            "points": [],
+            "expiry_month": expiry_month,
+        }
+    df = df[df["expire_date"] == pd.Timestamp(target)].copy()
+    if df.empty:
+        return {
+            "call_wall": None,
+            "put_wall": None,
+            "pin": None,
+            "flip": None,
+            "expire_date": None,
+            "spot": float(underlying),
+            "points": [],
+            "expiry_month": expiry_month,
+        }
+    expire = pd.Timestamp(target)
     spot = float(underlying)
 
     rows: list[dict[str, Any]] = []
@@ -192,6 +306,8 @@ def compute_gex_walls(
         "expire_date": str(pd.Timestamp(expire).date()),
         "spot": spot,
         "points": points,
+        "expiry_month": expiry_month,
+        "dte": int((expire - trade_date).days),
     }
 
 

@@ -121,6 +121,27 @@ def lsp_target_delta_shares(
     return score * max_abs_delta * max(int(lots), 1) * float(multiplier)
 
 
+def lsp_delta_exposure_shares(
+    lsp_delta_score: float,
+    *,
+    margin_budget: float,
+    spot: float,
+    max_abs_delta: float = 0.5,
+) -> float:
+    """LSP-driven net delta exposure in underlying shares.
+
+    Scales with Kelly margin budget: ``score * max_abs_delta * (budget / spot)``.
+    Positive score → net long delta; negative → net short delta.
+    """
+    score = float(np.clip(lsp_delta_score, -1.0, 1.0))
+    max_abs_delta = max(0.0, float(max_abs_delta))
+    spot = max(float(spot), 1e-9)
+    budget = max(float(margin_budget), 0.0)
+    notional_shares = budget / spot
+    return score * max_abs_delta * notional_shares
+
+
+
 def lsp_option_skew_lots(
     lsp_delta_score: float,
     *,
