@@ -2,6 +2,7 @@
 GEX walls set short call/put strikes; enter only when IV is rich; Kelly (premium odds 1:1) sets margin/equity ratio with hard caps;
 LSP sets net delta exposure; call/put skew realizes that delta.
 No underlying hedge.
+Opens on next-month (次月) contracts and rolls 15 DTE before expiry.
 
 Universe is source-owned for Strategy API V2 sandboxes. For research with full
 historical walls, use scripts/backtest_gex_lsp_short_strangle.py.
@@ -17,7 +18,9 @@ import math
 # @param put_wall float 2.9 GEX put-wall strike range=1:10:0.05
 # @param call_wall float 3.1 GEX call-wall strike range=1:10:0.05
 # @param wall_buffer_pct float 0.005 Buffer around walls for entry/exit range=0:0.05:0.001
-# @param max_hold_bars int 15 Exit after N daily bars range=1:60:1
+# @param max_hold_bars int 60 Exit after N daily bars (prefer roll_before_dte) range=1:90:1
+# @param roll_before_dte int 15 Roll to next-month when DTE <= N range=5:30:1
+# @param expiry_month str next Open on next-month (次月) not front month
 # @param iv_rank_min float 0.6 Min ATM IV-rank proxy to sell premium range=0:1:0.05
 # @param kelly_max_fraction float 0.25 Hard Kelly fraction cap (risk control) range=0.05:0.5:0.05
 # @param kelly_max_lots int 5 Max base lots after Kelly range=1:20:1

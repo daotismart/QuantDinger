@@ -5,7 +5,12 @@ from app.services.gex_lsp_strangle.engine import (
     ShortStrangleBacktestResult,
     run_short_strangle_backtest,
 )
-from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
+from app.services.gex_lsp_strangle.gex_walls import (
+    compute_gex_walls,
+    list_monthly_expiries,
+    select_strangle_strikes,
+    select_target_expire,
+)
 from app.services.gex_lsp_strangle.kelly import (
     KellySizingResult,
     estimate_strangle_margin,
@@ -26,6 +31,7 @@ __all__ = [
     "ShortStrangleBacktestConfig",
     "ShortStrangleBacktestResult",
     "compute_gex_walls",
+    "list_monthly_expiries",
     "compute_lsp_features",
     "estimate_strangle_margin",
     "estimate_win_prob",
@@ -35,6 +41,7 @@ __all__ = [
     "lsp_target_delta_shares",
     "run_short_strangle_backtest",
     "select_strangle_strikes",
+    "select_target_expire",
     "size_by_kelly_margin",
     "size_short_premium_lots",
 ]

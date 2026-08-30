@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 
 from app.services.gex_lsp_strangle.engine import ShortStrangleBacktestConfig, run_short_strangle_backtest
-from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
+from app.services.gex_lsp_strangle.gex_walls import (
+    compute_gex_walls,
+    list_monthly_expiries,
+    select_strangle_strikes,
+    select_target_expire,
+)
 from app.services.gex_lsp_strangle.kelly import (
     estimate_strangle_margin,
     estimate_win_prob,
@@ -301,3 +306,112 @@ def test_rising_iv_allows_kelly_entry():
     kelly_days = [d for d in result.daily if d.get("kellyBaseLots")]
     assert kelly_days
     assert all(int(d["kellyBaseLots"]) <= 2 for d in kelly_days if d.get("kellyBaseLots") is not None)
+
+
+def test_select_target_expire_prefers_next_month():
+    rows = []
+    for expire in ("2026-04-22", "2026-05-27", "2026-06-24"):
+        for strike, call_oi, put_oi in [(2.8, 1000, 40000), (3.0, 50000, 5000)]:
+            for cp, oi in (("C", call_oi), ("P", put_oi)):
+                rows.append(
+                    {
+                        "trade_date": "2026-04-01",
+                        "strike": strike,
+                        "cp": cp,
+                        "expire_date": expire,
+                        "open_interest": oi,
+                        "gamma": 1.0,
+                        "delta": 0.3 if cp == "C" else -0.3,
+                        "option_close": 0.05,
+                        "contract_code": f"{cp}-{expire}-{strike}",
+                    }
+                )
+    df = pd.DataFrame(rows)
+    months = list_monthly_expiries(df, asof="2026-04-01", min_dte=1, max_dte=120, min_contracts=4)
+    assert [str(m.date()) for m in months] == ["2026-04-22", "2026-05-27", "2026-06-24"]
+    assert str(select_target_expire(df, asof="2026-04-01", expiry_month="next", min_contracts=4).date()) == "2026-05-27"
+    assert str(select_target_expire(df, asof="2026-04-01", expiry_month="front", min_contracts=4).date()) == "2026-04-22"
+    walls = compute_gex_walls(df, underlying=2.95, min_dte=1, max_dte=120, expiry_month="next", min_contracts=4)
+    assert walls["expire_date"] == "2026-05-27"
+
+
+def test_roll_month_exits_fifteen_dte_and_reopens_next():
+    """Open on 次月; when DTE<=15, roll and reopen a later month same day."""
+    dates = pd.date_range("2026-04-01", periods=55, freq="B")
+    und = pd.DataFrame(
+        {
+            "trade_date": dates,
+            "underlying_code": "510050",
+            "open": 2.95,
+            "high": 2.97,
+            "low": 2.93,
+            "close": np.full(len(dates), 2.95),
+            "volume": 8_000_000,
+            "amount": 24_000_000,
+        }
+    )
+    chain_rows = []
+    oi_rows = []
+    # Three months so 次月 can roll into the following 次月.
+    for dt in dates:
+        for expire in ("2026-05-27", "2026-06-24", "2026-07-22"):
+            for strike, call_oi, put_oi in [(2.85, 20000, 50000), (2.95, 30000, 30000), (3.05, 60000, 15000)]:
+                for cp, oi in (("C", call_oi), ("P", put_oi)):
+                    code = f"50ETF-{expire}-{cp}-{strike}"
+                    chain_rows.append(
+                        {
+                            "trade_date": dt,
+                            "underlying_code": "510050",
+                            "contract_code": code,
+                            "strike": strike,
+                            "cp": cp,
+                            "expire_date": expire,
+                            "option_close": 0.05,
+                            "underlying_close": 2.95,
+                            "delta": 0.3 if cp == "C" else -0.3,
+                            "gamma": 1.2,
+                            "vega": 0.01,
+                            "theta": -0.001,
+                            "iv": 0.15 + 0.25 * (list(dates).index(dt) / max(len(dates) - 1, 1)),
+                        }
+                    )
+                    oi_rows.append(
+                        {
+                            "trade_date": dt,
+                            "underlying_code": "510050",
+                            "contract_code": code,
+                            "open_interest": oi,
+                        }
+                    )
+    result = run_short_strangle_backtest(
+        und,
+        pd.DataFrame(chain_rows),
+        pd.DataFrame(oi_rows),
+        config=ShortStrangleBacktestConfig(
+            require_inside_walls=False,
+            require_high_iv=True,
+            iv_rank_min=0.6,
+            use_kelly_sizing=False,
+            lots=1,
+            expiry_month="next",
+            exit_dte=15,
+            roll_before_dte=15,
+            max_hold_days=60,
+            min_dte=1,
+            max_dte=120,
+            roll_skip_iv_filter=True,
+        ),
+    )
+    assert result.summary.get("expiryMonth") == "next"
+    assert result.summary.get("rollBeforeDte") == 15
+    assert result.trades, "expected trades"
+    # With May/Jun/Jul listed, early 次月 is June.
+    first = result.trades[0]
+    assert str(first.get("expireDate", ""))[:10] == "2026-06-24"
+    roll_trades = [t for t in result.trades if t.get("reason") == "roll_month"]
+    assert roll_trades, "expected at least one roll_month exit before expiry"
+    roll_idx = next(i for i, t in enumerate(result.trades) if t.get("reason") == "roll_month")
+    later = result.trades[roll_idx + 1 :]
+    assert later, "expected reopen after roll"
+    assert str(later[0].get("expireDate", ""))[:10] == "2026-07-22"
+

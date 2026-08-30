@@ -36,11 +36,18 @@ class ShortStrangleBacktestConfig:
     multiplier: float = 10000.0
     commission_per_lot: float = 5.0
     slippage_pct: float = 0.02
-    min_dte: int = 7
-    max_dte: int = 45
+    # Next-month (次月) contracts by default; widen DTE window accordingly.
+    expiry_month: str = "next"
+    min_dte: int = 1
+    max_dte: int = 90
     min_width_pct: float = 0.03
-    max_hold_days: int = 15
-    exit_dte: int = 5
+    # Hold until roll; do not force flat on a short calendar hold.
+    max_hold_days: int = 60
+    # Roll / flatten when DTE of the held month falls to this level (到期前移仓).
+    exit_dte: int = 15
+    roll_before_dte: int = 15
+    # Same-day re-entry after roll skips the high-IV gate.
+    roll_skip_iv_filter: bool = True
     lsp_days_1: int = 5
     lsp_days_2: int = 10
     lsp_neutral_band: float = 8.0
@@ -382,6 +389,7 @@ def _close_option_book(
     trade = {
         "entryDate": str(open_trade.entry_date.date()),
         "exitDate": str(pd.Timestamp(exit_date).date()),
+        "expireDate": str(pd.Timestamp(open_trade.expire_date).date()),
         "reason": reason,
         "callStrike": open_trade.call_strike,
         "putStrike": open_trade.put_strike,
@@ -420,6 +428,8 @@ def run_short_strangle_backtest(
     daily: list[dict[str, Any]] = []
     open_trade: _OpenTrade | None = None
     closed_pnls: list[float] = []
+    pending_roll: bool = False
+    rolled_from_expire: str | None = None
     atm_iv = _atm_iv_by_date(panel)
 
     dates = [d for d in und.index if d in set(panel["trade_date"].unique())]
@@ -433,6 +443,7 @@ def run_short_strangle_backtest(
             multiplier=cfg.multiplier,
             min_dte=cfg.min_dte,
             max_dte=cfg.max_dte,
+            expiry_month=cfg.expiry_month,
         )
         pick = select_strangle_strikes(walls, min_width_pct=cfg.min_width_pct)
         regime = str(row.get("lsp_regime") or "mixed")
@@ -527,10 +538,12 @@ def run_short_strangle_backtest(
 
             exit_reason = None
             dte = (pd.Timestamp(open_trade.expire_date) - dt).days
+            roll_dte = int(getattr(cfg, "roll_before_dte", cfg.exit_dte) or cfg.exit_dte)
             if open_trade.call_lots <= 0 and open_trade.put_lots <= 0:
                 exit_reason = "flat_options"
-            elif dte <= cfg.exit_dte:
-                exit_reason = "exit_dte"
+            elif dte <= roll_dte:
+                # 到期前移仓换月：平仓后当日按次月重新开仓
+                exit_reason = "roll_month"
             elif open_trade.days_held >= cfg.max_hold_days:
                 exit_reason = "max_hold"
             elif spot >= open_trade.call_wall * (1.0 + cfg.wall_buffer_pct):
@@ -550,6 +563,10 @@ def run_short_strangle_backtest(
                 )
                 trades.append(trade)
                 closed_pnls.append(float(trade.get("pnl") or 0.0))
+                pending_roll = exit_reason == "roll_month"
+                rolled_from_expire = (
+                    str(pd.Timestamp(open_trade.expire_date).date()) if pending_roll else None
+                )
                 open_trade = None
 
         if open_trade is None and pick is not None:
@@ -562,7 +579,19 @@ def run_short_strangle_backtest(
             put_px = pick.get("put_close")
             call_delta = float(pick.get("call_delta") or 0.25)
             put_delta = float(pick.get("put_delta") or -0.25)
-            entry_allowed = bool(high_iv_ok)
+            # After a calendar roll, keep exposure continuous (skip IV gate) onto 次月.
+            if pending_roll and cfg.roll_skip_iv_filter:
+                high_iv_ok = True
+            pick_exp = str(pick.get("expire_date") or "")
+            same_expiry_as_roll = False
+            if pending_roll and rolled_from_expire and pick_exp:
+                try:
+                    same_expiry_as_roll = (
+                        pd.Timestamp(rolled_from_expire).date() == pd.Timestamp(pick_exp).date()
+                    )
+                except Exception:
+                    same_expiry_as_roll = str(rolled_from_expire)[:10] == pick_exp[:10]
+            entry_allowed = bool(high_iv_ok) and (not same_expiry_as_roll)
             margin_budget = 0.0
             call_strike = float(pick.get("call_strike") or pick.get("call_wall") or spot)
             put_strike = float(pick.get("put_strike") or pick.get("put_wall") or spot)
@@ -731,6 +760,8 @@ def run_short_strangle_backtest(
                     days_held=0,
                     lsp_regime_entry=regime,
                 )
+                pending_roll = False
+                rolled_from_expire = None
 
         liability = 0.0
         net_delta = 0.0
@@ -819,6 +850,8 @@ def run_short_strangle_backtest(
         "hedgeMode": "options_only",
         "sizingMode": "kelly_margin_ratio" if cfg.use_kelly_sizing else "fixed_lots",
         "requireHighIv": bool(cfg.require_high_iv),
+        "expiryMonth": cfg.expiry_month,
+        "rollBeforeDte": int(cfg.roll_before_dte),
         "kellyOddsB": float(cfg.kelly_odds_b),
         "config": asdict(cfg),
     }
