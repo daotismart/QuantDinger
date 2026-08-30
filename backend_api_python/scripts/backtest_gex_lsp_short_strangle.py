@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Run GEX+LSP delta-targeted short-strangle backtest on exported ETF options CSVs.
+"""Run GEX+LSP+Kelly short-strangle backtest on exported ETF options CSVs.
 
-LSP sets net-delta direction/size; GEX walls set strikes; hedge with option skew only (no spot).
+GEX walls pick safe OTM strikes; sell only when IV rank is high; LSP sets
+directional delta via call/put lot skew; Kelly (premium odds 1:1) sizes base
+lots with hard fraction/lot caps. No spot hedge.
 
 Example:
   PYTHONPATH=backend_api_python python backend_api_python/scripts/backtest_gex_lsp_short_strangle.py \\
@@ -33,7 +35,12 @@ def main() -> int:
     parser.add_argument("--data-dir", type=Path, default=Path("tmp/gex_lsp_strangle"))
     parser.add_argument("--underlying", default="510050")
     parser.add_argument("--capital", type=float, default=1_000_000.0)
-    parser.add_argument("--lots", type=int, default=1)
+    parser.add_argument("--lots", type=int, default=1, help="Fixed lots when --no-kelly")
+    parser.add_argument("--no-kelly", action="store_true", help="Disable Kelly sizing")
+    parser.add_argument("--no-iv-filter", action="store_true", help="Allow entries regardless of IV rank")
+    parser.add_argument("--iv-rank-min", type=float, default=0.60)
+    parser.add_argument("--kelly-max-fraction", type=float, default=0.25)
+    parser.add_argument("--kelly-max-lots", type=int, default=10)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -42,7 +49,6 @@ def main() -> int:
     chain = _load_csv(data_dir / f"chain_{args.underlying}.csv")
     oi = _load_csv(data_dir / f"oi_{args.underlying}.csv")
 
-    # Keep backtest window where chain+OI overlap.
     und["trade_date"] = pd.to_datetime(und["trade_date"])
     chain["trade_date"] = pd.to_datetime(chain["trade_date"])
     oi["trade_date"] = pd.to_datetime(oi["trade_date"])
@@ -55,18 +61,23 @@ def main() -> int:
         underlying_code=str(args.underlying),
         initial_capital=float(args.capital),
         lots=int(args.lots),
+        use_kelly_sizing=not bool(args.no_kelly),
+        require_high_iv=not bool(args.no_iv_filter),
+        iv_rank_min=float(args.iv_rank_min),
+        kelly_max_fraction=float(args.kelly_max_fraction),
+        kelly_max_lots=int(args.kelly_max_lots),
     )
     result = run_short_strangle_backtest(und, chain, oi, config=cfg)
     payload = result.to_dict()
 
-    out = args.out or Path("docs/reports") / f"GEX_LSP_SHORT_STRANGLE_{args.underlying}.json"
+    out = args.out or Path("docs/reports") / f"GEX_LSP_KELLY_STRANGLE_{args.underlying}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     summary = payload["summary"]
-    md = Path("docs/reports") / f"GEX_LSP_SHORT_STRANGLE_{args.underlying}.md"
+    md = Path("docs/reports") / f"GEX_LSP_KELLY_STRANGLE_{args.underlying}.md"
     lines = [
-        f"# GEX + LSP Short Strangle Backtest ({args.underlying})",
+        f"# GEX + LSP + Kelly Short Strangle Backtest ({args.underlying})",
         "",
         "## Summary",
         "",
@@ -77,14 +88,17 @@ def main() -> int:
         f"- Max drawdown: {summary['maxDrawdown']*100:.2f}%",
         f"- Trades: {summary['trades']} (win rate {summary['winRate']*100:.1f}%)",
         f"- Avg trade PnL: {summary['avgTradePnl']:,.2f}",
+        f"- Sizing: {summary.get('sizingMode')}",
+        f"- High-IV filter: {summary.get('requireHighIv')} (odds b={summary.get('kellyOddsB')})",
         "",
         "## Rules",
         "",
-        "1. **LSP**: continuous `lsp_delta_score` sets portfolio net-delta direction and size.",
-        "2. **GEX walls**: sell OTM call near call wall and OTM put near put wall.",
-        "3. **Option-only hedge**: skew short call/put lots to approximate LSP target delta.",
-        "4. **No spot**: underlying is signal-only; never traded for delta hedge.",
-        "5. **Exits**: DTE floor, max hold, wall breach, or flattened option book.",
+        "1. **GEX walls**: sell OTM call near call wall and OTM put near put wall (safe width).",
+        "2. **High IV**: enter only when ATM IV rank ≥ threshold (short premium when rich).",
+        "3. **Kelly (1:1 premium)**: `f* = 2p-1` on collected credit; clamp to max fraction/lots.",
+        "4. **LSP**: skew call/put lots for directional delta; no spot hedge.",
+        "5. **Risk control**: oversize Kelly/`max_lots` clamped; insufficient budget blocks entry.",
+        "6. **Exits**: DTE floor, max hold, wall breach, or flattened option book.",
         "",
         "## Recent trades",
         "",

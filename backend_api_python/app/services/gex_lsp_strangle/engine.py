@@ -1,6 +1,8 @@
-"""Daily short-vol backtest: LSP sets delta via option skew, GEX walls set strikes.
+"""Daily short-vol backtest for ETF options short strangles.
 
-Hedge is options-only (call/put lot skew). No underlying/spot hedge.
+GEX walls pick safe OTM strikes; sell only when IV rank is high; LSP sets
+directional delta via call/put lot skew; Kelly (premium odds 1:1) sets base
+lot exposure with hard fraction/lot caps as risk control. No spot hedge.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from app.services.gex_lsp_strangle.gex_walls import compute_gex_walls, select_strangle_strikes
+from app.services.gex_lsp_strangle.kelly import estimate_win_prob, size_short_premium_lots
 from app.services.gex_lsp_strangle.lsp import (
     compute_lsp_features,
     lsp_option_skew_lots,
@@ -43,6 +46,18 @@ class ShortStrangleBacktestConfig:
     wall_buffer_pct: float = 0.005
     # Re-skew option lots when LSP score changes by this much.
     reskew_score_band: float = 0.25
+    # Sell only when ATM IV rank is elevated (short premium).
+    require_high_iv: bool = True
+    iv_lookback: int = 60
+    iv_rank_min: float = 0.60
+    # Kelly sizing with 1:1 premium odds; LSP only skews the resulting base lots.
+    use_kelly_sizing: bool = True
+    kelly_odds_b: float = 1.0
+    kelly_prior_win_prob: float = 0.55
+    kelly_prior_strength: float = 10.0
+    kelly_max_fraction: float = 0.25
+    kelly_max_lots: int = 10
+    kelly_min_lots: int = 1
 
 
 @dataclass
@@ -193,6 +208,45 @@ def _lots_for_option_hedge(
             best_err = err
             best = (int(call_lots), int(put_lots))
     return best
+
+
+
+def _atm_iv_by_date(panel: pd.DataFrame) -> pd.Series:
+    """Daily ATM IV proxy: contracts closest to spot, averaged across calls/puts."""
+    if panel is None or panel.empty or "iv" not in panel.columns:
+        return pd.Series(dtype=float)
+    df = panel.dropna(subset=["iv", "strike"]).copy()
+    if df.empty or "underlying_close" not in df.columns:
+        return pd.Series(dtype=float)
+    df["underlying_close"] = pd.to_numeric(df["underlying_close"], errors="coerce")
+    df["iv"] = pd.to_numeric(df["iv"], errors="coerce")
+    df = df.dropna(subset=["underlying_close", "iv"])
+    if df.empty:
+        return pd.Series(dtype=float)
+    df["moneyness"] = (df["strike"] - df["underlying_close"]).abs()
+    rows: list[tuple[pd.Timestamp, float]] = []
+    for dt, group in df.groupby("trade_date"):
+        g = group.nsmallest(min(4, len(group)), "moneyness")
+        iv = float(g["iv"].mean())
+        if iv == iv and iv > 0:
+            rows.append((pd.Timestamp(dt), iv))
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series({d: v for d, v in rows}).sort_index()
+
+
+def _iv_rank(iv_series: pd.Series, asof: pd.Timestamp, lookback: int) -> float | None:
+    if iv_series is None or iv_series.empty:
+        return None
+    hist = iv_series.loc[:asof].dropna().tail(max(int(lookback), 2))
+    if len(hist) < 2:
+        return None
+    cur = float(hist.iloc[-1])
+    lo = float(hist.min())
+    hi = float(hist.max())
+    if hi <= lo:
+        return 0.5
+    return (cur - lo) / (hi - lo)
 
 
 def prepare_panel(
@@ -356,6 +410,8 @@ def run_short_strangle_backtest(
     trades: list[dict[str, Any]] = []
     daily: list[dict[str, Any]] = []
     open_trade: _OpenTrade | None = None
+    closed_pnls: list[float] = []
+    atm_iv = _atm_iv_by_date(panel)
 
     dates = [d for d in und.index if d in set(panel["trade_date"].unique())]
     for dt in dates:
@@ -374,9 +430,28 @@ def run_short_strangle_backtest(
         lsp_score = float(row.get("lsp_delta_score") or 0.0)
         if not np.isfinite(lsp_score):
             lsp_score = 0.0
+        iv_rank = _iv_rank(atm_iv, pd.Timestamp(dt), cfg.iv_lookback)
+        high_iv_ok = (not cfg.require_high_iv) or (
+            iv_rank is not None and float(iv_rank) >= float(cfg.iv_rank_min)
+        )
+        win_prob = estimate_win_prob(
+            closed_pnls,
+            prior_p=cfg.kelly_prior_win_prob,
+            prior_strength=cfg.kelly_prior_strength,
+        )
+        base_lots = max(int(cfg.lots), 1)
+        kelly_info: dict[str, Any] = {
+            "winProb": round(win_prob, 6),
+            "fraction": None,
+            "baseLots": base_lots,
+            "ivRank": None if iv_rank is None else round(float(iv_rank), 4),
+            "highIvOk": bool(high_iv_ok),
+            "blocked": False,
+            "reason": "fixed_lots",
+        }
         target_delta = lsp_target_delta_shares(
             lsp_score,
-            lots=cfg.lots,
+            lots=base_lots,
             multiplier=cfg.multiplier,
             max_abs_delta=cfg.lsp_max_abs_delta,
         )
@@ -384,7 +459,7 @@ def run_short_strangle_backtest(
         # Default desired lots from score; refined with live deltas when in a trade / opening.
         desired_call_lots, desired_put_lots = lsp_option_skew_lots(
             lsp_score,
-            base_lots=cfg.lots,
+            base_lots=base_lots,
             max_skew_lots=cfg.lsp_max_skew_lots,
         )
 
@@ -398,12 +473,19 @@ def run_short_strangle_backtest(
             put_delta = _option_delta(
                 day_chain, open_trade.put_code, open_trade.put_strike, "P", open_trade.put_delta
             )
+            live_base = max(int(round((open_trade.call_lots + open_trade.put_lots) / 2.0)), 1)
+            target_delta = lsp_target_delta_shares(
+                lsp_score,
+                lots=live_base,
+                multiplier=cfg.multiplier,
+                max_abs_delta=cfg.lsp_max_abs_delta,
+            )
             desired_call_lots, desired_put_lots = _lots_for_option_hedge(
                 lsp_score=lsp_score,
                 target_delta_shares=target_delta,
                 call_delta=call_delta,
                 put_delta=put_delta,
-                base_lots=cfg.lots,
+                base_lots=live_base,
                 max_skew_lots=cfg.lsp_max_skew_lots,
                 multiplier=cfg.multiplier,
             )
@@ -458,6 +540,7 @@ def run_short_strangle_backtest(
                     reason=exit_reason,
                 )
                 trades.append(trade)
+                closed_pnls.append(float(trade.get("pnl") or 0.0))
                 open_trade = None
 
         if open_trade is None and pick is not None:
@@ -470,17 +553,58 @@ def run_short_strangle_backtest(
             put_px = pick.get("put_close")
             call_delta = float(pick.get("call_delta") or 0.25)
             put_delta = float(pick.get("put_delta") or -0.25)
+            entry_allowed = bool(high_iv_ok)
+            if cfg.use_kelly_sizing and call_px and put_px:
+                kelly = size_short_premium_lots(
+                    equity=cash,
+                    call_premium=float(call_px),
+                    put_premium=float(put_px),
+                    multiplier=cfg.multiplier,
+                    win_prob=win_prob,
+                    odds_b=cfg.kelly_odds_b,
+                    max_kelly_fraction=cfg.kelly_max_fraction,
+                    max_lots=cfg.kelly_max_lots,
+                    min_lots=cfg.kelly_min_lots,
+                )
+                kelly_info = kelly.to_dict()
+                kelly_info["ivRank"] = None if iv_rank is None else round(float(iv_rank), 4)
+                kelly_info["highIvOk"] = bool(high_iv_ok)
+                if kelly.blocked or kelly.base_lots <= 0:
+                    entry_allowed = False
+                    base_lots = 0
+                else:
+                    base_lots = int(kelly.base_lots)
+                    if kelly.capped:
+                        kelly_info["riskControl"] = "clamped_to_max"
+                if not high_iv_ok:
+                    entry_allowed = False
+                    kelly_info["blocked"] = True
+                    kelly_info["reason"] = "iv_rank_too_low"
+            elif not high_iv_ok:
+                entry_allowed = False
+                kelly_info["blocked"] = True
+                kelly_info["reason"] = "iv_rank_too_low"
+
+            target_delta = lsp_target_delta_shares(
+                lsp_score,
+                lots=max(base_lots, 1),
+                multiplier=cfg.multiplier,
+                max_abs_delta=cfg.lsp_max_abs_delta,
+            )
             desired_call_lots, desired_put_lots = _lots_for_option_hedge(
                 lsp_score=lsp_score,
                 target_delta_shares=target_delta,
                 call_delta=call_delta,
                 put_delta=put_delta,
-                base_lots=cfg.lots,
+                base_lots=max(base_lots, 1),
                 max_skew_lots=cfg.lsp_max_skew_lots,
                 multiplier=cfg.multiplier,
             )
+            if base_lots <= 0:
+                desired_call_lots, desired_put_lots = 0, 0
             if (
-                ((not cfg.require_inside_walls) or inside)
+                entry_allowed
+                and ((not cfg.require_inside_walls) or inside)
                 and call_px
                 and put_px
                 and float(call_px) > 0
@@ -553,6 +677,12 @@ def run_short_strangle_backtest(
                 "flip": walls.get("flip"),
                 "inPosition": open_trade is not None,
                 "equity": round(float(equity), 2),
+                "ivRank": kelly_info.get("ivRank"),
+                "highIvOk": kelly_info.get("highIvOk"),
+                "kellyFraction": kelly_info.get("fraction"),
+                "kellyBaseLots": kelly_info.get("baseLots"),
+                "kellyBlocked": kelly_info.get("blocked"),
+                "kellyReason": kelly_info.get("reason"),
             }
         )
 
@@ -595,6 +725,9 @@ def run_short_strangle_backtest(
         "winRate": round(len(wins) / len(trades), 4) if trades else 0.0,
         "avgTradePnl": round(float(np.mean([t["pnl"] for t in trades])), 2) if trades else 0.0,
         "hedgeMode": "options_only",
+        "sizingMode": "kelly_1to1_premium" if cfg.use_kelly_sizing else "fixed_lots",
+        "requireHighIv": bool(cfg.require_high_iv),
+        "kellyOddsB": float(cfg.kelly_odds_b),
         "config": asdict(cfg),
     }
     return ShortStrangleBacktestResult(
