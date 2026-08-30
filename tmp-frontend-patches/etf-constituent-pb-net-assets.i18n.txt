@@ -1,0 +1,7 @@
+# Add to zh-CN.js
+  "marketComposite.etf.metrics.colNetAssets": "净资产",
+  "marketComposite.etf.metrics.colPb": "PB",
+
+# Add to en-US.js
+  "marketComposite.etf.metrics.colNetAssets": "Net assets",
+  "marketComposite.etf.metrics.colPb": "PB",

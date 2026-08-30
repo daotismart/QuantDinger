@@ -547,8 +547,19 @@ export default {
           customRender: v => this.fmtMoney(v)
         },
         {
+          title: this.$t('marketComposite.etf.metrics.colNetAssets'),
+          dataIndex: 'net_assets',
+          customRender: v => this.fmtMoney(v)
+        },
+        {
           title: this.$t('marketComposite.etf.metrics.colPe'),
           dataIndex: 'pe_ratio',
+          width: 72,
+          customRender: v => (v != null ? this.fmt(v, 2) : '-')
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.colPb'),
+          dataIndex: 'pb_ratio',
           width: 72,
           customRender: v => (v != null ? this.fmt(v, 2) : '-')
         },

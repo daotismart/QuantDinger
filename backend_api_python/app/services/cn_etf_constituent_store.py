@@ -1,4 +1,4 @@
-"""Durable store for ETF constituent profit / PE / market-cap snapshots.
+"""Durable store for ETF constituent profit / PE / PB / market-cap snapshots.
 
 Redis remains the hot path for ETF analysis. This Postgres table survives Redis
 flushes and lets request-time enrichment skip AkShare when a fresh row exists.
@@ -33,13 +33,19 @@ def ensure_schema() -> None:
               net_profit DOUBLE PRECISION,
               profit_margin DOUBLE PRECISION,
               pe_ratio DOUBLE PRECISION,
+              pb_ratio DOUBLE PRECISION,
               market_cap DOUBLE PRECISION,
+              net_assets DOUBLE PRECISION,
               source VARCHAR(64),
               asof TIMESTAMPTZ,
               updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             """
         )
+        for col in ("pb_ratio", "net_assets"):
+            cur.execute(
+                f"ALTER TABLE {_TABLE} ADD COLUMN IF NOT EXISTS {col} DOUBLE PRECISION"
+            )
         cur.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{_TABLE}_updated_at ON {_TABLE} (updated_at DESC)"
         )
@@ -59,7 +65,9 @@ def _as_mapping(row: Any) -> Dict[str, Any]:
         "net_profit",
         "profit_margin",
         "pe_ratio",
+        "pb_ratio",
         "market_cap",
+        "net_assets",
         "source",
         "asof",
         "updated_at",
@@ -75,13 +83,18 @@ def _to_snapshot(row: Any) -> Dict[str, Any]:
         "net_profit": data.get("net_profit"),
         "profit_margin": data.get("profit_margin"),
         "pe_ratio": data.get("pe_ratio"),
+        "pb_ratio": data.get("pb_ratio"),
         "market_cap": data.get("market_cap"),
+        "net_assets": data.get("net_assets"),
         "name": data.get("name"),
         "source": data.get("source") or "db",
         "asof": str(data.get("asof") or "")[:19] or None,
         "updated_at": str(data.get("updated_at") or "")[:19] or None,
     }
-    if not any(snap.get(k) is not None for k in ("net_profit", "pe_ratio", "market_cap", "profit_margin")):
+    if not any(
+        snap.get(k) is not None
+        for k in ("net_profit", "pe_ratio", "pb_ratio", "market_cap", "profit_margin", "net_assets")
+    ):
         return {}
     return snap
 
@@ -97,8 +110,8 @@ def load_snapshot(code6: str, *, max_age_hours: int = _DEFAULT_MAX_AGE_HOURS) ->
             cur = db.cursor()
             cur.execute(
                 f"""
-                SELECT code, name, net_profit, profit_margin, pe_ratio, market_cap,
-                       source, asof, updated_at
+                SELECT code, name, net_profit, profit_margin, pe_ratio, pb_ratio, market_cap,
+                       net_assets, source, asof, updated_at
                 FROM {_TABLE}
                 WHERE code = %s AND updated_at >= %s
                 LIMIT 1
@@ -128,8 +141,8 @@ def load_snapshots(
             cur = db.cursor()
             cur.execute(
                 f"""
-                SELECT code, name, net_profit, profit_margin, pe_ratio, market_cap,
-                       source, asof, updated_at
+                SELECT code, name, net_profit, profit_margin, pe_ratio, pb_ratio, market_cap,
+                       net_assets, source, asof, updated_at
                 FROM {_TABLE}
                 WHERE code = ANY(%s) AND updated_at >= %s
                 """,
@@ -160,7 +173,10 @@ def upsert_snapshot(
     code6 = str(code6 or "").strip()
     if not code6 or not isinstance(snapshot, dict):
         return
-    if not any(snapshot.get(k) is not None for k in ("net_profit", "pe_ratio", "market_cap", "profit_margin")):
+    if not any(
+        snapshot.get(k) is not None
+        for k in ("net_profit", "pe_ratio", "pb_ratio", "market_cap", "profit_margin", "net_assets")
+    ):
         return
     try:
         ensure_schema()
@@ -170,14 +186,17 @@ def upsert_snapshot(
             cur.execute(
                 f"""
                 INSERT INTO {_TABLE}
-                  (code, name, net_profit, profit_margin, pe_ratio, market_cap, source, asof, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                  (code, name, net_profit, profit_margin, pe_ratio, pb_ratio, market_cap,
+                   net_assets, source, asof, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (code) DO UPDATE SET
                   name = COALESCE(EXCLUDED.name, {_TABLE}.name),
                   net_profit = COALESCE(EXCLUDED.net_profit, {_TABLE}.net_profit),
                   profit_margin = COALESCE(EXCLUDED.profit_margin, {_TABLE}.profit_margin),
                   pe_ratio = COALESCE(EXCLUDED.pe_ratio, {_TABLE}.pe_ratio),
+                  pb_ratio = COALESCE(EXCLUDED.pb_ratio, {_TABLE}.pb_ratio),
                   market_cap = COALESCE(EXCLUDED.market_cap, {_TABLE}.market_cap),
+                  net_assets = COALESCE(EXCLUDED.net_assets, {_TABLE}.net_assets),
                   source = EXCLUDED.source,
                   asof = EXCLUDED.asof,
                   updated_at = NOW()
@@ -188,7 +207,9 @@ def upsert_snapshot(
                     snapshot.get("net_profit"),
                     snapshot.get("profit_margin"),
                     snapshot.get("pe_ratio"),
+                    snapshot.get("pb_ratio"),
                     snapshot.get("market_cap"),
+                    snapshot.get("net_assets"),
                     str(source or "akshare")[:64],
                     asof,
                 ),

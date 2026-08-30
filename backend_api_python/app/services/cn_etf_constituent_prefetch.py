@@ -225,7 +225,7 @@ def warm_constituent_snapshots(
     else:
         db_map = store.load_snapshots(unique) if persist else {}
         for code in unique:
-            hit = metrics._cache_get(f"etf:constituent_snapshot:{code}")
+            hit = metrics._cache_get(metrics._constituent_snapshot_cache_key(code))
             # Only skip network when snapshot already has profit+margin+mcap.
             if isinstance(hit, dict) and metrics._snapshot_is_complete(hit):
                 if persist and code not in db_map:
@@ -243,7 +243,7 @@ def warm_constituent_snapshots(
             db_hit = db_map.get(code) or {}
             if isinstance(db_hit, dict) and metrics._snapshot_is_complete(db_hit):
                 metrics._cache_set(
-                    f"etf:constituent_snapshot:{code}",
+                    metrics._constituent_snapshot_cache_key(code),
                     db_hit,
                     metrics._PROFIT_CACHE_TTL,
                 )
@@ -263,13 +263,13 @@ def warm_constituent_snapshots(
                         if seeded.get(key) is None and value is not None:
                             seeded[key] = value
                 metrics._cache_set(
-                    f"etf:constituent_snapshot:{code}",
+                    metrics._constituent_snapshot_cache_key(code),
                     seeded,
                     metrics._PROFIT_CACHE_TTL,
                 )
             elif isinstance(db_hit, dict) and db_hit:
                 metrics._cache_set(
-                    f"etf:constituent_snapshot:{code}",
+                    metrics._constituent_snapshot_cache_key(code),
                     db_hit,
                     metrics._PROFIT_CACHE_TTL,
                 )
