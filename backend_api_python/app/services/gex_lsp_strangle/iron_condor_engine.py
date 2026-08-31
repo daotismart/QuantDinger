@@ -33,6 +33,25 @@ class IronCondorBacktestConfig(ShortStrangleBacktestConfig):
     wing_pct: float = 0.0
     take_profit_pct: float = 0.50  # close when remaining debit <= (1-tp)*entry credit cash
     stop_loss_pct: float = 0.90  # close when MTM loss >= stop * max_risk
+    # 0 = short at GEX walls (default). >0 = short that percent OTM from spot.
+    short_otm_pct: float = 0.0
+    min_credit_to_width: float = 0.0
+    exit_on_short_breach: bool = True
+    exit_on_wall_breach: bool = True
+    # Defined-risk margin per lot is small; default to fixed 120 lots on 1M capital.
+    lots: int = 120
+    use_kelly_sizing: bool = False
+    require_high_iv: bool = False
+    require_inside_walls: bool = False
+    kelly_max_lots: int = 150
+    kelly_prior_win_prob: float = 0.60
+    lsp_max_skew_lots: int = 0
+    max_hold_days: int = 60
+    roll_before_dte: int = 15
+    exit_dte: int = 15
+    # Skip / flatten when |spot return over trend_lookback bars| exceeds this.
+    max_abs_trend_pct: float = 0.08
+    trend_lookback: int = 20
 
 
 @dataclass
@@ -268,11 +287,22 @@ def run_iron_condor_backtest(
             min_width_pct=cfg.min_width_pct,
             wing_steps=cfg.wing_steps,
             wing_pct=cfg.wing_pct,
+            short_otm_pct=cfg.short_otm_pct,
+            min_credit_to_width=cfg.min_credit_to_width,
         )
         regime = str(row.get("lsp_regime") or "mixed")
         lsp_score = float(row.get("lsp_delta_score") or 0.0)
         if not np.isfinite(lsp_score):
             lsp_score = 0.0
+        trend = 0.0
+        if int(cfg.trend_lookback) > 0:
+            hist = und["close"].loc[:dt]
+            lb = int(cfg.trend_lookback)
+            if len(hist) > lb:
+                base = float(hist.iloc[-(lb + 1)])
+                if base > 0:
+                    trend = spot / base - 1.0
+        trend_block = float(cfg.max_abs_trend_pct) > 0 and abs(trend) > float(cfg.max_abs_trend_pct)
         iv_rank = _iv_rank(atm_iv, pd.Timestamp(dt), cfg.iv_lookback)
         high_iv_ok = (not cfg.require_high_iv) or (
             iv_rank is not None and float(iv_rank) >= float(cfg.iv_rank_min)
@@ -302,14 +332,18 @@ def run_iron_condor_backtest(
                 exit_reason = "roll_month"
             elif open_trade.days_held >= cfg.max_hold_days:
                 exit_reason = "max_hold"
-            elif spot >= open_trade.short_call_strike:
+            elif cfg.exit_on_short_breach and spot >= open_trade.short_call_strike:
                 exit_reason = "short_call_breach"
-            elif spot <= open_trade.short_put_strike:
+            elif cfg.exit_on_short_breach and spot <= open_trade.short_put_strike:
                 exit_reason = "short_put_breach"
-            elif spot >= open_trade.call_wall * (1.0 + cfg.wall_buffer_pct):
+            elif cfg.exit_on_wall_breach and spot >= open_trade.call_wall * (1.0 + cfg.wall_buffer_pct):
                 exit_reason = "call_wall_breach"
-            elif spot <= open_trade.put_wall * (1.0 - cfg.wall_buffer_pct):
+            elif cfg.exit_on_wall_breach and spot <= open_trade.put_wall * (1.0 - cfg.wall_buffer_pct):
                 exit_reason = "put_wall_breach"
+            elif trend_block:
+                exit_reason = "trend_filter"
+            elif spot >= open_trade.long_call_strike or spot <= open_trade.long_put_strike:
+                exit_reason = "wing_breach"
             else:
                 entry_credit_cash = float(open_trade.entry_credit_cash)
                 if entry_credit_cash > 0 and mark["close_debit"] <= entry_credit_cash * (
@@ -351,7 +385,7 @@ def run_iron_condor_backtest(
             high_iv = high_iv_ok or (pending_roll and cfg.roll_skip_iv_filter)
             entry_allowed = bool(high_iv) and net_credit > 0 and (
                 (not cfg.require_inside_walls) or inside
-            )
+            ) and not trend_block
             base_lots = max(int(cfg.lots), 1)
             if cfg.use_kelly_sizing:
                 kelly = size_iron_condor_lots(
@@ -378,6 +412,10 @@ def run_iron_condor_backtest(
                 entry_allowed = False
                 kelly_info["blocked"] = True
                 kelly_info["reason"] = "iv_rank_too_low"
+            if trend_block:
+                entry_allowed = False
+                kelly_info["blocked"] = True
+                kelly_info["reason"] = "trend_filter"
 
             call_lots, put_lots = lsp_option_skew_lots(
                 lsp_score,
@@ -461,6 +499,8 @@ def run_iron_condor_backtest(
                 "kellyBaseLots": kelly_info.get("baseLots"),
                 "kellyBlocked": kelly_info.get("blocked"),
                 "kellyReason": kelly_info.get("reason"),
+                "trend": round(float(trend), 4),
+                "trendBlock": bool(trend_block),
             }
         )
 
@@ -483,6 +523,8 @@ def run_iron_condor_backtest(
     rets = pd.Series([p["equity"] for p in equity_curve], dtype=float).pct_change().dropna()
     vol = float(rets.std() * np.sqrt(252)) if len(rets) else 0.0
     ret = final_equity / cfg.initial_capital - 1.0
+    n_days = max(len(equity_curve), 1)
+    ann = (1.0 + ret) ** (252.0 / n_days) - 1.0 if n_days > 1 else 0.0
     sharpe = (
         float((rets.mean() * 252) / (rets.std() * np.sqrt(252)))
         if len(rets) and rets.std() > 0
@@ -496,6 +538,8 @@ def run_iron_condor_backtest(
         "initialCapital": cfg.initial_capital,
         "finalEquity": final_equity,
         "totalReturn": round(ret, 6),
+        "annualizedReturn": round(ann, 6),
+        "tradingDays": int(n_days),
         "annualizedVol": round(vol, 6),
         "sharpe": round(sharpe, 4),
         "maxDrawdown": round(max_dd, 6),
@@ -507,8 +551,12 @@ def run_iron_condor_backtest(
         "expiryMonth": cfg.expiry_month,
         "wingSteps": int(cfg.wing_steps),
         "wingPct": float(cfg.wing_pct),
+        "shortOtmPct": float(cfg.short_otm_pct),
+        "minCreditToWidth": float(cfg.min_credit_to_width),
         "takeProfitPct": float(cfg.take_profit_pct),
         "stopLossPct": float(cfg.stop_loss_pct),
+        "exitOnShortBreach": bool(cfg.exit_on_short_breach),
+        "maxAbsTrendPct": float(cfg.max_abs_trend_pct),
         "config": asdict(cfg),
     }
     return IronCondorBacktestResult(

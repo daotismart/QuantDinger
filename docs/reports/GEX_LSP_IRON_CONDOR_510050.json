@@ -3,25 +3,31 @@
     "underlying": "510050",
     "structure": "iron_condor",
     "initialCapital": 1000000.0,
-    "finalEquity": 998387.1,
-    "totalReturn": -0.001613,
-    "annualizedVol": 0.003698,
-    "sharpe": -1.234,
-    "maxDrawdown": -0.002571,
-    "trades": 1,
-    "winRate": 0.0,
-    "avgTradePnl": -1612.9,
-    "sizingMode": "kelly_defined_risk",
-    "requireHighIv": true,
+    "finalEquity": 1142389.6,
+    "totalReturn": 0.14239,
+    "annualizedReturn": 0.45171,
+    "tradingDays": 90,
+    "annualizedVol": 0.260664,
+    "sharpe": 1.6828,
+    "maxDrawdown": -0.02944,
+    "trades": 7,
+    "winRate": 0.2857,
+    "avgTradePnl": 20341.37,
+    "sizingMode": "fixed_lots",
+    "requireHighIv": false,
     "expiryMonth": "next",
     "wingSteps": 1,
     "wingPct": 0.0,
+    "shortOtmPct": 0.0,
+    "minCreditToWidth": 0.0,
     "takeProfitPct": 0.5,
     "stopLossPct": 0.9,
+    "exitOnShortBreach": true,
+    "maxAbsTrendPct": 0.08,
     "config": {
       "underlying_code": "510050",
       "initial_capital": 1000000.0,
-      "lots": 1,
+      "lots": 120,
       "multiplier": 10000.0,
       "commission_per_lot": 5.0,
       "slippage_pct": 0.02,
@@ -37,393 +43,399 @@
       "lsp_days_2": 10,
       "lsp_neutral_band": 8.0,
       "lsp_max_abs_delta": 0.5,
-      "lsp_max_skew_lots": 1,
-      "require_inside_walls": true,
+      "lsp_max_skew_lots": 0,
+      "require_inside_walls": false,
       "wall_buffer_pct": 0.005,
       "reskew_score_band": 0.25,
-      "require_high_iv": true,
+      "require_high_iv": false,
       "iv_lookback": 60,
       "iv_rank_min": 0.6,
-      "use_kelly_sizing": true,
+      "use_kelly_sizing": false,
       "kelly_odds_b": 1.0,
-      "kelly_prior_win_prob": 0.55,
+      "kelly_prior_win_prob": 0.6,
       "kelly_prior_strength": 10.0,
       "kelly_max_fraction": 0.25,
-      "kelly_max_lots": 10,
+      "kelly_max_lots": 150,
       "kelly_min_lots": 1,
       "option_margin_rate": 0.12,
       "option_margin_floor_rate": 0.07,
       "wing_steps": 1,
       "wing_pct": 0.0,
       "take_profit_pct": 0.5,
-      "stop_loss_pct": 0.9
+      "stop_loss_pct": 0.9,
+      "short_otm_pct": 0.0,
+      "min_credit_to_width": 0.0,
+      "exit_on_short_breach": true,
+      "exit_on_wall_breach": true,
+      "max_abs_trend_pct": 0.08,
+      "trend_lookback": 20
     }
   },
   "equityCurve": [
     {
       "date": "2026-04-01",
-      "equity": 1000000.0
+      "equity": 989272.0
     },
     {
       "date": "2026-04-02",
-      "equity": 999073.2
+      "equity": 991955.2
     },
     {
       "date": "2026-04-09",
-      "equity": 999162.7
+      "equity": 993029.2
     },
     {
       "date": "2026-04-13",
-      "equity": 997429.0
+      "equity": 972224.8
     },
     {
       "date": "2026-04-14",
-      "equity": 998389.9
+      "equity": 983755.6
     },
     {
       "date": "2026-04-15",
-      "equity": 998387.1
+      "equity": 976277.2
     },
     {
       "date": "2026-04-16",
-      "equity": 998387.1
+      "equity": 975670.0
     },
     {
       "date": "2026-04-17",
-      "equity": 998387.1
+      "equity": 981301.6
     },
     {
       "date": "2026-04-20",
-      "equity": 998387.1
+      "equity": 982252.0
     },
     {
       "date": "2026-04-21",
-      "equity": 998387.1
+      "equity": 983164.0
     },
     {
       "date": "2026-04-22",
-      "equity": 998387.1
+      "equity": 983108.8
     },
     {
       "date": "2026-04-23",
-      "equity": 998387.1
+      "equity": 983609.2
     },
     {
       "date": "2026-04-24",
-      "equity": 998387.1
+      "equity": 981679.6
     },
     {
       "date": "2026-04-27",
-      "equity": 998387.1
+      "equity": 983842.0
     },
     {
       "date": "2026-04-28",
-      "equity": 998387.1
+      "equity": 985476.4
     },
     {
       "date": "2026-04-29",
-      "equity": 998387.1
+      "equity": 1132433.2
     },
     {
       "date": "2026-04-30",
-      "equity": 998387.1
+      "equity": 1133140.0
     },
     {
       "date": "2026-05-06",
-      "equity": 998387.1
+      "equity": 1132915.6
     },
     {
       "date": "2026-05-07",
-      "equity": 998387.1
+      "equity": 1132272.4
     },
     {
       "date": "2026-05-08",
-      "equity": 998387.1
+      "equity": 1133016.4
     },
     {
       "date": "2026-05-11",
-      "equity": 998387.1
+      "equity": 1132220.8
     },
     {
       "date": "2026-05-12",
-      "equity": 998387.1
+      "equity": 1131744.4
     },
     {
       "date": "2026-05-13",
-      "equity": 998387.1
+      "equity": 1131654.4
     },
     {
       "date": "2026-05-14",
-      "equity": 998387.1
+      "equity": 1133004.4
     },
     {
       "date": "2026-05-15",
-      "equity": 998387.1
+      "equity": 1133831.2
     },
     {
       "date": "2026-05-18",
-      "equity": 998387.1
+      "equity": 1133886.4
     },
     {
       "date": "2026-05-19",
-      "equity": 998387.1
+      "equity": 1135823.2
     },
     {
       "date": "2026-05-21",
-      "equity": 998387.1
+      "equity": 1134686.8
     },
     {
       "date": "2026-05-22",
-      "equity": 998387.1
+      "equity": 1135820.8
     },
     {
       "date": "2026-05-25",
-      "equity": 998387.1
+      "equity": 1136184.4
     },
     {
       "date": "2026-05-26",
-      "equity": 998387.1
+      "equity": 1136821.6
     },
     {
       "date": "2026-05-27",
-      "equity": 998387.1
+      "equity": 1135236.4
     },
     {
       "date": "2026-05-28",
-      "equity": 998387.1
+      "equity": 1135722.4
     },
     {
       "date": "2026-05-29",
-      "equity": 998387.1
+      "equity": 1135991.2
     },
     {
       "date": "2026-06-02",
-      "equity": 998387.1
+      "equity": 1136921.2
     },
     {
       "date": "2026-06-11",
-      "equity": 998387.1
+      "equity": 1129286.8
     },
     {
       "date": "2026-06-12",
-      "equity": 998387.1
+      "equity": 1127182.0
     },
     {
       "date": "2026-06-15",
-      "equity": 998387.1
+      "equity": 1121708.8
     },
     {
       "date": "2026-06-16",
-      "equity": 998387.1
+      "equity": 1124044.0
     },
     {
       "date": "2026-06-17",
-      "equity": 998387.1
+      "equity": 1121348.8
     },
     {
       "date": "2026-06-18",
-      "equity": 998387.1
+      "equity": 1120343.2
     },
     {
       "date": "2026-06-22",
-      "equity": 998387.1
+      "equity": 1103450.8
     },
     {
       "date": "2026-06-23",
-      "equity": 998387.1
+      "equity": 1120884.4
     },
     {
       "date": "2026-06-24",
-      "equity": 998387.1
+      "equity": 1121204.8
     },
     {
       "date": "2026-06-25",
-      "equity": 998387.1
+      "equity": 1115357.2
     },
     {
       "date": "2026-06-26",
-      "equity": 998387.1
+      "equity": 1123390.0
     },
     {
       "date": "2026-06-29",
-      "equity": 998387.1
+      "equity": 1112868.4
     },
     {
       "date": "2026-06-30",
-      "equity": 998387.1
+      "equity": 1112473.6
     },
     {
       "date": "2026-07-01",
-      "equity": 998387.1
+      "equity": 1116326.8
     },
     {
       "date": "2026-07-02",
-      "equity": 998387.1
+      "equity": 1124210.8
     },
     {
       "date": "2026-07-03",
-      "equity": 998387.1
+      "equity": 1126579.6
     },
     {
       "date": "2026-07-06",
-      "equity": 998387.1
+      "equity": 1124191.6
     },
     {
       "date": "2026-07-07",
-      "equity": 998387.1
+      "equity": 1121742.4
     },
     {
       "date": "2026-07-08",
-      "equity": 998387.1
+      "equity": 1122772.0
     },
     {
       "date": "2026-07-09",
-      "equity": 998387.1
+      "equity": 1116785.2
     },
     {
       "date": "2026-07-10",
-      "equity": 998387.1
+      "equity": 1119913.6
     },
     {
       "date": "2026-07-13",
-      "equity": 998387.1
+      "equity": 1121410.0
     },
     {
       "date": "2026-07-14",
-      "equity": 998387.1
+      "equity": 1124510.8
     },
     {
       "date": "2026-07-15",
-      "equity": 998387.1
+      "equity": 1120986.4
     },
     {
       "date": "2026-07-16",
-      "equity": 998387.1
+      "equity": 1123822.0
     },
     {
       "date": "2026-07-17",
-      "equity": 998387.1
+      "equity": 1127466.4
     },
     {
       "date": "2026-07-20",
-      "equity": 998387.1
+      "equity": 1124194.0
     },
     {
       "date": "2026-07-21",
-      "equity": 998387.1
+      "equity": 1121958.4
     },
     {
       "date": "2026-07-22",
-      "equity": 998387.1
+      "equity": 1119803.2
     },
     {
       "date": "2026-07-23",
-      "equity": 998387.1
+      "equity": 1122811.6
     },
     {
       "date": "2026-07-24",
-      "equity": 998387.1
+      "equity": 1130290.0
     },
     {
       "date": "2026-07-27",
-      "equity": 998387.1
+      "equity": 1131700.0
     },
     {
       "date": "2026-07-28",
-      "equity": 998387.1
+      "equity": 1135052.8
     },
     {
       "date": "2026-07-29",
-      "equity": 998387.1
+      "equity": 1134115.6
     },
     {
       "date": "2026-07-30",
-      "equity": 998387.1
+      "equity": 1132404.4
     },
     {
       "date": "2026-07-31",
-      "equity": 998387.1
+      "equity": 1136641.6
     },
     {
       "date": "2026-08-03",
-      "equity": 998387.1
+      "equity": 1140539.2
     },
     {
       "date": "2026-08-04",
-      "equity": 998387.1
+      "equity": 1140420.4
     },
     {
       "date": "2026-08-05",
-      "equity": 998387.1
+      "equity": 1141703.2
     },
     {
       "date": "2026-08-06",
-      "equity": 998387.1
+      "equity": 1142042.8
     },
     {
       "date": "2026-08-07",
-      "equity": 998387.1
+      "equity": 1142528.8
     },
     {
       "date": "2026-08-10",
-      "equity": 998387.1
+      "equity": 1143536.8
     },
     {
       "date": "2026-08-11",
-      "equity": 998387.1
+      "equity": 1143374.8
     },
     {
       "date": "2026-08-12",
-      "equity": 998387.1
+      "equity": 1137002.8
     },
     {
       "date": "2026-08-13",
-      "equity": 998387.1
+      "equity": 1136618.8
     },
     {
       "date": "2026-08-14",
-      "equity": 998387.1
+      "equity": 1136858.8
     },
     {
       "date": "2026-08-18",
-      "equity": 998387.1
+      "equity": 1139119.6
     },
     {
       "date": "2026-08-19",
-      "equity": 998387.1
+      "equity": 1134870.4
     },
     {
       "date": "2026-08-20",
-      "equity": 998387.1
+      "equity": 1134533.2
     },
     {
       "date": "2026-08-21",
-      "equity": 998387.1
+      "equity": 1135793.2
     },
     {
       "date": "2026-08-24",
-      "equity": 998387.1
+      "equity": 1134851.2
     },
     {
       "date": "2026-08-25",
-      "equity": 998387.1
+      "equity": 1135661.2
     },
     {
       "date": "2026-08-26",
-      "equity": 998387.1
+      "equity": 1139998.0
     },
     {
       "date": "2026-08-27",
-      "equity": 998387.1
+      "equity": 1141930.0
     },
     {
       "date": "2026-08-28",
-      "equity": 998387.1
+      "equity": 1142389.6
     }
   ],
   "trades": [
     {
-      "entryDate": "2026-04-02",
+      "entryDate": "2026-04-01",
       "exitDate": "2026-04-15",
       "expireDate": "2026-05-27",
       "reason": "short_call_breach",
@@ -432,20 +444,170 @@
       "shortPutStrike": 2.85,
       "longCallStrike": 3.1,
       "longPutStrike": 2.8,
-      "callLots": 10,
-      "putLots": 10,
-      "entryCredit": 0.0351,
-      "maxRisk": 6490.0,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0375,
+      "maxRisk": 75000.0,
       "lspScoreEntry": 0.0,
-      "optionCash": -1212.9,
-      "fees": 400.0,
-      "exitDebit": 4459.5,
-      "pnl": -1612.9,
-      "daysHeld": 4,
+      "optionCash": -11478.0,
+      "fees": 4800.0,
+      "exitDebit": 53514.0,
+      "pnl": -16278.0,
+      "daysHeld": 5,
       "callWall": 3.0,
       "putWall": 2.85,
       "lspRegimeEntry": "mixed",
-      "entrySpot": 2.926
+      "entrySpot": 2.951
+    },
+    {
+      "entryDate": "2026-04-15",
+      "exitDate": "2026-04-29",
+      "expireDate": "2026-05-27",
+      "reason": "take_profit",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.1,
+      "shortPutStrike": 2.85,
+      "longCallStrike": 3.2,
+      "longPutStrike": 2.8,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0199,
+      "maxRisk": 96120.0,
+      "lspScoreEntry": -0.2772,
+      "optionCash": 161479.2,
+      "fees": 4800.0,
+      "exitDebit": -138921.6,
+      "pnl": 156679.2,
+      "daysHeld": 10,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "lspRegimeEntry": "mixed",
+      "entrySpot": 3.006
+    },
+    {
+      "entryDate": "2026-04-29",
+      "exitDate": "2026-06-11",
+      "expireDate": "2026-06-24",
+      "reason": "roll_month",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.2,
+      "shortPutStrike": 2.85,
+      "longCallStrike": 3.215,
+      "longPutStrike": 2.825,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0052,
+      "maxRisk": 23760.0,
+      "lspScoreEntry": 0.3681,
+      "optionCash": 1053.6,
+      "fees": 4800.0,
+      "exitDebit": 3602.4,
+      "pnl": -3746.4,
+      "daysHeld": 20,
+      "callWall": 3.2,
+      "putWall": 2.85,
+      "lspRegimeEntry": "bullish",
+      "entrySpot": 3.019
+    },
+    {
+      "entryDate": "2026-06-11",
+      "exitDate": "2026-07-07",
+      "expireDate": "2026-07-22",
+      "reason": "roll_month",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.1,
+      "shortPutStrike": 2.8,
+      "longCallStrike": 3.2,
+      "longPutStrike": 2.75,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0151,
+      "maxRisk": 101880.0,
+      "lspScoreEntry": 0.5,
+      "optionCash": 846.0,
+      "fees": 4800.0,
+      "exitDebit": 15990.0,
+      "pnl": -3954.0,
+      "daysHeld": 17,
+      "callWall": 3.1,
+      "putWall": 2.8,
+      "lspRegimeEntry": "mixed",
+      "entrySpot": 2.927
+    },
+    {
+      "entryDate": "2026-07-07",
+      "exitDate": "2026-08-04",
+      "expireDate": "2026-08-26",
+      "reason": "take_profit",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.1,
+      "shortPutStrike": 2.85,
+      "longCallStrike": 3.2,
+      "longPutStrike": 2.8,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0321,
+      "maxRisk": 81480.0,
+      "lspScoreEntry": -0.3477,
+      "optionCash": 18536.4,
+      "fees": 4800.0,
+      "exitDebit": 16904.4,
+      "pnl": 13736.4,
+      "daysHeld": 20,
+      "callWall": 3.1,
+      "putWall": 2.85,
+      "lspRegimeEntry": "mixed",
+      "entrySpot": 3.009
+    },
+    {
+      "entryDate": "2026-08-04",
+      "exitDate": "2026-08-12",
+      "expireDate": "2026-09-23",
+      "reason": "take_profit",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.5,
+      "shortPutStrike": 2.7,
+      "longCallStrike": 3.6,
+      "longPutStrike": 2.65,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0038,
+      "maxRisk": 115380.0,
+      "lspScoreEntry": -0.299,
+      "optionCash": 2013.6,
+      "fees": 4800.0,
+      "exitDebit": 1998.0,
+      "pnl": -2786.4,
+      "daysHeld": 6,
+      "callWall": 3.6,
+      "putWall": 2.65,
+      "lspRegimeEntry": "mixed",
+      "entrySpot": 2.985
+    },
+    {
+      "entryDate": "2026-08-12",
+      "exitDate": "2026-08-28",
+      "expireDate": "2026-09-23",
+      "reason": "eod_force_close",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.5,
+      "shortPutStrike": 2.9,
+      "longCallStrike": 3.6,
+      "longPutStrike": 2.85,
+      "callLots": 120,
+      "putLots": 120,
+      "entryCredit": 0.0089,
+      "maxRisk": 109320.0,
+      "lspScoreEntry": 0.433,
+      "optionCash": 3538.8,
+      "fees": 4800.0,
+      "exitDebit": 6217.2,
+      "pnl": -1261.2,
+      "daysHeld": 11,
+      "callWall": 3.6,
+      "putWall": 2.9,
+      "lspRegimeEntry": "mixed",
+      "entrySpot": 3.045
     }
   ],
   "daily": [
@@ -456,14 +618,16 @@
       "lspDeltaScore": 0.0,
       "callWall": 3.0,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 989272.0,
       "ivRank": null,
-      "highIvOk": false,
-      "kellyFraction": 0.10000000000000009,
-      "kellyBaseLots": 10,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-02",
@@ -473,13 +637,15 @@
       "callWall": 3.0,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 999073.2,
+      "equity": 991955.2,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.10000000000000009,
-      "kellyBaseLots": 10,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
       "kellyBlocked": false,
-      "kellyReason": "capped"
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-09",
@@ -489,13 +655,15 @@
       "callWall": 3.0,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 999162.7,
+      "equity": 993029.2,
       "ivRank": 0.0086,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
-      "kellyBaseLots": 1,
+      "kellyBaseLots": 120,
       "kellyBlocked": false,
-      "kellyReason": "fixed_lots"
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-13",
@@ -505,13 +673,15 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 997429.0,
+      "equity": 972224.8,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
-      "kellyBaseLots": 1,
+      "kellyBaseLots": 120,
       "kellyBlocked": false,
-      "kellyReason": "fixed_lots"
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-14",
@@ -521,13 +691,15 @@
       "callWall": 3.1,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 998389.9,
+      "equity": 983755.6,
       "ivRank": 0.0303,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
-      "kellyBaseLots": 1,
+      "kellyBaseLots": 120,
       "kellyBlocked": false,
-      "kellyReason": "fixed_lots"
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-15",
@@ -536,14 +708,16 @@
       "lspDeltaScore": -0.2772,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 976277.2,
       "ivRank": 0.1002,
-      "highIvOk": false,
-      "kellyFraction": 0.10000000000000009,
-      "kellyBaseLots": 10,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-16",
@@ -552,14 +726,16 @@
       "lspDeltaScore": -0.2171,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 975670.0,
       "ivRank": 0.5093,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-17",
@@ -568,14 +744,16 @@
       "lspDeltaScore": -0.2709,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 981301.6,
       "ivRank": 0.1233,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-20",
@@ -584,14 +762,16 @@
       "lspDeltaScore": -0.0777,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 982252.0,
       "ivRank": 0.1648,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-21",
@@ -600,14 +780,16 @@
       "lspDeltaScore": -0.0287,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 983164.0,
       "ivRank": 0.595,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-22",
@@ -616,14 +798,16 @@
       "lspDeltaScore": 0.0681,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 983108.8,
       "ivRank": 0.4944,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-23",
@@ -632,14 +816,16 @@
       "lspDeltaScore": 0.1052,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 983609.2,
       "ivRank": 0.3208,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-24",
@@ -648,14 +834,16 @@
       "lspDeltaScore": 0.2454,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 981679.6,
       "ivRank": 0.298,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-27",
@@ -664,14 +852,16 @@
       "lspDeltaScore": 0.2893,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 983842.0,
       "ivRank": 0.679,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0,
+      "trendBlock": false
     },
     {
       "date": "2026-04-28",
@@ -680,14 +870,16 @@
       "lspDeltaScore": 0.3425,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 985476.4,
       "ivRank": 0.1119,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0392,
+      "trendBlock": false
     },
     {
       "date": "2026-04-29",
@@ -696,14 +888,16 @@
       "lspDeltaScore": 0.3681,
       "callWall": 3.2,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1132433.2,
       "ivRank": 0.6628,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0407,
+      "trendBlock": false
     },
     {
       "date": "2026-04-30",
@@ -712,14 +906,16 @@
       "lspDeltaScore": 0.4938,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1133140.0,
       "ivRank": 0.0088,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0373,
+      "trendBlock": false
     },
     {
       "date": "2026-05-06",
@@ -728,14 +924,16 @@
       "lspDeltaScore": 0.6425,
       "callWall": 3.2,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1132915.6,
       "ivRank": 0.2952,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0595,
+      "trendBlock": false
     },
     {
       "date": "2026-05-07",
@@ -744,14 +942,16 @@
       "lspDeltaScore": 0.7083,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1132272.4,
       "ivRank": 0.6333,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0693,
+      "trendBlock": false
     },
     {
       "date": "2026-05-08",
@@ -760,14 +960,16 @@
       "lspDeltaScore": 0.6848,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1133016.4,
       "ivRank": 0.7272,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.06,
+      "trendBlock": false
     },
     {
       "date": "2026-05-11",
@@ -776,14 +978,16 @@
       "lspDeltaScore": 0.7062,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1132220.8,
       "ivRank": 0.9679,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0619,
+      "trendBlock": false
     },
     {
       "date": "2026-05-12",
@@ -792,14 +996,16 @@
       "lspDeltaScore": 0.721,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1131744.4,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0555,
+      "trendBlock": false
     },
     {
       "date": "2026-05-13",
@@ -808,14 +1014,16 @@
       "lspDeltaScore": 0.7165,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1131654.4,
       "ivRank": 0.8754,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0522,
+      "trendBlock": false
     },
     {
       "date": "2026-05-14",
@@ -824,14 +1032,16 @@
       "lspDeltaScore": 0.554,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1133004.4,
       "ivRank": 0.9461,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0361,
+      "trendBlock": false
     },
     {
       "date": "2026-05-15",
@@ -840,14 +1050,16 @@
       "lspDeltaScore": 0.4118,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1133831.2,
       "ivRank": 0.8031,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.012,
+      "trendBlock": false
     },
     {
       "date": "2026-05-18",
@@ -856,14 +1068,16 @@
       "lspDeltaScore": 0.2199,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1133886.4,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0013,
+      "trendBlock": false
     },
     {
       "date": "2026-05-19",
@@ -872,14 +1086,16 @@
       "lspDeltaScore": -0.0655,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135823.2,
       "ivRank": 0.7395,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0033,
+      "trendBlock": false
     },
     {
       "date": "2026-05-21",
@@ -888,14 +1104,16 @@
       "lspDeltaScore": -0.1256,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1134686.8,
       "ivRank": 0.7181,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0043,
+      "trendBlock": false
     },
     {
       "date": "2026-05-22",
@@ -904,14 +1122,16 @@
       "lspDeltaScore": -0.0594,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135820.8,
       "ivRank": 0.4449,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.003,
+      "trendBlock": false
     },
     {
       "date": "2026-05-25",
@@ -920,14 +1140,16 @@
       "lspDeltaScore": 0.0444,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1136184.4,
       "ivRank": 0.5037,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0117,
+      "trendBlock": false
     },
     {
       "date": "2026-05-26",
@@ -936,14 +1158,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1136821.6,
       "ivRank": 0.99,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0143,
+      "trendBlock": false
     },
     {
       "date": "2026-05-27",
@@ -952,14 +1176,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135236.4,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.003,
+      "trendBlock": false
     },
     {
       "date": "2026-05-28",
@@ -968,14 +1194,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 2.8,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135722.4,
       "ivRank": 0.7687,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.01,
+      "trendBlock": false
     },
     {
       "date": "2026-05-29",
@@ -984,14 +1212,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 2.8,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135991.2,
       "ivRank": 0.852,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0086,
+      "trendBlock": false
     },
     {
       "date": "2026-06-02",
@@ -1000,14 +1230,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 2.8,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1136921.2,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0297,
+      "trendBlock": false
     },
     {
       "date": "2026-06-11",
@@ -1016,14 +1248,16 @@
       "lspDeltaScore": 0.5,
       "callWall": 3.1,
       "putWall": 2.8,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1129286.8,
       "ivRank": 0.1909,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0475,
+      "trendBlock": false
     },
     {
       "date": "2026-06-12",
@@ -1032,14 +1266,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 2.8,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1127182.0,
       "ivRank": 0.3849,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0181,
+      "trendBlock": false
     },
     {
       "date": "2026-06-15",
@@ -1048,14 +1284,16 @@
       "lspDeltaScore": 1.0,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1121708.8,
       "ivRank": 0.4347,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.005,
+      "trendBlock": false
     },
     {
       "date": "2026-06-16",
@@ -1064,14 +1302,16 @@
       "lspDeltaScore": 0.8519,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1124044.0,
       "ivRank": 0.6242,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0109,
+      "trendBlock": false
     },
     {
       "date": "2026-06-17",
@@ -1080,14 +1320,16 @@
       "lspDeltaScore": 0.8577,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1121348.8,
       "ivRank": 0.5596,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0046,
+      "trendBlock": false
     },
     {
       "date": "2026-06-18",
@@ -1096,14 +1338,16 @@
       "lspDeltaScore": 0.8651,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1120343.2,
       "ivRank": 0.5645,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0077,
+      "trendBlock": false
     },
     {
       "date": "2026-06-22",
@@ -1112,14 +1356,16 @@
       "lspDeltaScore": 0.8833,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1103450.8,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.033,
+      "trendBlock": false
     },
     {
       "date": "2026-06-23",
@@ -1128,14 +1374,16 @@
       "lspDeltaScore": 0.6709,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1120884.4,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0105,
+      "trendBlock": false
     },
     {
       "date": "2026-06-24",
@@ -1144,14 +1392,16 @@
       "lspDeltaScore": 0.6638,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1121204.8,
       "ivRank": 0.3785,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0072,
+      "trendBlock": false
     },
     {
       "date": "2026-06-25",
@@ -1160,14 +1410,16 @@
       "lspDeltaScore": 0.6508,
       "callWall": 3.1,
       "putWall": 2.8,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1115357.2,
       "ivRank": 0.688,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0169,
+      "trendBlock": false
     },
     {
       "date": "2026-06-26",
@@ -1176,14 +1428,16 @@
       "lspDeltaScore": 0.5859,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1123390.0,
       "ivRank": 0.7069,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0047,
+      "trendBlock": false
     },
     {
       "date": "2026-06-29",
@@ -1192,14 +1446,16 @@
       "lspDeltaScore": 0.5223,
       "callWall": 3.3,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1112868.4,
       "ivRank": 0.5809,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0294,
+      "trendBlock": false
     },
     {
       "date": "2026-06-30",
@@ -1208,14 +1464,16 @@
       "lspDeltaScore": 0.532,
       "callWall": 3.3,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1112473.6,
       "ivRank": 0.598,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.028,
+      "trendBlock": false
     },
     {
       "date": "2026-07-01",
@@ -1224,14 +1482,16 @@
       "lspDeltaScore": 0.5369,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1116326.8,
       "ivRank": 0.5709,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.036,
+      "trendBlock": false
     },
     {
       "date": "2026-07-02",
@@ -1240,14 +1500,16 @@
       "lspDeltaScore": 0.1475,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1124210.8,
       "ivRank": 0.9432,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0033,
+      "trendBlock": false
     },
     {
       "date": "2026-07-03",
@@ -1256,14 +1518,16 @@
       "lspDeltaScore": -0.0526,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1126579.6,
       "ivRank": 0.6636,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0141,
+      "trendBlock": false
     },
     {
       "date": "2026-07-06",
@@ -1272,14 +1536,16 @@
       "lspDeltaScore": -0.2178,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1124191.6,
       "ivRank": 0.5184,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0301,
+      "trendBlock": false
     },
     {
       "date": "2026-07-07",
@@ -1288,14 +1554,16 @@
       "lspDeltaScore": -0.3477,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1121742.4,
       "ivRank": 0.5402,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0344,
+      "trendBlock": false
     },
     {
       "date": "2026-07-08",
@@ -1304,14 +1572,16 @@
       "lspDeltaScore": -0.447,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1122772.0,
       "ivRank": 0.5182,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0358,
+      "trendBlock": false
     },
     {
       "date": "2026-07-09",
@@ -1320,14 +1590,16 @@
       "lspDeltaScore": -0.45,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1116785.2,
       "ivRank": 0.3942,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0634,
+      "trendBlock": false
     },
     {
       "date": "2026-07-10",
@@ -1336,14 +1608,16 @@
       "lspDeltaScore": -0.435,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1119913.6,
       "ivRank": 0.4491,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0441,
+      "trendBlock": false
     },
     {
       "date": "2026-07-13",
@@ -1352,14 +1626,16 @@
       "lspDeltaScore": -0.4412,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1121410.0,
       "ivRank": 0.7903,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0111,
+      "trendBlock": false
     },
     {
       "date": "2026-07-14",
@@ -1368,14 +1644,16 @@
       "lspDeltaScore": -0.2802,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1124510.8,
       "ivRank": 0.3973,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0102,
+      "trendBlock": false
     },
     {
       "date": "2026-07-15",
@@ -1384,14 +1662,16 @@
       "lspDeltaScore": -0.0748,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1120986.4,
       "ivRank": 0.5221,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0244,
+      "trendBlock": false
     },
     {
       "date": "2026-07-16",
@@ -1400,14 +1680,16 @@
       "lspDeltaScore": -0.0658,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1123822.0,
       "ivRank": 0.8816,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0053,
+      "trendBlock": false
     },
     {
       "date": "2026-07-17",
@@ -1416,14 +1698,16 @@
       "lspDeltaScore": -0.0694,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1127466.4,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0295,
+      "trendBlock": false
     },
     {
       "date": "2026-07-20",
@@ -1432,14 +1716,16 @@
       "lspDeltaScore": 0.0303,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1124194.0,
       "ivRank": 1.0,
       "highIvOk": true,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "kelly_non_positive"
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0284,
+      "trendBlock": false
     },
     {
       "date": "2026-07-21",
@@ -1448,14 +1734,16 @@
       "lspDeltaScore": 0.1161,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1121958.4,
       "ivRank": 0.5614,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0229,
+      "trendBlock": false
     },
     {
       "date": "2026-07-22",
@@ -1464,14 +1752,16 @@
       "lspDeltaScore": 0.1881,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1119803.2,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0212,
+      "trendBlock": false
     },
     {
       "date": "2026-07-23",
@@ -1480,14 +1770,16 @@
       "lspDeltaScore": 0.2839,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1122811.6,
       "ivRank": 0.1887,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0082,
+      "trendBlock": false
     },
     {
       "date": "2026-07-24",
@@ -1496,14 +1788,16 @@
       "lspDeltaScore": 0.3776,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1130290.0,
       "ivRank": 0.2756,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0177,
+      "trendBlock": false
     },
     {
       "date": "2026-07-27",
@@ -1512,14 +1806,16 @@
       "lspDeltaScore": 0.418,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1131700.0,
       "ivRank": 0.2359,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0078,
+      "trendBlock": false
     },
     {
       "date": "2026-07-28",
@@ -1528,14 +1824,16 @@
       "lspDeltaScore": 0.3948,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135052.8,
       "ivRank": 0.283,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0211,
+      "trendBlock": false
     },
     {
       "date": "2026-07-29",
@@ -1544,14 +1842,16 @@
       "lspDeltaScore": 0.269,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1134115.6,
       "ivRank": 0.2886,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0182,
+      "trendBlock": false
     },
     {
       "date": "2026-07-30",
@@ -1560,14 +1860,16 @@
       "lspDeltaScore": 0.1083,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1132404.4,
       "ivRank": 0.384,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0057,
+      "trendBlock": false
     },
     {
       "date": "2026-07-31",
@@ -1576,14 +1878,16 @@
       "lspDeltaScore": -0.068,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1136641.6,
       "ivRank": 0.2319,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0036,
+      "trendBlock": false
     },
     {
       "date": "2026-08-03",
@@ -1592,14 +1896,16 @@
       "lspDeltaScore": -0.2146,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1140539.2,
       "ivRank": 0.4295,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.019,
+      "trendBlock": false
     },
     {
       "date": "2026-08-04",
@@ -1608,14 +1914,16 @@
       "lspDeltaScore": -0.299,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1140420.4,
       "ivRank": 0.3328,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.008,
+      "trendBlock": false
     },
     {
       "date": "2026-08-05",
@@ -1624,14 +1932,16 @@
       "lspDeltaScore": -0.1723,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1141703.2,
       "ivRank": 0.1295,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0076,
+      "trendBlock": false
     },
     {
       "date": "2026-08-06",
@@ -1640,14 +1950,16 @@
       "lspDeltaScore": -0.0793,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1142042.8,
       "ivRank": 0.1373,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0198,
+      "trendBlock": false
     },
     {
       "date": "2026-08-07",
@@ -1656,14 +1968,16 @@
       "lspDeltaScore": 0.09,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1142528.8,
       "ivRank": 0.0778,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0033,
+      "trendBlock": false
     },
     {
       "date": "2026-08-10",
@@ -1672,14 +1986,16 @@
       "lspDeltaScore": 0.2335,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1143536.8,
       "ivRank": 0.0702,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0209,
+      "trendBlock": false
     },
     {
       "date": "2026-08-11",
@@ -1688,14 +2004,16 @@
       "lspDeltaScore": 0.3514,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1143374.8,
       "ivRank": 0.0418,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0062,
+      "trendBlock": false
     },
     {
       "date": "2026-08-12",
@@ -1704,14 +2022,16 @@
       "lspDeltaScore": 0.433,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1137002.8,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0065,
+      "trendBlock": false
     },
     {
       "date": "2026-08-13",
@@ -1720,14 +2040,16 @@
       "lspDeltaScore": 0.451,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1136618.8,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0123,
+      "trendBlock": false
     },
     {
       "date": "2026-08-14",
@@ -1736,14 +2058,16 @@
       "lspDeltaScore": 0.3582,
       "callWall": 3.6,
       "putWall": 2.95,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1136858.8,
       "ivRank": 0.0293,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0321,
+      "trendBlock": false
     },
     {
       "date": "2026-08-18",
@@ -1752,14 +2076,16 @@
       "lspDeltaScore": 0.3154,
       "callWall": 3.6,
       "putWall": 2.95,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1139119.6,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0094,
+      "trendBlock": false
     },
     {
       "date": "2026-08-19",
@@ -1768,14 +2094,16 @@
       "lspDeltaScore": 0.2111,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1134870.4,
       "ivRank": 0.291,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0314,
+      "trendBlock": false
     },
     {
       "date": "2026-08-20",
@@ -1784,14 +2112,16 @@
       "lspDeltaScore": 0.1338,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1134533.2,
       "ivRank": 0.2629,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0318,
+      "trendBlock": false
     },
     {
       "date": "2026-08-21",
@@ -1800,14 +2130,16 @@
       "lspDeltaScore": 0.1178,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135793.2,
       "ivRank": 0.1665,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.019,
+      "trendBlock": false
     },
     {
       "date": "2026-08-24",
@@ -1816,14 +2148,16 @@
       "lspDeltaScore": -0.0394,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1134851.2,
       "ivRank": 0.3458,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0258,
+      "trendBlock": false
     },
     {
       "date": "2026-08-25",
@@ -1832,14 +2166,16 @@
       "lspDeltaScore": -0.1234,
       "callWall": 3.1,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1135661.2,
       "ivRank": 0.2756,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0119,
+      "trendBlock": false
     },
     {
       "date": "2026-08-26",
@@ -1848,14 +2184,16 @@
       "lspDeltaScore": -0.0672,
       "callWall": 3.1,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1139998.0,
       "ivRank": 0.3239,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": -0.0023,
+      "trendBlock": false
     },
     {
       "date": "2026-08-27",
@@ -1864,14 +2202,16 @@
       "lspDeltaScore": 0.0465,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1141930.0,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.007,
+      "trendBlock": false
     },
     {
       "date": "2026-08-28",
@@ -1880,14 +2220,16 @@
       "lspDeltaScore": 0.136,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 998387.1,
+      "inPosition": true,
+      "equity": 1142389.6,
       "ivRank": 0.0018,
-      "highIvOk": false,
-      "kellyFraction": 0.0,
-      "kellyBaseLots": 0,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low"
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 120,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
+      "trend": 0.0007,
+      "trendBlock": false
     }
   ]
 }

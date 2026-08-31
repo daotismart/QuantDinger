@@ -9,7 +9,7 @@ historical walls, use scripts/backtest_gex_lsp_iron_condor.py.
 
 import math
 
-# @param lots int 1 Base short lots per side before LSP skew range=1:20:1
+# @param lots int 120 Base short lots per side before LSP skew range=1:200:1
 # @param max_skew_lots int 1 Extra short lots tilted by LSP range=0:5:1
 # @param wing_steps int 1 Listed strikes beyond short for long wings range=1:5:1
 # @param lsp_days_1 int 5 Short LSP window range=3:20:1

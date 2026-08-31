@@ -358,30 +358,134 @@ def select_strangle_strikes(
     }
 
 
+def _pack_iron_condor(
+    *,
+    by_strike: Mapping[float, Mapping[str, Any]],
+    short_call: float,
+    short_put: float,
+    long_call: float,
+    long_put: float,
+    spot: float,
+    walls: Mapping[str, Any],
+    min_credit_to_width: float = 0.0,
+) -> dict[str, Any] | None:
+    if not (long_put < short_put <= spot <= short_call < long_call):
+        return None
+    call_short_row = by_strike.get(short_call) or {}
+    put_short_row = by_strike.get(short_put) or {}
+    call_long_row = by_strike.get(long_call) or {}
+    put_long_row = by_strike.get(long_put) or {}
+    call_wing = float(long_call - short_call)
+    put_wing = float(short_put - long_put)
+    wing_width = max(call_wing, put_wing)
+    call_credit = max(_f(call_short_row.get("call_close")) - _f(call_long_row.get("call_close")), 0.0)
+    put_credit = max(_f(put_short_row.get("put_close")) - _f(put_long_row.get("put_close")), 0.0)
+    net_credit = call_credit + put_credit
+    cr_w = net_credit / wing_width if wing_width > 0 else 0.0
+    if float(min_credit_to_width) > 0 and cr_w < float(min_credit_to_width):
+        return None
+    return {
+        "call_strike": short_call,
+        "put_strike": short_put,
+        "call_code": call_short_row.get("call_code"),
+        "put_code": put_short_row.get("put_code"),
+        "call_close": call_short_row.get("call_close"),
+        "put_close": put_short_row.get("put_close"),
+        "call_delta": call_short_row.get("call_delta"),
+        "put_delta": put_short_row.get("put_delta"),
+        "call_wall": walls.get("call_wall"),
+        "put_wall": walls.get("put_wall"),
+        "pin": walls.get("pin"),
+        "flip": walls.get("flip"),
+        "expire_date": walls.get("expire_date"),
+        "spot": spot,
+        "long_call_strike": long_call,
+        "long_put_strike": long_put,
+        "long_call_code": call_long_row.get("call_code"),
+        "long_put_code": put_long_row.get("put_code"),
+        "long_call_close": call_long_row.get("call_close"),
+        "long_put_close": put_long_row.get("put_close"),
+        "long_call_delta": call_long_row.get("call_delta"),
+        "long_put_delta": put_long_row.get("put_delta"),
+        "call_wing": call_wing,
+        "put_wing": put_wing,
+        "wing_width": wing_width,
+        "net_credit": net_credit,
+        "credit_to_width": cr_w,
+        "structure": "iron_condor",
+    }
+
+
 def select_iron_condor_strikes(
     walls: Mapping[str, Any],
     *,
     min_width_pct: float = 0.02,
     wing_steps: int = 2,
     wing_pct: float = 0.0,
+    short_otm_pct: float = 0.0,
+    min_credit_to_width: float = 0.0,
 ) -> dict[str, Any] | None:
-    """Build a short iron condor from GEX walls + further OTM long wings.
+    """Build a short iron condor.
 
-    Structure (credit):
-      - short call near call wall, long call ``wing_steps`` strikes further OTM
-      - short put near put wall, long put ``wing_steps`` strikes further OTM
-
-    When the wall sits on the edge of the listed strike grid (no room for a wing),
-    the short strike is walked one step closer to spot so a long wing still fits.
-    If ``wing_pct`` > 0, wing distance is at least ``wing_pct * spot``.
+    Default (``short_otm_pct`` = 0): short legs at/near GEX walls.
+    When ``short_otm_pct`` > 0: short ~that percent OTM from spot (tighter
+    premium) and still buy ``wing_steps`` further-OTM wings. Skip structures
+    whose net credit / wing width is below ``min_credit_to_width``.
     """
-    body = select_strangle_strikes(walls, min_width_pct=min_width_pct)
-    if body is None:
-        return None
     points = list(walls.get("points") or [])
     by_strike = {float(p["strike"]): p for p in points}
     strikes = sorted(by_strike)
-    if len(strikes) < 4:
+    spot = _f(walls.get("spot"))
+    if spot <= 0 or len(strikes) < 4:
+        return None
+    steps = max(int(wing_steps), 1)
+    min_wing = max(float(wing_pct), 0.0) * spot
+    otm_calls = [k for k in strikes if k >= spot]
+    otm_puts = [k for k in strikes if k <= spot]
+    if len(otm_calls) < steps + 1 or len(otm_puts) < steps + 1:
+        return None
+
+    if float(short_otm_pct) > 0:
+        tgt_call = spot * (1.0 + float(short_otm_pct))
+        tgt_put = spot * (1.0 - float(short_otm_pct))
+        short_call = next((k for k in otm_calls if k >= tgt_call), None)
+        short_put = next((k for k in reversed(otm_puts) if k <= tgt_put), None)
+        if short_call is None or short_put is None:
+            return None
+        if len([k for k in strikes if k > short_call]) < steps:
+            short_call = otm_calls[-(steps + 1)]
+        if len([k for k in strikes if k < short_put]) < steps:
+            short_put = otm_puts[steps]
+        if short_call <= short_put or (short_call - short_put) / spot < float(min_width_pct):
+            return None
+        higher = [k for k in strikes if k > short_call]
+        lower = [k for k in strikes if k < short_put]
+        if len(higher) < steps or len(lower) < steps:
+            return None
+        long_call = higher[steps - 1]
+        long_put = lower[-steps]
+        if min_wing > 0:
+            for k in higher:
+                if k - short_call >= min_wing:
+                    long_call = k
+                    break
+            for k in reversed(lower):
+                if short_put - k >= min_wing:
+                    long_put = k
+                    break
+        return _pack_iron_condor(
+            by_strike=by_strike,
+            short_call=float(short_call),
+            short_put=float(short_put),
+            long_call=float(long_call),
+            long_put=float(long_put),
+            spot=spot,
+            walls=walls,
+            min_credit_to_width=min_credit_to_width,
+        )
+
+    body = select_strangle_strikes(walls, min_width_pct=min_width_pct)
+    if body is None:
         return None
 
     short_call = float(body["call_strike"])
@@ -435,40 +539,13 @@ def select_iron_condor_strikes(
                 long_put = k
                 break
 
-    if not (long_put < short_put <= spot <= short_call < long_call):
-        return None
-
-    call_short_row = by_strike.get(short_call) or {}
-    put_short_row = by_strike.get(short_put) or {}
-    call_long_row = by_strike.get(long_call) or {}
-    put_long_row = by_strike.get(long_put) or {}
-    call_wing = float(long_call - short_call)
-    put_wing = float(short_put - long_put)
-    return {
-        "call_strike": short_call,
-        "put_strike": short_put,
-        "call_code": call_short_row.get("call_code"),
-        "put_code": put_short_row.get("put_code"),
-        "call_close": call_short_row.get("call_close"),
-        "put_close": put_short_row.get("put_close"),
-        "call_delta": call_short_row.get("call_delta"),
-        "put_delta": put_short_row.get("put_delta"),
-        "call_wall": body.get("call_wall"),
-        "put_wall": body.get("put_wall"),
-        "pin": body.get("pin"),
-        "flip": body.get("flip"),
-        "expire_date": body.get("expire_date"),
-        "spot": spot,
-        "long_call_strike": long_call,
-        "long_put_strike": long_put,
-        "long_call_code": call_long_row.get("call_code"),
-        "long_put_code": put_long_row.get("put_code"),
-        "long_call_close": call_long_row.get("call_close"),
-        "long_put_close": put_long_row.get("put_close"),
-        "long_call_delta": call_long_row.get("call_delta"),
-        "long_put_delta": put_long_row.get("put_delta"),
-        "call_wing": call_wing,
-        "put_wing": put_wing,
-        "wing_width": max(call_wing, put_wing),
-        "structure": "iron_condor",
-    }
+    return _pack_iron_condor(
+        by_strike=by_strike,
+        short_call=float(short_call),
+        short_put=float(short_put),
+        long_call=float(long_call),
+        long_put=float(long_put),
+        spot=spot,
+        walls=walls,
+        min_credit_to_width=min_credit_to_width,
+    )

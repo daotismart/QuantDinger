@@ -57,6 +57,57 @@ def test_select_iron_condor_strikes_builds_wings():
     assert pick["long_put_strike"] < pick["put_strike"] <= pick["spot"] <= pick["call_strike"] < pick["long_call_strike"]
 
 
+def test_select_iron_condor_tight_otm_and_credit_filter():
+    rows = []
+    for strike, call_oi, put_oi in [
+        (2.70, 1000, 40000),
+        (2.80, 2000, 50000),
+        (2.90, 5000, 20000),
+        (3.00, 80000, 8000),
+        (3.10, 20000, 3000),
+        (3.20, 5000, 1000),
+    ]:
+        rows.append(
+            {
+                "trade_date": "2026-08-01",
+                "strike": strike,
+                "cp": "C",
+                "expire_date": "2026-09-23",
+                "open_interest": call_oi,
+                "gamma": 1.0,
+                "delta": 0.35,
+                "option_close": max(0.01, 0.12 - abs(strike - 2.95) * 0.4),
+                "contract_code": f"C{strike}",
+            }
+        )
+        rows.append(
+            {
+                "trade_date": "2026-08-01",
+                "strike": strike,
+                "cp": "P",
+                "expire_date": "2026-09-23",
+                "open_interest": put_oi,
+                "gamma": 1.0,
+                "delta": -0.35,
+                "option_close": max(0.01, 0.12 - abs(strike - 2.95) * 0.4),
+                "contract_code": f"P{strike}",
+            }
+        )
+    walls = compute_gex_walls(pd.DataFrame(rows), underlying=2.95, min_dte=5, max_dte=60)
+    wall_pick = select_iron_condor_strikes(walls, min_width_pct=0.02, wing_steps=1)
+    tight = select_iron_condor_strikes(
+        walls, min_width_pct=0.02, wing_steps=1, short_otm_pct=0.025, min_credit_to_width=0.15
+    )
+    assert tight is not None
+    assert tight["long_put_strike"] < tight["put_strike"] < tight["spot"] < tight["call_strike"] < tight["long_call_strike"]
+    assert tight["call_strike"] >= tight["spot"] * (1.0 + 0.025) - 1e-9 or tight["call_strike"] in (3.0, 3.1)
+    assert tight.get("credit_to_width", 0) >= 0.15
+    skinny = select_iron_condor_strikes(
+        walls, min_width_pct=0.02, wing_steps=1, short_otm_pct=0.025, min_credit_to_width=0.99
+    )
+    assert skinny is None
+
+
 def test_estimate_iron_condor_margin_defined_risk():
     margin = estimate_iron_condor_margin(
         short_call_strike=3.0,
@@ -156,6 +207,7 @@ def test_iron_condor_backtest_runs_on_synthetic_panel():
     )
     assert result.summary["structure"] == "iron_condor"
     assert result.summary["finalEquity"] > 0
+    assert "annualizedReturn" in result.summary
     assert len(result.equity_curve) > 0
     for trade in result.trades:
         assert trade["longPutStrike"] < trade["shortPutStrike"]
