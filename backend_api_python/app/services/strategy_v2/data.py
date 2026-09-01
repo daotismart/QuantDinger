@@ -74,8 +74,16 @@ class MultiAssetDataPortal:
             return matching[0]
         raise StrategyDataError(f"strategyV2.dataUnavailable:{raw}")
 
+    def try_resolve_key(self, symbol: object) -> str | None:
+        try:
+            return self.resolve_key(symbol)
+        except StrategyDataError:
+            return None
+
     def visible_frame(self, symbol: object, count: int | None = None) -> pd.DataFrame:
-        key = self.resolve_key(symbol)
+        key = self.try_resolve_key(symbol)
+        if key is None:
+            return self._empty_ohlc()
         frame = self.frames[key]
         if self._visible_dt is None:
             return frame.iloc[0:0].copy()
@@ -96,8 +104,8 @@ class MultiAssetDataPortal:
         selected_fields = [str(item).strip().lower() for item in _as_list(fields)] if fields else []
         output: dict[str, pd.DataFrame] = {}
         for symbol in requested:
-            key = self.resolve_key(symbol)
-            frame = self.visible_frame(key, count=count)
+            key = self.try_resolve_key(symbol) or str(symbol or "").strip()
+            frame = self.visible_frame(symbol, count=count)
             if selected_fields:
                 available = [field for field in selected_fields if field in frame.columns]
                 frame = frame.loc[:, available]
@@ -127,7 +135,9 @@ class MultiAssetDataPortal:
         return value if value > 0 else None
 
     def bar_at(self, symbol: object, timestamp: Any) -> dict[str, Any] | None:
-        key = self.resolve_key(symbol)
+        key = self.try_resolve_key(symbol)
+        if key is None:
+            return None
         ts = pd.Timestamp(timestamp)
         if self._bar_cache_timestamp != ts:
             self._bar_cache_timestamp = ts
@@ -168,7 +178,13 @@ class MultiAssetDataPortal:
 
     def panel(self, symbols: Iterable[object] | None = None, *, count: int | None = None) -> dict[str, pd.DataFrame]:
         requested = list(symbols or self.frames.keys())
-        return {self.resolve_key(symbol): self.visible_frame(symbol, count=count) for symbol in requested}
+        output: dict[str, pd.DataFrame] = {}
+        for symbol in requested:
+            key = self.try_resolve_key(symbol)
+            if key is None:
+                continue
+            output[key] = self.visible_frame(symbol, count=count)
+        return output
 
     def universe(self, reference: str) -> list[str]:
         if not self.universe_resolver:
@@ -197,6 +213,10 @@ class MultiAssetDataPortal:
         if "volume" not in frame.columns:
             frame["volume"] = 0.0
         return frame
+
+    @classmethod
+    def _empty_ohlc(cls) -> pd.DataFrame:
+        return pd.DataFrame(columns=list(cls.REQUIRED_COLUMNS) + ["volume"])
 
 
 def _as_list(value: object) -> list[Any]:
