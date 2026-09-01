@@ -47,24 +47,34 @@ def config_from_params(
             return value
         return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
-    use_kelly = _b("kelly", False) or _b("use_kelly_sizing", False)
+    use_kelly = _b("kelly", True) if "kelly" in raw or "use_kelly_sizing" in raw else _b("use_kelly_sizing", True)
     return IronCondorBacktestConfig(
         underlying_code=str(underlying or "510050"),
         initial_capital=float(initial_capital),
-        lots=max(_i("lots", 120), 1),
-        wing_steps=max(_i("wing_steps", 1), 1),
+        lots=max(_i("lots", 80), 1),
+        wing_steps=max(_i("wing_steps", 3), 1),
         wing_pct=max(_f("wing_pct", 0.0), 0.0),
-        take_profit_pct=max(_f("take_profit_pct", 0.50), 0.0),
+        take_profit_pct=max(_f("take_profit_pct", 0.75), 0.0),
         stop_loss_pct=max(_f("stop_loss_pct", 0.90), 0.0),
+        min_credit_to_width=max(_f("min_credit_to_width", 0.20), 0.0),
+        min_short_delta=max(_f("min_short_delta", 0.14), 0.0),
+        max_short_delta=max(_f("max_short_delta", 0.25), 0.0),
+        target_dte=max(_i("target_dte", 45), 0),
+        min_dte=max(_i("min_dte", 28), 1),
+        max_dte=max(_i("max_dte", 65), 1),
+        roll_before_dte=max(_i("roll_before_dte", 21), 1),
+        exit_dte=max(_i("exit_dte", 21), 1),
+        risk_cap=max(_f("risk_cap", 0.06), 0.0),
         use_kelly_sizing=use_kelly,
-        require_high_iv=_b("require_high_iv", False),
+        require_high_iv=_b("require_high_iv", True),
         require_inside_walls=_b("require_inside_walls", False),
-        iv_rank_min=_f("iv_rank_min", 0.60),
-        kelly_max_fraction=_f("kelly_max_fraction", 0.25),
-        kelly_max_lots=max(_i("kelly_max_lots", 150), 1),
+        iv_rank_min=_f("iv_rank_min", 0.40),
+        kelly_max_fraction=_f("kelly_max_fraction", 0.10),
+        kelly_max_lots=max(_i("kelly_max_lots", 80), 1),
         lsp_max_skew_lots=max(_i("max_skew_lots", 0), 0),
         max_hold_days=max(_i("max_hold_bars", 60), 1),
-        expiry_month=str(raw.get("expiry_month") or "next"),
+        expiry_month=str(raw.get("expiry_month") or "target"),
+        exclude_adjusted=_b("exclude_adjusted", True),
     )
 
 
@@ -169,8 +179,9 @@ def research_to_v2_result(payload: Mapping[str, Any], *, code: str) -> dict[str,
             "leverage": 1.0,
             "commission": 5.0,
             "slippage": 0.02,
-            "lots": int((summary.get("config") or {}).get("lots") or 120),
+            "lots": int((summary.get("config") or {}).get("lots") or 80),
             "contractSelection": "listed_chain_gex_walls",
+            "pickModel": "gex_tv_iron_condor",
         },
         "manifest": {
             "strategyType": "portfolio",
@@ -182,6 +193,7 @@ def research_to_v2_result(payload: Mapping[str, Any], *, code: str) -> dict[str,
         "diagnostics": {
             "sourceControlled": True,
             "contractSelection": "listed_chain_gex_walls",
+            "pickModel": "gex_tv_iron_condor",
             "chainDays": int(summary.get("tradingDays") or len(equity_curve)),
         },
     }

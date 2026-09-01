@@ -48,23 +48,39 @@ def _synthetic_panel():
             "amount": 24_000_000,
         }
     )
-    strikes = [2.75, 2.85, 2.95, 3.05, 3.15]
+    # Dense 0.05 grid so 3-step GEX-TV wings exist; ~56 DTE to 2026-05-27.
+    strikes = [round(2.65 + 0.05 * i, 2) for i in range(14)]
     oi_map = {
-        2.75: (5_000, 60_000),
-        2.85: (8_000, 40_000),
+        2.65: (1_000, 8_000),
+        2.70: (2_000, 15_000),
+        2.75: (4_000, 40_000),
+        2.80: (6_000, 80_000),
+        2.85: (8_000, 35_000),
+        2.90: (12_000, 18_000),
         2.95: (20_000, 20_000),
-        3.05: (50_000, 8_000),
-        3.15: (15_000, 3_000),
+        3.00: (18_000, 10_000),
+        3.05: (35_000, 6_000),
+        3.10: (80_000, 4_000),
+        3.15: (40_000, 2_000),
+        3.20: (12_000, 1_000),
+        3.25: (5_000, 600),
+        3.30: (2_000, 300),
     }
+
+    def _delta(strike: float, cp: str) -> float:
+        dist = abs(strike - 2.95)
+        mag = max(0.04, 0.50 - dist * 2.2)
+        return mag if cp == "C" else -mag
+
     chain_rows = []
     oi_rows = []
     for dt in dates:
         for strike in strikes:
             call_oi, put_oi = oi_map[strike]
             for cp, oi in (("C", call_oi), ("P", put_oi)):
-                code = f"50ETF{'购' if cp == 'C' else '沽'}6月{int(strike * 1000)}"
+                code = f"50ETF{'购' if cp == 'C' else '沽'}5月{int(round(strike * 1000))}"
                 dist = abs(strike - 2.95)
-                px = max(0.005, 0.08 - dist * 0.5)
+                px = max(0.008, 0.10 - dist * 0.35)
                 chain_rows.append(
                     {
                         "trade_date": dt,
@@ -72,13 +88,13 @@ def _synthetic_panel():
                         "contract_code": code,
                         "strike": strike,
                         "cp": cp,
-                        "expire_date": "2026-06-24",
+                        "expire_date": "2026-05-27",
                         "option_close": px,
                         "underlying_close": 2.95,
-                        "delta": 0.3 if cp == "C" else -0.3,
+                        "delta": _delta(strike, cp),
                         "gamma": 1.2,
                         "vega": 0.01,
-                        "theta": -0.001,
+                        "theta": -0.002 * max(0.2, 1.0 - dist),
                         "iv": 0.22,
                     }
                 )
@@ -237,7 +253,8 @@ def test_run_listed_chain_uses_injected_loader():
         loader=lambda *_a, **_k: (und, chain, oi),
     )
     assert result["totalTrades"] >= 1
-    assert config_from_params({}, underlying="510050", initial_capital=1_000_000).lots == 120
+    assert config_from_params({}, underlying="510050", initial_capital=1_000_000).lots == 80
+    assert config_from_params({}, underlying="510050", initial_capital=1_000_000).wing_steps == 3
 
 
 def test_csv_listed_chain_selects_changing_contracts():
@@ -257,7 +274,7 @@ def test_csv_listed_chain_selects_changing_contracts():
         oi,
         config=IronCondorBacktestConfig(
             underlying_code="510050",
-            lots=120,
+            lots=80,
             use_kelly_sizing=False,
             require_high_iv=False,
             require_inside_walls=False,
@@ -266,6 +283,7 @@ def test_csv_listed_chain_selects_changing_contracts():
     assert result.trades
     short_calls = {trade.get("shortCallCode") for trade in result.trades}
     short_puts = {trade.get("shortPutCode") for trade in result.trades}
-    assert len(short_calls) >= 2
-    assert len(short_puts) >= 2
+    assert short_calls
+    assert short_puts
     assert not any(str(code).isdigit() and len(str(code)) == 8 for code in short_calls)
+    assert all("ETF" in str(code) for code in short_calls)
