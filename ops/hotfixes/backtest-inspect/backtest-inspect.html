@@ -95,13 +95,48 @@
     const params = new URLSearchParams(location.search);
     if (params.get("embed") === "1") document.body.classList.add("embed");
 
-    function token() {
-      for (const key of ["Access-Token", "token", "Authorization"]) {
-        let raw = localStorage.getItem(key);
-        if (!raw) continue;
-        try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === "object") return parsed.value || parsed.token || ""; } catch (e) {}
-        return raw;
+    function unwrapStoredToken(raw) {
+      if (raw == null || raw === "") return "";
+      let value = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === "string") value = parsed;
+        else if (parsed && typeof parsed === "object") {
+          value = parsed.value || parsed.token || parsed.accessToken || "";
+        }
+      } catch (e) {}
+      value = String(value || "").replace(/^Bearer\s+/i, "").trim();
+      if ((value.charAt(0) === '"' && value.charAt(value.length - 1) === '"') ||
+          (value.charAt(0) === "'" && value.charAt(value.length - 1) === "'")) {
+        value = value.slice(1, -1);
       }
+      return value;
+    }
+    function tokenFromStore(store) {
+      if (!store) return "";
+      const keys = ["Access-Token", "token", "Authorization"];
+      for (const key of keys) {
+        const found = unwrapStoredToken(store.getItem(key));
+        if (found) return found;
+      }
+      try {
+        for (let i = 0; i < store.length; i++) {
+          const key = store.key(i);
+          if (!key || /expire/i.test(key)) continue;
+          const found = unwrapStoredToken(store.getItem(key));
+          if (found && found.indexOf("eyJ") === 0 && found.split(".").length === 3) return found;
+        }
+      } catch (e) {}
+      return "";
+    }
+    function token() {
+      const own = tokenFromStore(window.localStorage) || tokenFromStore(window.sessionStorage);
+      if (own) return own;
+      try {
+        if (window.parent && window.parent !== window) {
+          return tokenFromStore(window.parent.localStorage) || tokenFromStore(window.parent.sessionStorage);
+        }
+      } catch (e) {}
       return "";
     }
     async function api(path) {
@@ -109,7 +144,10 @@
       const t = token();
       if (t) { headers.Authorization = "Bearer " + t; headers["Access-Token"] = t; }
       const res = await fetch(path, { headers, credentials: "include" });
-      if (!res.ok) throw new Error(path + " HTTP " + res.status);
+      if (!res.ok) {
+        if (res.status === 401) throw new Error("未登录或登录已过期，请先打开回测中心登录后再加载");
+        throw new Error(path + " HTTP " + res.status);
+      }
       return res.json();
     }
     const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
