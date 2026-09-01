@@ -219,17 +219,23 @@ def test_iron_condor_backtest_runs_on_synthetic_panel():
         assert trade["shortCallStrike"] < trade["longCallStrike"]
         assert trade.get("callLots", 0) >= 1
         assert trade.get("putLots", 0) >= 1
+        assert trade.get("shortCallCode")
+        assert trade.get("shortPutCode")
+        assert trade.get("longCallCode")
+        assert trade.get("longPutCode")
 
 
-def test_iron_condor_v2_example_uses_listed_50etf_contracts():
+def test_iron_condor_v2_example_uses_listed_chain_not_fixed_codes() -> None:
     path = REPO_ROOT / "docs/examples/strategy_v2_gex_lsp_iron_condor.py"
     code = path.read_text(encoding="utf-8")
-    assert "CNIndexOptions:10010975" in code
-    assert "CNIndexOptions:10004448" not in code
+    assert 'strategy_family="options_short_vol_iron_condor"' in code
+    assert "listed_chain_gex_walls" in code
+    assert "CNStock:510050.SH" in code
+    assert "10010975" not in code
+    assert "10004448" not in code
+    assert "10004449" not in code
     program = compile_strategy_v2(code)
     keys = {item.key for item in program.manifest.universe.instruments}
-    assert "CNIndexOptions:10010975" in keys
-    assert "CNIndexOptions:10010981" in keys
-    assert "CNIndexOptions:10010976" in keys
-    assert "CNIndexOptions:10010980" in keys
-    assert "CNStock:510050.SH" in keys
+    assert keys == {"CNStock:510050.SH"}
+    assert program.manifest.metadata_fields.get("strategy_family") == "options_short_vol_iron_condor"
+    assert program.manifest.metadata_fields.get("contract_selection") == "listed_chain_gex_walls"

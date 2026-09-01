@@ -24,113 +24,19 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.services.gex_lsp_strangle.v2_adapter import (
+    ENGINE_VERSION,
+    research_to_v2_result as _research_to_v2_result,
+)
 from app.utils.db import get_db_connection
 
 
 TEMPLATE_KEY = "strategy_v2_gex_lsp_iron_condor"
 SOURCE_NAME_510050 = "GEX+LSP 铁鹰（ETF期权·510050）"
-ENGINE_VERSION = "gex-lsp-iron-condor-research"
 
 
 def _load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
-def _research_to_v2_result(payload: dict[str, Any], *, code: str) -> dict[str, Any]:
-    summary = payload.get("summary") or {}
-    initial = float(summary.get("initialCapital") or 1_000_000)
-    final = float(summary.get("finalEquity") or initial)
-    trades = list(payload.get("trades") or [])
-    curve_in = list(payload.get("equityCurve") or [])
-    equity_curve = []
-    peak = initial
-    for point in curve_in:
-        value = float(point.get("equity") or point.get("value") or initial)
-        peak = max(peak, value)
-        dd = value / peak - 1.0 if peak > 0 else 0.0
-        equity_curve.append(
-            {
-                "time": f"{point.get('date') or point.get('time')}T16:00:00Z",
-                "value": value,
-                "cash": value,
-                "grossExposure": 0.0,
-                "netExposure": 0.0,
-                "drawdown": dd,
-            }
-        )
-    closed = []
-    balance = initial
-    for trade in trades:
-        pnl = float(trade.get("pnl") or 0.0)
-        balance += pnl
-        closed.append(
-            {
-                "symbol": f"CNStock:{summary.get('underlying') or '510050'}",
-                "side": "short",
-                "entry_time": f"{trade.get('entryDate')}T16:00:00Z",
-                "exit_time": f"{trade.get('exitDate')}T16:00:00Z",
-                "entry_price": float(trade.get("entryCredit") or 0.0),
-                "exit_price": float(trade.get("exitDebit") or 0.0),
-                "quantity": float(max(trade.get("callLots") or 0, trade.get("putLots") or 0, 1)),
-                "amount": float(max(trade.get("callLots") or 0, trade.get("putLots") or 0, 1)),
-                "profit": pnl,
-                "gross_profit": pnl,
-                "commission": float(trade.get("fees") or 0.0),
-                "balance": balance,
-                "close_reason": str(trade.get("reason") or ""),
-                "structure": "iron_condor",
-                "shortCallStrike": trade.get("shortCallStrike"),
-                "shortPutStrike": trade.get("shortPutStrike"),
-                "longCallStrike": trade.get("longCallStrike"),
-                "longPutStrike": trade.get("longPutStrike"),
-            }
-        )
-    wins = [t for t in closed if float(t.get("profit") or 0) > 0]
-    losses = [t for t in closed if float(t.get("profit") or 0) < 0]
-    return {
-        "engine": {"version": ENGINE_VERSION, "kind": "gex_lsp_iron_condor_research"},
-        "initialCapital": initial,
-        "finalEquity": final,
-        "totalReturn": float(summary.get("totalReturn") or 0.0),
-        "annualizedReturn": float(summary.get("annualizedReturn") or 0.0),
-        "annualizedReturnAvailable": True,
-        "annualizedVolatility": float(summary.get("annualizedVol") or 0.0),
-        "sharpeRatio": float(summary.get("sharpe") or 0.0),
-        "maxDrawdown": float(summary.get("maxDrawdown") or 0.0),
-        "winRate": float(summary.get("winRate") or 0.0),
-        "totalTrades": int(summary.get("trades") or len(closed)),
-        "totalExecutions": int(summary.get("trades") or len(closed)),
-        "winningTrades": len(wins),
-        "losingTrades": len(losses),
-        "avgTrade": float(summary.get("avgTradePnl") or 0.0),
-        "totalProfit": float(sum(float(t.get("profit") or 0) for t in closed)),
-        "resultStatus": "completed_trades" if closed else "no_trades",
-        "dataProvenance": {"kind": "market", "source": "etf_options_chain_research"},
-        "equityCurve": equity_curve,
-        "closedTrades": closed,
-        "trades": closed,
-        "executions": closed,
-        "benchmark": {"symbol": f"CNStock:{summary.get('underlying') or '510050'}"},
-        "executionAssumptions": {
-            "engineVersion": ENGINE_VERSION,
-            "fillRule": "daily_close_research",
-            "initialCapital": initial,
-            "startDate": str((curve_in[0] or {}).get("date") or "") if curve_in else "",
-            "endDate": str((curve_in[-1] or {}).get("date") or "") if curve_in else "",
-            "leverageEnabled": False,
-            "leverage": 1.0,
-            "commission": 5.0,
-            "slippage": 0.02,
-            "lots": int((summary.get("config") or {}).get("lots") or 120),
-        },
-        "manifest": {
-            "strategyType": "portfolio",
-            "primaryFrequency": "1d",
-            "markets": ["CNIndexOptions", "CNStock"],
-        },
-        "codeHash": hashlib.sha256(code.encode("utf-8")).hexdigest(),
-        "researchSummary": summary,
-    }
 
 
 def _upsert_template(cur, *, code: str, title: str, description: str) -> None:
@@ -179,6 +85,7 @@ def _upsert_source(cur, *, user_id: int, name: str, description: str, code: str)
             "underlying_etf": "510050",
             "strategy_family": "options_short_vol_iron_condor",
             "research_engine": ENGINE_VERSION,
+            "contract_selection": "listed_chain_gex_walls",
         },
         ensure_ascii=False,
     )

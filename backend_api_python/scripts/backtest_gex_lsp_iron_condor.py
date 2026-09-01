@@ -6,33 +6,31 @@ Kelly sizes on wing-minus-credit margin; LSP skews short call/put lots (wings ma
 
 Example:
   PYTHONPATH=backend_api_python python backend_api_python/scripts/backtest_gex_lsp_iron_condor.py \\
-    --data-dir tmp/gex_lsp_strangle --underlying 510050
+    --from-csv --data-dir tmp/gex_lsp_strangle --underlying 510050 \\
+    --start 2026-03-27 --end 2026-08-31
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
-
-import pandas as pd
 
 from app.services.gex_lsp_strangle import (
     IronCondorBacktestConfig,
     run_iron_condor_backtest,
 )
-
-
-def _load_csv(path: Path) -> pd.DataFrame:
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return pd.read_csv(path)
+from app.services.gex_lsp_strangle.chain_store import load_listed_option_panel
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path("tmp/gex_lsp_strangle"))
     parser.add_argument("--underlying", default="510050")
+    parser.add_argument("--start", default=None, help="Inclusive YYYY-MM-DD; default = first listed chain day")
+    parser.add_argument("--end", default=None, help="Inclusive YYYY-MM-DD; default = last listed chain day")
+    parser.add_argument("--from-csv", action="store_true", help="Skip ClickHouse and load GEX_LSP_DATA_DIR CSVs")
     parser.add_argument("--capital", type=float, default=1_000_000.0)
     parser.add_argument("--lots", type=int, default=120, help="Fixed lots when Kelly is off")
     parser.add_argument("--wing-steps", type=int, default=1, help="Listed strikes beyond short for long wings")
@@ -53,17 +51,15 @@ def main() -> int:
     args = parser.parse_args()
 
     data_dir = args.data_dir
-    und = _load_csv(data_dir / f"underlying_{args.underlying}.csv")
-    chain = _load_csv(data_dir / f"chain_{args.underlying}.csv")
-    oi = _load_csv(data_dir / f"oi_{args.underlying}.csv")
-
-    und["trade_date"] = pd.to_datetime(und["trade_date"])
-    chain["trade_date"] = pd.to_datetime(chain["trade_date"])
-    oi["trade_date"] = pd.to_datetime(oi["trade_date"])
-    start = max(chain["trade_date"].min(), oi["trade_date"].min())
-    und = und[und["trade_date"] >= start]
-    chain = chain[chain["trade_date"] >= start]
-    oi = oi[oi["trade_date"] >= start]
+    if args.from_csv:
+        os.environ["ETF_OPTIONS_CH_ENABLED"] = "0"
+        os.environ["GEX_LSP_DATA_DIR"] = str(data_dir.resolve())
+    und, chain, oi = load_listed_option_panel(
+        args.underlying,
+        start=args.start,
+        end=args.end,
+        data_dir=data_dir,
+    )
 
     cfg = IronCondorBacktestConfig(
         underlying_code=str(args.underlying),
@@ -109,6 +105,9 @@ def main() -> int:
         f"- Short OTM: {summary.get('shortOtmPct')} | min credit/width={summary.get('minCreditToWidth')}",
         f"- Wing steps: {summary.get('wingSteps')} | take-profit={summary.get('takeProfitPct')} | stop-loss={summary.get('stopLossPct')}",
         f"- Trend filter: |20d return| > {summary.get('maxAbsTrendPct', 0)*100:.0f}% sits out",
+        f"- Listed chain: {str(chain['trade_date'].min())[:10]} → {str(chain['trade_date'].max())[:10]} "
+        f"({int(chain['trade_date'].nunique())} sessions, {chain['contract_code'].nunique()} contracts)",
+        "- Legs: each entry picks then-listed 次月 strikes via GEX walls (no hardcoded codes)",
         "",
         "## Rules",
         "",
@@ -127,6 +126,7 @@ def main() -> int:
             f"- {trade['entryDate']} → {trade['exitDate']} | "
             f"K={trade['longPutStrike']}/{trade['shortPutStrike']}/"
             f"{trade['shortCallStrike']}/{trade['longCallStrike']} | "
+            f"{trade.get('shortPutCode')}/{trade.get('shortCallCode')} | "
             f"lots={trade.get('putLots')}/{trade.get('callLots')} | "
             f"credit={trade.get('entryCredit')} | "
             f"PnL={trade['pnl']:,.2f} | {trade['reason']}"

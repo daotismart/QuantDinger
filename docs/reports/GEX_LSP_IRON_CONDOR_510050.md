@@ -3,18 +3,20 @@
 ## Summary
 
 - Initial capital: 1,000,000
-- Final equity: 1,142,389.60
-- Total return: 14.24%
-- Annualized return: 45.17% (90 trading days)
-- Sharpe: 1.683
-- Max drawdown: -2.94%
-- Trades: 7 (win rate 28.6%)
-- Avg trade PnL: 20,341.37
+- Final equity: 986,839.60
+- Total return: -1.32%
+- Annualized return: -3.28% (100 trading days)
+- Sharpe: -0.042
+- Max drawdown: -5.48%
+- Trades: 8 (win rate 25.0%)
+- Avg trade PnL: -1,645.05
 - Sizing: fixed_lots
 - High-IV filter: False
 - Short OTM: 0.0 | min credit/width=0.0
 - Wing steps: 1 | take-profit=0.5 | stop-loss=0.9
 - Trend filter: |20d return| > 8% sits out
+- Listed chain: 2026-03-27 → 2026-08-31 (100 sessions, 232 contracts)
+- Legs: each entry picks then-listed 次月 strikes via GEX walls (no hardcoded codes)
 
 ## Rules
 
@@ -27,10 +29,11 @@
 
 ## Trades
 
-- 2026-04-01 → 2026-04-15 | K=2.8/2.85/3.0/3.1 | lots=120/120 | credit=0.0375 | PnL=-16,278.00 | short_call_breach
-- 2026-04-15 → 2026-04-29 | K=2.8/2.85/3.1/3.2 | lots=120/120 | credit=0.0199 | PnL=156,679.20 | take_profit
-- 2026-04-29 → 2026-06-11 | K=2.825/2.85/3.2/3.215 | lots=120/120 | credit=0.0052 | PnL=-3,746.40 | roll_month
-- 2026-06-11 → 2026-07-07 | K=2.75/2.8/3.1/3.2 | lots=120/120 | credit=0.0151 | PnL=-3,954.00 | roll_month
-- 2026-07-07 → 2026-08-04 | K=2.8/2.85/3.1/3.2 | lots=120/120 | credit=0.0321 | PnL=13,736.40 | take_profit
-- 2026-08-04 → 2026-08-12 | K=2.65/2.7/3.5/3.6 | lots=120/120 | credit=0.0038 | PnL=-2,786.40 | take_profit
-- 2026-08-12 → 2026-08-28 | K=2.85/2.9/3.5/3.6 | lots=120/120 | credit=0.0089 | PnL=-1,261.20 | eod_force_close
+- 2026-03-27 → 2026-04-20 | K=2.8/2.85/3.2/3.3 | 50ETF沽5月2850/50ETF购5月3200 | lots=120/120 | credit=0.0178 | PnL=4,693.20 | take_profit
+- 2026-04-20 → 2026-04-24 | K=2.95/3.0/3.1/3.2 | 50ETF沽5月3000/50ETF购5月3100 | lots=120/120 | credit=0.03 | PnL=-7,566.00 | call_wall_breach
+- 2026-04-24 → 2026-05-06 | K=2.825/2.85/3.1/3.117 | 50ETF沽6月2850/50ETF购6月3100 | lots=120/120 | credit=0.008 | PnL=-12,169.20 | short_call_breach
+- 2026-05-06 → 2026-06-11 | K=2.825/2.85/3.2/3.215 | 50ETF沽6月2850/50ETF购6月3200 | lots=120/120 | credit=0.0045 | PnL=-4,944.00 | roll_month
+- 2026-06-11 → 2026-07-07 | K=2.75/2.8/3.1/3.2 | 50ETF沽7月2800/50ETF购7月3100 | lots=120/120 | credit=0.0151 | PnL=-3,954.00 | roll_month
+- 2026-07-07 → 2026-08-04 | K=2.8/2.85/3.1/3.2 | 50ETF沽8月2850/50ETF购8月3100 | lots=120/120 | credit=0.0321 | PnL=13,736.40 | take_profit
+- 2026-08-04 → 2026-08-12 | K=2.65/2.7/3.5/3.6 | 50ETF沽9月2700/50ETF购9月3500 | lots=120/120 | credit=0.0038 | PnL=-2,786.40 | take_profit
+- 2026-08-12 → 2026-08-31 | K=2.85/2.9/3.5/3.6 | 50ETF沽9月2900/50ETF购9月3500 | lots=120/120 | credit=0.0089 | PnL=-170.40 | eod_force_close

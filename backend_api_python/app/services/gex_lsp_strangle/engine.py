@@ -308,10 +308,15 @@ def prepare_panel(
     oi_df = oi.copy()
     oi_df["trade_date"] = pd.to_datetime(oi_df["trade_date"])
     oi_df["contract_code"] = oi_df["contract_code"].astype(str).str.strip()
-    oi_df["open_interest"] = pd.to_numeric(oi_df["open_interest"], errors="coerce").fillna(0.0)
+    oi_df["open_interest"] = pd.to_numeric(oi_df["open_interest"], errors="coerce")
     oi_df = oi_df[["trade_date", "contract_code", "open_interest"]]
+    if "open_interest" in ch.columns:
+        ch = ch.drop(columns=["open_interest"])
 
     panel = ch.merge(oi_df, on=["trade_date", "contract_code"], how="left")
+    panel = panel.sort_values(["contract_code", "trade_date"])
+    panel["open_interest"] = panel.groupby("contract_code")["open_interest"].ffill()
+    panel["open_interest"] = panel.groupby("contract_code")["open_interest"].bfill()
     panel["open_interest"] = panel["open_interest"].fillna(0.0)
     return und, panel
 
