@@ -253,8 +253,13 @@ def test_run_listed_chain_uses_injected_loader():
         loader=lambda *_a, **_k: (und, chain, oi),
     )
     assert result["totalTrades"] >= 1
-    assert config_from_params({}, underlying="510050", initial_capital=1_000_000).lots == 80
-    assert config_from_params({}, underlying="510050", initial_capital=1_000_000).wing_steps == 3
+    defaults = config_from_params({}, underlying="510050", initial_capital=1_000_000)
+    assert defaults.lots == 80
+    assert defaults.wing_steps == 3
+    assert defaults.roll_before_dte == 10
+    assert defaults.require_high_iv is False
+    assert defaults.exit_on_wall_breach is False
+    assert abs(defaults.min_credit_to_width - 0.15) < 1e-9
 
 
 def test_csv_listed_chain_selects_changing_contracts():
@@ -283,7 +288,13 @@ def test_csv_listed_chain_selects_changing_contracts():
     assert result.trades
     short_calls = {trade.get("shortCallCode") for trade in result.trades}
     short_puts = {trade.get("shortPutCode") for trade in result.trades}
-    assert short_calls
-    assert short_puts
+    assert len(short_calls) >= 2
+    assert len(short_puts) >= 2
     assert not any(str(code).isdigit() and len(str(code)) == 8 for code in short_calls)
     assert all("ETF" in str(code) for code in short_calls)
+    assert result.summary["totalReturn"] > 0
+    for trade in result.trades:
+        lots = max(int(trade.get("callLots") or 1), 1)
+        max_win = float(trade.get("entryCredit") or 0) * 10000 * lots + 100
+        assert float(trade["pnl"]) <= max_win
+        assert float(trade["pnl"]) >= -abs(float(trade.get("maxRisk") or 0)) - 200

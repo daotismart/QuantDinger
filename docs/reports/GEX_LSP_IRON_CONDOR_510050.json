@@ -3,23 +3,23 @@
     "underlying": "510050",
     "structure": "iron_condor",
     "initialCapital": 1000000.0,
-    "finalEquity": 978659.54,
-    "totalReturn": -0.02134,
-    "annualizedReturn": -0.052909,
+    "finalEquity": 1026041.44,
+    "totalReturn": 0.026041,
+    "annualizedReturn": 0.066929,
     "tradingDays": 100,
-    "annualizedVol": 0.03146,
-    "sharpe": -1.7295,
-    "maxDrawdown": -0.023992,
-    "trades": 2,
-    "winRate": 0.0,
-    "avgTradePnl": -10670.23,
+    "annualizedVol": 0.030629,
+    "sharpe": 2.1519,
+    "maxDrawdown": -0.007526,
+    "trades": 4,
+    "winRate": 1.0,
+    "avgTradePnl": 6510.36,
     "sizingMode": "kelly_defined_risk",
-    "requireHighIv": true,
+    "requireHighIv": false,
     "expiryMonth": "target",
     "wingSteps": 3,
     "wingPct": 0.0,
     "shortOtmPct": 0.0,
-    "minCreditToWidth": 0.2,
+    "minCreditToWidth": 0.15,
     "minShortDelta": 0.14,
     "maxShortDelta": 0.25,
     "targetDte": 45,
@@ -40,8 +40,8 @@
       "max_dte": 65,
       "min_width_pct": 0.03,
       "max_hold_days": 60,
-      "exit_dte": 21,
-      "roll_before_dte": 21,
+      "exit_dte": 10,
+      "roll_before_dte": 10,
       "roll_skip_iv_filter": true,
       "lsp_days_1": 5,
       "lsp_days_2": 10,
@@ -51,7 +51,7 @@
       "require_inside_walls": false,
       "wall_buffer_pct": 0.005,
       "reskew_score_band": 0.25,
-      "require_high_iv": true,
+      "require_high_iv": false,
       "iv_lookback": 60,
       "iv_rank_min": 0.4,
       "use_kelly_sizing": true,
@@ -68,7 +68,7 @@
       "take_profit_pct": 0.75,
       "stop_loss_pct": 0.9,
       "short_otm_pct": 0.0,
-      "min_credit_to_width": 0.2,
+      "min_credit_to_width": 0.15,
       "min_credit": 0.015,
       "min_short_delta": 0.14,
       "max_short_delta": 0.25,
@@ -76,7 +76,7 @@
       "strike_grid": 0.05,
       "min_wing_steps": 2,
       "exit_on_short_breach": true,
-      "exit_on_wall_breach": true,
+      "exit_on_wall_breach": false,
       "short_delta_stop": 0.99,
       "target_dte": 45,
       "risk_cap": 0.06,
@@ -99,451 +99,509 @@
     },
     {
       "date": "2026-04-01",
-      "equity": 1000000.0
+      "equity": 994981.14
     },
     {
       "date": "2026-04-02",
-      "equity": 1000000.0
+      "equity": 994214.22
     },
     {
       "date": "2026-04-03",
-      "equity": 1000000.0
+      "equity": 993779.94
     },
     {
       "date": "2026-04-08",
-      "equity": 1000000.0
+      "equity": 993779.94
     },
     {
       "date": "2026-04-09",
-      "equity": 1000000.0
+      "equity": 998442.29
     },
     {
       "date": "2026-04-10",
-      "equity": 1000000.0
+      "equity": 998442.29
     },
     {
       "date": "2026-04-13",
-      "equity": 1000000.0
+      "equity": 998442.29
     },
     {
       "date": "2026-04-14",
-      "equity": 1000000.0
+      "equity": 998951.26
     },
     {
       "date": "2026-04-15",
-      "equity": 1000000.0
+      "equity": 998951.26
     },
     {
       "date": "2026-04-16",
-      "equity": 1000000.0
+      "equity": 998951.26
     },
     {
       "date": "2026-04-17",
-      "equity": 1000000.0
+      "equity": 1001717.87
     },
     {
       "date": "2026-04-20",
-      "equity": 1000000.0
+      "equity": 1002074.38
     },
     {
       "date": "2026-04-21",
-      "equity": 1000000.0
+      "equity": 1002624.93
     },
     {
       "date": "2026-04-22",
-      "equity": 1000000.0
+      "equity": 1002885.19
     },
     {
       "date": "2026-04-23",
-      "equity": 1000000.0
+      "equity": 1002885.19
     },
     {
       "date": "2026-04-24",
-      "equity": 1000000.0
+      "equity": 1002885.19
     },
     {
       "date": "2026-04-27",
-      "equity": 1000000.0
+      "equity": 1002885.19
     },
     {
       "date": "2026-04-28",
-      "equity": 1000000.0
+      "equity": 1002885.19
     },
     {
       "date": "2026-04-29",
-      "equity": 1000000.0
+      "equity": 1002885.19
     },
     {
       "date": "2026-04-30",
-      "equity": 994337.6
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-06",
-      "equity": 994184.8
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-07",
-      "equity": 992730.4
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-08",
-      "equity": 993323.2
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-11",
-      "equity": 991804.8
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-12",
-      "equity": 991160.8
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-13",
-      "equity": 991497.6
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-14",
-      "equity": 993925.6
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-15",
-      "equity": 994889.6
+      "equity": 1002885.19
     },
     {
       "date": "2026-05-18",
-      "equity": 994889.6
+      "equity": 1009260.79
     },
     {
       "date": "2026-05-19",
-      "equity": 997495.2
+      "equity": 1005193.91
     },
     {
       "date": "2026-05-20",
-      "equity": 998943.2
+      "equity": 1006428.6
     },
     {
       "date": "2026-05-21",
-      "equity": 995304.0
+      "equity": 1004528.64
     },
     {
       "date": "2026-05-22",
-      "equity": 995304.0
+      "equity": 1004528.64
     },
     {
       "date": "2026-05-25",
-      "equity": 1001511.2
+      "equity": 1008004.09
     },
     {
       "date": "2026-05-26",
-      "equity": 1002092.0
+      "equity": 1008218.51
     },
     {
       "date": "2026-05-27",
-      "equity": 997732.8
+      "equity": 1005902.49
     },
     {
       "date": "2026-05-28",
-      "equity": 997732.8
+      "equity": 1005902.49
     },
     {
       "date": "2026-05-29",
-      "equity": 997732.8
+      "equity": 1005902.49
     },
     {
       "date": "2026-06-01",
-      "equity": 997732.8
+      "equity": 1005902.49
     },
     {
       "date": "2026-06-02",
-      "equity": 997732.8
+      "equity": 1005902.49
     },
     {
       "date": "2026-06-11",
-      "equity": 984149.6
+      "equity": 1005453.77
     },
     {
       "date": "2026-06-12",
-      "equity": 985788.7
+      "equity": 1005453.77
     },
     {
       "date": "2026-06-15",
-      "equity": 985788.7
+      "equity": 1010503.9
     },
     {
       "date": "2026-06-16",
-      "equity": 985788.7
+      "equity": 1012029.78
     },
     {
       "date": "2026-06-17",
-      "equity": 985788.7
+      "equity": 1012029.78
     },
     {
       "date": "2026-06-18",
-      "equity": 985788.7
+      "equity": 1008972.1
     },
     {
       "date": "2026-06-22",
-      "equity": 985788.7
+      "equity": 1009504.9
     },
     {
       "date": "2026-06-23",
-      "equity": 985788.7
+      "equity": 1008272.8
     },
     {
       "date": "2026-06-24",
-      "equity": 985788.7
+      "equity": 1009444.22
     },
     {
       "date": "2026-06-25",
-      "equity": 979366.98
+      "equity": 1010338.88
     },
     {
       "date": "2026-06-26",
-      "equity": 982688.84
+      "equity": 1005935.88
     },
     {
       "date": "2026-06-29",
-      "equity": 978049.78
+      "equity": 1010623.04
     },
     {
       "date": "2026-06-30",
-      "equity": 978049.78
+      "equity": 1011150.66
     },
     {
       "date": "2026-07-01",
-      "equity": 978659.54
+      "equity": 1013073.18
     },
     {
       "date": "2026-07-02",
-      "equity": 978659.54
+      "equity": 1008776.74
     },
     {
       "date": "2026-07-03",
-      "equity": 978659.54
+      "equity": 1013500.9
     },
     {
       "date": "2026-07-06",
-      "equity": 978659.54
+      "equity": 1016023.56
     },
     {
       "date": "2026-07-07",
-      "equity": 978659.54
+      "equity": 1014303.8
     },
     {
       "date": "2026-07-08",
-      "equity": 978659.54
+      "equity": 1016037.62
     },
     {
       "date": "2026-07-09",
-      "equity": 978659.54
+      "equity": 1018106.66
     },
     {
       "date": "2026-07-10",
-      "equity": 978659.54
+      "equity": 1019460.86
     },
     {
       "date": "2026-07-13",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-14",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-15",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-16",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-17",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-20",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-21",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-22",
-      "equity": 978659.54
+      "equity": 1018040.8
     },
     {
       "date": "2026-07-23",
-      "equity": 978659.54
+      "equity": 1015919.68
     },
     {
       "date": "2026-07-24",
-      "equity": 978659.54
+      "equity": 1014306.16
     },
     {
       "date": "2026-07-27",
-      "equity": 978659.54
+      "equity": 1016413.6
     },
     {
       "date": "2026-07-28",
-      "equity": 978659.54
+      "equity": 1012690.12
     },
     {
       "date": "2026-07-29",
-      "equity": 978659.54
+      "equity": 1012377.28
     },
     {
       "date": "2026-07-30",
-      "equity": 978659.54
+      "equity": 1011787.96
     },
     {
       "date": "2026-07-31",
-      "equity": 978659.54
+      "equity": 1015796.2
     },
     {
       "date": "2026-08-03",
-      "equity": 978659.54
+      "equity": 1012451.08
     },
     {
       "date": "2026-08-04",
-      "equity": 978659.54
+      "equity": 1014370.24
     },
     {
       "date": "2026-08-05",
-      "equity": 978659.54
+      "equity": 1019321.68
     },
     {
       "date": "2026-08-06",
-      "equity": 978659.54
+      "equity": 1020537.04
     },
     {
       "date": "2026-08-07",
-      "equity": 978659.54
+      "equity": 1023168.28
     },
     {
       "date": "2026-08-10",
-      "equity": 978659.54
+      "equity": 1023637.36
     },
     {
       "date": "2026-08-11",
-      "equity": 978659.54
+      "equity": 1023184.84
     },
     {
       "date": "2026-08-12",
-      "equity": 978659.54
+      "equity": 1024177.0
     },
     {
       "date": "2026-08-13",
-      "equity": 978659.54
+      "equity": 1024418.56
     },
     {
       "date": "2026-08-14",
-      "equity": 978659.54
+      "equity": 1024381.84
     },
     {
       "date": "2026-08-17",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-18",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-19",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-20",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-21",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-24",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-25",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-26",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-27",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-28",
-      "equity": 978659.54
+      "equity": 1026041.44
     },
     {
       "date": "2026-08-31",
-      "equity": 978659.54
+      "equity": 1026041.44
     }
   ],
   "trades": [
     {
-      "entryDate": "2026-04-30",
-      "exitDate": "2026-06-11",
-      "expireDate": "2026-06-24",
-      "reason": "roll_month",
-      "structure": "iron_condor",
-      "shortCallStrike": 3.2,
-      "shortPutStrike": 2.95,
-      "longCallStrike": 3.3,
-      "longPutStrike": 2.85,
-      "shortCallCode": "50ETF购6月3200",
-      "shortPutCode": "50ETF沽6月2950",
-      "longCallCode": "50ETF购6月3300",
-      "longPutCode": "50ETF沽6月2850",
-      "callLots": 80,
-      "putLots": 80,
-      "entryCredit": 0.0271,
-      "maxRisk": 58360.0,
-      "lspScoreEntry": 0.4938,
-      "optionCash": -8269.6,
-      "fees": 3200.0,
-      "exitDebit": 28678.4,
-      "pnl": -11469.6,
-      "daysHeld": 21,
-      "callWall": 3.2,
-      "putWall": 3.0,
-      "lspRegimeEntry": "bullish",
-      "entrySpot": 3.061
-    },
-    {
-      "entryDate": "2026-06-11",
-      "exitDate": "2026-07-01",
-      "expireDate": "2026-07-22",
+      "entryDate": "2026-04-01",
+      "exitDate": "2026-05-18",
+      "expireDate": "2026-05-27",
       "reason": "roll_month",
       "structure": "iron_condor",
       "shortCallStrike": 3.1,
       "shortPutStrike": 2.8,
       "longCallStrike": 3.2,
       "longPutStrike": 2.7,
-      "shortCallCode": "50ETF购7月3100",
-      "shortPutCode": "50ETF沽7月2800",
-      "longCallCode": "50ETF购7月3200",
-      "longPutCode": "50ETF沽7月2700",
-      "callLots": 74,
-      "putLots": 74,
-      "entryCredit": 0.0206,
-      "maxRisk": 58756.0,
-      "lspScoreEntry": 0.5,
-      "optionCash": -6910.86,
-      "fees": 2960.0,
-      "exitDebit": 21444.46,
-      "pnl": -9870.86,
+      "shortCallCode": "50ETF购5月3100",
+      "shortPutCode": "50ETF沽5月2800",
+      "longCallCode": "50ETF购5月3200",
+      "longPutCode": "50ETF沽5月2700",
+      "callLots": 77,
+      "putLots": 77,
+      "entryCredit": 0.0231,
+      "maxRisk": 59251.5,
+      "lspScoreEntry": 0.0,
+      "optionCash": 12340.79,
+      "fees": 3080.0,
+      "exitDebit": 4438.28,
+      "pnl": 9260.79,
+      "daysHeld": 28,
+      "callWall": 3.0,
+      "putWall": 2.85,
+      "lspRegimeEntry": "mixed",
+      "entrySpot": 2.951
+    },
+    {
+      "entryDate": "2026-05-19",
+      "exitDate": "2026-06-15",
+      "expireDate": "2026-06-24",
+      "reason": "roll_month",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.2,
+      "shortPutStrike": 2.9,
+      "longCallStrike": 3.3,
+      "longPutStrike": 2.8,
+      "shortCallCode": "50ETF购6月3200",
+      "shortPutCode": "50ETF沽6月2900",
+      "longCallCode": "50ETF购6月3300",
+      "longPutCode": "50ETF沽6月2800",
+      "callLots": 71,
+      "putLots": 71,
+      "entryCredit": 0.0157,
+      "maxRisk": 59853.0,
+      "lspScoreEntry": -0.0655,
+      "optionCash": 8568.99,
+      "fees": 2840.0,
+      "exitDebit": 1964.57,
+      "pnl": 5728.99,
       "daysHeld": 13,
       "callWall": 3.1,
-      "putWall": 2.8,
+      "putWall": 3.0,
       "lspRegimeEntry": "mixed",
-      "entrySpot": 2.927
+      "entrySpot": 3.025
+    },
+    {
+      "entryDate": "2026-06-15",
+      "exitDate": "2026-07-13",
+      "expireDate": "2026-07-22",
+      "reason": "roll_month",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.2,
+      "shortPutStrike": 2.9,
+      "longCallStrike": 3.3,
+      "longPutStrike": 2.8,
+      "shortCallCode": "50ETF购7月3200",
+      "shortPutCode": "50ETF沽7月2900",
+      "longCallCode": "50ETF购7月3300",
+      "longPutCode": "50ETF沽7月2800",
+      "callLots": 74,
+      "putLots": 74,
+      "entryCredit": 0.018,
+      "maxRisk": 60643.0,
+      "lspScoreEntry": 1.0,
+      "optionCash": 6011.02,
+      "fees": 2960.0,
+      "exitDebit": 6583.04,
+      "pnl": 3051.02,
+      "daysHeld": 19,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "bullish",
+      "entrySpot": 3.025
+    },
+    {
+      "entryDate": "2026-07-23",
+      "exitDate": "2026-08-17",
+      "expireDate": "2026-08-26",
+      "reason": "roll_month",
+      "structure": "iron_condor",
+      "shortCallStrike": 3.2,
+      "shortPutStrike": 2.95,
+      "longCallStrike": 3.4,
+      "longPutStrike": 2.75,
+      "shortCallCode": "50ETF购8月3200",
+      "shortPutCode": "50ETF沽8月2950",
+      "longCallCode": "50ETF购8月3400",
+      "longPutCode": "50ETF沽8月2750",
+      "callLots": 36,
+      "putLots": 36,
+      "entryCredit": 0.0322,
+      "maxRisk": 60408.0,
+      "lspScoreEntry": 0.2839,
+      "optionCash": 9440.64,
+      "fees": 1440.0,
+      "exitDebit": 1810.8,
+      "pnl": 8000.64,
+      "daysHeld": 17,
+      "callWall": 3.1,
+      "putWall": 3.0,
+      "lspRegimeEntry": "bullish",
+      "entrySpot": 3.085
     }
   ],
   "daily": [
@@ -557,7 +615,7 @@
       "inPosition": false,
       "equity": 1000000.0,
       "ivRank": null,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -608,14 +666,14 @@
       "lspDeltaScore": 0.0,
       "callWall": 3.0,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 994981.14,
       "ivRank": 0.0,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": 0.1,
       "kellyBaseLots": 77,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low",
+      "kellyBlocked": false,
+      "kellyReason": "capped",
       "trend": 0.0,
       "trendBlock": false
     },
@@ -626,14 +684,14 @@
       "lspDeltaScore": 0.0,
       "callWall": 3.0,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 994214.22,
       "ivRank": 0.1069,
-      "highIvOk": false,
-      "kellyFraction": 0.1,
-      "kellyBaseLots": 78,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low",
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 80,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
       "trend": 0.0,
       "trendBlock": false
     },
@@ -644,8 +702,8 @@
       "lspDeltaScore": 0.0,
       "callWall": 3.0,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 993779.94,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -662,10 +720,10 @@
       "lspDeltaScore": 0.0,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 993779.94,
       "ivRank": 0.0,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -680,14 +738,14 @@
       "lspDeltaScore": -0.1718,
       "callWall": 3.0,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 998442.29,
       "ivRank": 0.0,
-      "highIvOk": false,
-      "kellyFraction": 0.1,
-      "kellyBaseLots": 79,
-      "kellyBlocked": true,
-      "kellyReason": "iv_rank_too_low",
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 80,
+      "kellyBlocked": false,
+      "kellyReason": "fixed_lots",
       "trend": 0.0,
       "trendBlock": false
     },
@@ -698,10 +756,10 @@
       "lspDeltaScore": -0.2902,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 998442.29,
       "ivRank": 0.0742,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -716,10 +774,10 @@
       "lspDeltaScore": -0.3654,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 998442.29,
       "ivRank": 0.1354,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -734,10 +792,10 @@
       "lspDeltaScore": -0.2848,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 998951.26,
       "ivRank": 0.1914,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -752,10 +810,10 @@
       "lspDeltaScore": -0.2772,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 998951.26,
       "ivRank": 0.178,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -770,10 +828,10 @@
       "lspDeltaScore": -0.2171,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 998951.26,
       "ivRank": 0.0,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -788,10 +846,10 @@
       "lspDeltaScore": -0.2709,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1001717.87,
       "ivRank": 0.0862,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -806,10 +864,10 @@
       "lspDeltaScore": -0.0777,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002074.38,
       "ivRank": 0.1513,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -824,10 +882,10 @@
       "lspDeltaScore": -0.0287,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002624.93,
       "ivRank": 0.191,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -842,10 +900,10 @@
       "lspDeltaScore": 0.0681,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002885.19,
       "ivRank": 0.0,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -860,8 +918,8 @@
       "lspDeltaScore": 0.0889,
       "callWall": 3.0,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002885.19,
       "ivRank": 0.6866,
       "highIvOk": true,
       "kellyFraction": null,
@@ -878,8 +936,8 @@
       "lspDeltaScore": 0.2454,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002885.19,
       "ivRank": 0.554,
       "highIvOk": true,
       "kellyFraction": null,
@@ -896,8 +954,8 @@
       "lspDeltaScore": 0.2893,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002885.19,
       "ivRank": 0.5509,
       "highIvOk": true,
       "kellyFraction": null,
@@ -914,8 +972,8 @@
       "lspDeltaScore": 0.3425,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002885.19,
       "ivRank": 0.5266,
       "highIvOk": true,
       "kellyFraction": null,
@@ -932,8 +990,8 @@
       "lspDeltaScore": 0.3681,
       "callWall": 3.2,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 1000000.0,
+      "inPosition": true,
+      "equity": 1002885.19,
       "ivRank": 0.4667,
       "highIvOk": true,
       "kellyFraction": null,
@@ -951,13 +1009,13 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 994337.6,
+      "equity": 1002885.19,
       "ivRank": 0.6631,
       "highIvOk": true,
-      "kellyFraction": 0.1,
+      "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
-      "kellyReason": "capped",
+      "kellyReason": "fixed_lots",
       "trend": 0.0373,
       "trendBlock": false
     },
@@ -969,7 +1027,7 @@
       "callWall": 3.2,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 994184.8,
+      "equity": 1002885.19,
       "ivRank": 0.6664,
       "highIvOk": true,
       "kellyFraction": null,
@@ -987,7 +1045,7 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 992730.4,
+      "equity": 1002885.19,
       "ivRank": 0.7105,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1005,7 +1063,7 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 993323.2,
+      "equity": 1002885.19,
       "ivRank": 0.7712,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1023,7 +1081,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 991804.8,
+      "equity": 1002885.19,
       "ivRank": 0.7176,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1041,7 +1099,7 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 991160.8,
+      "equity": 1002885.19,
       "ivRank": 0.7476,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1059,7 +1117,7 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 991497.6,
+      "equity": 1002885.19,
       "ivRank": 0.7742,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1077,7 +1135,7 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 993925.6,
+      "equity": 1002885.19,
       "ivRank": 0.802,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1095,7 +1153,7 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 994889.6,
+      "equity": 1002885.19,
       "ivRank": 0.709,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1112,8 +1170,8 @@
       "lspDeltaScore": 0.2199,
       "callWall": 3.2,
       "putWall": 3.0,
-      "inPosition": true,
-      "equity": 994889.6,
+      "inPosition": false,
+      "equity": 1009260.79,
       "ivRank": 0.8658,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1131,13 +1189,13 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 997495.2,
+      "equity": 1005193.91,
       "ivRank": 0.6035,
       "highIvOk": true,
-      "kellyFraction": null,
-      "kellyBaseLots": 80,
+      "kellyFraction": 0.1,
+      "kellyBaseLots": 71,
       "kellyBlocked": false,
-      "kellyReason": "fixed_lots",
+      "kellyReason": "capped",
       "trend": 0.0033,
       "trendBlock": false
     },
@@ -1149,7 +1207,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 998943.2,
+      "equity": 1006428.6,
       "ivRank": 0.5801,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1167,7 +1225,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 995304.0,
+      "equity": 1004528.64,
       "ivRank": 0.8509,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1185,7 +1243,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 995304.0,
+      "equity": 1004528.64,
       "ivRank": 0.7983,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1203,7 +1261,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 1001511.2,
+      "equity": 1008004.09,
       "ivRank": 0.7936,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1221,7 +1279,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 1002092.0,
+      "equity": 1008218.51,
       "ivRank": 0.8988,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1239,7 +1297,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 997732.8,
+      "equity": 1005902.49,
       "ivRank": 0.5383,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1257,7 +1315,7 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 997732.8,
+      "equity": 1005902.49,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1275,7 +1333,7 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 997732.8,
+      "equity": 1005902.49,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1293,7 +1351,7 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 997732.8,
+      "equity": 1005902.49,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1311,7 +1369,7 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 997732.8,
+      "equity": 1005902.49,
       "ivRank": 0.4056,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1329,13 +1387,13 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 984149.6,
+      "equity": 1005453.77,
       "ivRank": 0.3438,
-      "highIvOk": false,
-      "kellyFraction": 0.1,
-      "kellyBaseLots": 74,
+      "highIvOk": true,
+      "kellyFraction": null,
+      "kellyBaseLots": 80,
       "kellyBlocked": false,
-      "kellyReason": "capped",
+      "kellyReason": "fixed_lots",
       "trend": -0.0475,
       "trendBlock": false
     },
@@ -1347,7 +1405,7 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1005453.77,
       "ivRank": 0.5571,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1365,13 +1423,13 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1010503.9,
       "ivRank": 0.4134,
       "highIvOk": true,
-      "kellyFraction": null,
-      "kellyBaseLots": 80,
+      "kellyFraction": 0.1,
+      "kellyBaseLots": 74,
       "kellyBlocked": false,
-      "kellyReason": "fixed_lots",
+      "kellyReason": "capped",
       "trend": 0.005,
       "trendBlock": false
     },
@@ -1383,7 +1441,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1012029.78,
       "ivRank": 0.6455,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1401,7 +1459,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1012029.78,
       "ivRank": 0.5015,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1419,7 +1477,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1008972.1,
       "ivRank": 0.4691,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1437,7 +1495,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1009504.9,
       "ivRank": 0.9445,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1455,7 +1513,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1008272.8,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1473,9 +1531,9 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": true,
-      "equity": 985788.7,
+      "equity": 1009444.22,
       "ivRank": 0.262,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -1491,7 +1549,7 @@
       "callWall": 3.1,
       "putWall": 2.8,
       "inPosition": true,
-      "equity": 979366.98,
+      "equity": 1010338.88,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1509,7 +1567,7 @@
       "callWall": 3.1,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 982688.84,
+      "equity": 1005935.88,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1527,7 +1585,7 @@
       "callWall": 3.3,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 978049.78,
+      "equity": 1010623.04,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1545,7 +1603,7 @@
       "callWall": 3.3,
       "putWall": 2.85,
       "inPosition": true,
-      "equity": 978049.78,
+      "equity": 1011150.66,
       "ivRank": 0.9834,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1562,8 +1620,8 @@
       "lspDeltaScore": 0.5369,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1013073.18,
       "ivRank": 0.9556,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1580,8 +1638,8 @@
       "lspDeltaScore": 0.1475,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1008776.74,
       "ivRank": 0.9236,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1598,8 +1656,8 @@
       "lspDeltaScore": -0.0526,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1013500.9,
       "ivRank": 0.8365,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1616,8 +1674,8 @@
       "lspDeltaScore": -0.2178,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1016023.56,
       "ivRank": 0.8677,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1634,8 +1692,8 @@
       "lspDeltaScore": -0.3477,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1014303.8,
       "ivRank": 0.8583,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1652,8 +1710,8 @@
       "lspDeltaScore": -0.447,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1016037.62,
       "ivRank": 0.8223,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1670,8 +1728,8 @@
       "lspDeltaScore": -0.45,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1018106.66,
       "ivRank": 0.8726,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1688,8 +1746,8 @@
       "lspDeltaScore": -0.435,
       "callWall": 3.1,
       "putWall": 2.85,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1019460.86,
       "ivRank": 0.8617,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1707,7 +1765,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 0.8607,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1725,7 +1783,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1743,7 +1801,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 0.808,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1761,7 +1819,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 0.7906,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1779,7 +1837,7 @@
       "callWall": 3.1,
       "putWall": 2.85,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 0.8727,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1797,7 +1855,7 @@
       "callWall": 3.1,
       "putWall": 2.85,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 0.9588,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1815,7 +1873,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 1.0,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1833,7 +1891,7 @@
       "callWall": 3.1,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1018040.8,
       "ivRank": 0.8993,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1850,14 +1908,14 @@
       "lspDeltaScore": 0.2839,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1015919.68,
       "ivRank": 0.6215,
       "highIvOk": true,
-      "kellyFraction": null,
-      "kellyBaseLots": 80,
+      "kellyFraction": 0.1,
+      "kellyBaseLots": 36,
       "kellyBlocked": false,
-      "kellyReason": "fixed_lots",
+      "kellyReason": "capped",
       "trend": 0.0082,
       "trendBlock": false
     },
@@ -1868,8 +1926,8 @@
       "lspDeltaScore": 0.3776,
       "callWall": 3.1,
       "putWall": 3.0,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1014306.16,
       "ivRank": 0.6933,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1886,8 +1944,8 @@
       "lspDeltaScore": 0.418,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1016413.6,
       "ivRank": 0.646,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1904,8 +1962,8 @@
       "lspDeltaScore": 0.3948,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1012690.12,
       "ivRank": 0.6586,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1922,8 +1980,8 @@
       "lspDeltaScore": 0.269,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1012377.28,
       "ivRank": 0.6257,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1940,8 +1998,8 @@
       "lspDeltaScore": 0.1083,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1011787.96,
       "ivRank": 0.6641,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1958,8 +2016,8 @@
       "lspDeltaScore": -0.068,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1015796.2,
       "ivRank": 0.5397,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1976,8 +2034,8 @@
       "lspDeltaScore": -0.2146,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1012451.08,
       "ivRank": 0.5782,
       "highIvOk": true,
       "kellyFraction": null,
@@ -1994,8 +2052,8 @@
       "lspDeltaScore": -0.299,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1014370.24,
       "ivRank": 0.4903,
       "highIvOk": true,
       "kellyFraction": null,
@@ -2012,8 +2070,8 @@
       "lspDeltaScore": -0.1723,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1019321.68,
       "ivRank": 0.4412,
       "highIvOk": true,
       "kellyFraction": null,
@@ -2030,8 +2088,8 @@
       "lspDeltaScore": -0.0793,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1020537.04,
       "ivRank": 0.4088,
       "highIvOk": true,
       "kellyFraction": null,
@@ -2048,8 +2106,8 @@
       "lspDeltaScore": 0.09,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1023168.28,
       "ivRank": 0.4475,
       "highIvOk": true,
       "kellyFraction": null,
@@ -2066,8 +2124,8 @@
       "lspDeltaScore": 0.2335,
       "callWall": 3.6,
       "putWall": 2.65,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1023637.36,
       "ivRank": 0.4491,
       "highIvOk": true,
       "kellyFraction": null,
@@ -2084,10 +2142,10 @@
       "lspDeltaScore": 0.3514,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1023184.84,
       "ivRank": 0.3414,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2102,10 +2160,10 @@
       "lspDeltaScore": 0.433,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1024177.0,
       "ivRank": 0.3325,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2120,10 +2178,10 @@
       "lspDeltaScore": 0.451,
       "callWall": 3.6,
       "putWall": 2.9,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1024418.56,
       "ivRank": 0.3204,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2138,10 +2196,10 @@
       "lspDeltaScore": 0.3582,
       "callWall": 3.6,
       "putWall": 2.95,
-      "inPosition": false,
-      "equity": 978659.54,
+      "inPosition": true,
+      "equity": 1024381.84,
       "ivRank": 0.2759,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2157,9 +2215,9 @@
       "callWall": 3.6,
       "putWall": 2.95,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.397,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2175,9 +2233,9 @@
       "callWall": 3.6,
       "putWall": 2.95,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.3118,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2193,7 +2251,7 @@
       "callWall": 3.6,
       "putWall": 2.9,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.4202,
       "highIvOk": true,
       "kellyFraction": null,
@@ -2211,9 +2269,9 @@
       "callWall": 3.6,
       "putWall": 2.9,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.3458,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2229,9 +2287,9 @@
       "callWall": 3.6,
       "putWall": 2.9,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.2741,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2247,9 +2305,9 @@
       "callWall": 3.6,
       "putWall": 2.9,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.347,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2265,9 +2323,9 @@
       "callWall": 3.1,
       "putWall": 2.9,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.3039,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2283,9 +2341,9 @@
       "callWall": 3.1,
       "putWall": 2.9,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.0488,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2301,9 +2359,9 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.2978,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2319,9 +2377,9 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.2833,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,
@@ -2337,9 +2395,9 @@
       "callWall": 3.2,
       "putWall": 3.0,
       "inPosition": false,
-      "equity": 978659.54,
+      "equity": 1026041.44,
       "ivRank": 0.3016,
-      "highIvOk": false,
+      "highIvOk": true,
       "kellyFraction": null,
       "kellyBaseLots": 80,
       "kellyBlocked": false,

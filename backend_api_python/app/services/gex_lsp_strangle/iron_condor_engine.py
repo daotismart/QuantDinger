@@ -30,7 +30,7 @@ from app.services.gex_lsp_strangle.lsp import lsp_option_skew_lots
 
 @dataclass
 class IronCondorBacktestConfig(ShortStrangleBacktestConfig):
-    # GEX-TV: 3 exchange steps (~0.15 on 50ETF), net credit ≥ 25% of wing.
+    # Prefer 3 listed steps; 50ETF books often only have 2 OTM steps.
     wing_steps: int = 3
     wing_pct: float = 0.0
     # Close when remaining debit ≤ (1 - take_profit_pct) × entry credit (75% captured).
@@ -38,7 +38,7 @@ class IronCondorBacktestConfig(ShortStrangleBacktestConfig):
     stop_loss_pct: float = 0.90  # close when MTM loss >= stop * max_risk
     # 0 = GEX-TV / wall shorts. >0 = short that percent OTM from spot (legacy).
     short_otm_pct: float = 0.0
-    min_credit_to_width: float = 0.20
+    min_credit_to_width: float = 0.15
     min_credit: float = 0.015
     min_short_delta: float = 0.14
     max_short_delta: float = 0.25
@@ -46,12 +46,14 @@ class IronCondorBacktestConfig(ShortStrangleBacktestConfig):
     strike_grid: float = 0.05
     min_wing_steps: int = 2
     exit_on_short_breach: bool = True
-    exit_on_wall_breach: bool = True
+    # Walls are an *entry* filter. Flattening on wall touch cut winners on 50ETF.
+    exit_on_wall_breach: bool = False
     short_delta_stop: float = 0.99
     # Size: min(lots, max_lots, risk_cap×NAV / max_loss, Kelly cap).
     lots: int = 80
     use_kelly_sizing: bool = True
-    require_high_iv: bool = True
+    # 100-session IV rank is unstable; GEX-TV's 40-gate delayed into worse shorts.
+    require_high_iv: bool = False
     require_inside_walls: bool = False
     iv_rank_min: float = 0.40
     kelly_max_fraction: float = 0.10
@@ -59,8 +61,9 @@ class IronCondorBacktestConfig(ShortStrangleBacktestConfig):
     kelly_prior_win_prob: float = 0.60
     lsp_max_skew_lots: int = 0
     max_hold_days: int = 60
-    roll_before_dte: int = 21
-    exit_dte: int = 21
+    # 50ETF theta is back-loaded vs SA; rolling at 21 DTE locked in MTM losses.
+    roll_before_dte: int = 10
+    exit_dte: int = 10
     # ~45 DTE entry window (GEX-TV 28–65).
     expiry_month: str = "target"
     target_dte: int = 45

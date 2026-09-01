@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run GEX-TV listed-chain iron-condor backtest on exported ETF options CSVs.
 
-Rules (ScriptTrader GEX-TV): ~45 DTE, 14–25Δ shorts outside GEX walls,
-3-step wings, net credit ≥ 25% of wing, size by 6% NAV max-loss, TP at 75%
-of credit captured, roll at 21 DTE. Legs always come from the then-listed book.
+Rules: ~45 DTE, 14–25Δ shorts outside GEX walls, 3-step wings (min 2),
+net credit ≥ 15% of wing, size by 6% NAV max-loss, TP at 75% of credit,
+roll at 10 DTE. Legs always come from the then-listed book.
 
 Example:
   PYTHONPATH=backend_api_python python backend_api_python/scripts/backtest_gex_lsp_iron_condor.py \\
@@ -37,18 +37,20 @@ def main() -> int:
     parser.add_argument("--wing-steps", type=int, default=3, help="Exchange steps beyond short for long wings")
     parser.add_argument("--wing-pct", type=float, default=0.0, help="Min wing width as fraction of spot")
     parser.add_argument("--short-otm-pct", type=float, default=0.0, help="Legacy: short that percent OTM; 0=GEX-TV")
-    parser.add_argument("--min-credit-to-width", type=float, default=0.20, help="Skip entries with thin credit/wing")
+    parser.add_argument("--min-credit-to-width", type=float, default=0.15, help="Skip entries with thin credit/wing")
     parser.add_argument("--min-short-delta", type=float, default=0.14)
     parser.add_argument("--max-short-delta", type=float, default=0.25)
     parser.add_argument("--target-dte", type=int, default=45)
+    parser.add_argument("--roll-dte", type=int, default=10, help="Flatten / roll when held DTE falls to this")
     parser.add_argument("--risk-cap", type=float, default=0.06, help="Max loss / NAV per condor")
     parser.add_argument("--take-profit", type=float, default=0.75, help="Fraction of credit to capture")
     parser.add_argument("--stop-loss", type=float, default=0.90)
     parser.add_argument("--hold-through-short", action="store_true", help="Do not flatten when spot hits short strikes")
+    parser.add_argument("--exit-on-wall", action="store_true", help="Flatten when spot breaches GEX walls")
     parser.add_argument("--kelly", action="store_true", help="Enable Kelly cap (default on)")
     parser.add_argument("--no-kelly", action="store_true", help="Disable Kelly; still apply risk_cap")
-    parser.add_argument("--require-high-iv", action="store_true", help="Only enter when IV rank is high (default on)")
-    parser.add_argument("--no-iv-filter", action="store_true", help="Disable the IV-rank gate")
+    parser.add_argument("--require-high-iv", action="store_true", help="Only enter when IV rank is high")
+    parser.add_argument("--no-iv-filter", action="store_true", help="Disable the IV-rank gate (default)")
     parser.add_argument("--iv-rank-min", type=float, default=0.40)
     parser.add_argument("--kelly-max-fraction", type=float, default=0.10)
     parser.add_argument("--kelly-max-lots", type=int, default=80)
@@ -77,12 +79,15 @@ def main() -> int:
         min_short_delta=float(args.min_short_delta),
         max_short_delta=float(args.max_short_delta),
         target_dte=int(args.target_dte),
+        roll_before_dte=int(args.roll_dte),
+        exit_dte=int(args.roll_dte),
         risk_cap=float(args.risk_cap),
         take_profit_pct=float(args.take_profit),
         stop_loss_pct=float(args.stop_loss),
         exit_on_short_breach=not bool(args.hold_through_short),
+        exit_on_wall_breach=bool(args.exit_on_wall),
         use_kelly_sizing=not bool(args.no_kelly),
-        require_high_iv=not bool(args.no_iv_filter),
+        require_high_iv=bool(args.require_high_iv) and not bool(args.no_iv_filter),
         iv_rank_min=float(args.iv_rank_min),
         kelly_max_fraction=float(args.kelly_max_fraction),
         kelly_max_lots=int(args.kelly_max_lots),
@@ -121,12 +126,12 @@ def main() -> int:
         "",
         "## Rules",
         "",
-        "1. **GEX-TV pick**: 14–25Δ shorts **outside** GEX walls; prefer 3-step listed wings (min 2); credit/width ≥ 20%.",
+        "1. **GEX-TV pick**: 14–25Δ shorts **outside** GEX walls; prefer 3-step listed wings (min 2); credit/width ≥ 15%.",
         "2. **Defined risk**: max loss ≈ (max wing − net credit) × multiplier × lots.",
         "3. **Sizing**: min(lots, max_lots, 6% NAV / max_loss, Kelly cap 10%).",
-        "4. **IV Rank ≥ 40** (0–1 = 0.40) to sell; skip adjusted *A strikes and missing quotes.",
-        "5. **~45 DTE** entry (28–65), roll at 21 DTE; take-profit at 75% of credit captured.",
-        "6. **Exits**: short-strike / wall breach, TP, stop-loss, DTE roll, max hold. Missing leg quote → do not flatten.",
+        "4. Skip adjusted *A strikes and missing quotes. IV-rank gate is off (short ETF samples).",
+        "5. **~45 DTE** entry (28–65), roll at 10 DTE; take-profit at 75% of credit captured.",
+        "6. **Exits**: short-strike flatten, TP, stop-loss, DTE roll. Walls are entry-only. Missing mid-hold quote → skip flatten.",
         "",
         "## Trades",
         "",
