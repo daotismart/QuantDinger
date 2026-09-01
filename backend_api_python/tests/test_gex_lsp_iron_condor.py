@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -12,6 +14,9 @@ from app.services.gex_lsp_strangle.iron_condor_engine import (
     run_iron_condor_backtest,
     size_iron_condor_lots,
 )
+from app.services.strategy_v2 import compile_strategy_v2
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_select_iron_condor_strikes_builds_wings():
@@ -214,3 +219,17 @@ def test_iron_condor_backtest_runs_on_synthetic_panel():
         assert trade["shortCallStrike"] < trade["longCallStrike"]
         assert trade.get("callLots", 0) >= 1
         assert trade.get("putLots", 0) >= 1
+
+
+def test_iron_condor_v2_example_uses_listed_50etf_contracts():
+    path = REPO_ROOT / "docs/examples/strategy_v2_gex_lsp_iron_condor.py"
+    code = path.read_text(encoding="utf-8")
+    assert "CNIndexOptions:10010975" in code
+    assert "CNIndexOptions:10004448" not in code
+    program = compile_strategy_v2(code)
+    keys = {item.key for item in program.manifest.universe.instruments}
+    assert "CNIndexOptions:10010975" in keys
+    assert "CNIndexOptions:10010981" in keys
+    assert "CNIndexOptions:10010976" in keys
+    assert "CNIndexOptions:10010980" in keys
+    assert "CNStock:510050.SH" in keys

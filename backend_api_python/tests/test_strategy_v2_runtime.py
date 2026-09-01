@@ -1107,3 +1107,37 @@ def handle_data(context, data):
     ).run()
 
     assert result["totalExecutions"] == 0
+
+
+def test_data_current_returns_default_when_option_frame_is_missing():
+    portal = MultiAssetDataPortal({"CNStock:510050.SH": _frame([2.9, 3.0, 3.1])})
+    portal.set_clock(portal.timestamps[-1], include_current=True)
+
+    assert portal.current("CNIndexOptions:10004448", "close") == 0.0
+    assert portal.current("CNStock:510050.SH", "close") == 3.1
+    assert portal.history("CNIndexOptions:10004448", count=5).empty
+
+
+def test_handle_data_survives_missing_option_contract():
+    code = """
+def initialize(context):
+    context.set_universe(["CNStock:510050.SH", "CNIndexOptions:10004448"])
+    context.subscribe(frequency="1d")
+
+def handle_data(context, data):
+    px = data.current("CNIndexOptions:10004448", "close")
+    spot = data.current("CNStock:510050.SH", "close")
+    if px <= 0 or spot <= 0:
+        return
+    order_target("CNIndexOptions:10004448", -1)
+"""
+    result = StrategyV2BacktestRunner(
+        code=code,
+        frames={"CNStock:510050.SH": _frame([2.9, 3.0, 3.1])},
+        initial_capital=100000,
+        commission=0,
+        slippage=0,
+    ).run()
+
+    assert result["totalExecutions"] == 0
+    assert result["finalEquity"] == 100000

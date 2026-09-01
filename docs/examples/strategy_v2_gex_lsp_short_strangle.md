@@ -39,6 +39,6 @@ PYTHONPATH=backend_api_python python backend_api_python/scripts/backtest_gex_lsp
 
 ## Notes
 
-- Strategy V2 sandbox needs explicit listed option codes; replace placeholders before live use.
+- Strategy V2 sandbox needs listed 50ETF option codes that already have daily bars (example: `10010975` call / `10010981` put). Replace them when the chain rolls.
 - Full historical wall selection + chain IV rank is done in the research engine (multi-contract panel).
 - V2 template uses realized-vol rank as an IV proxy when chain IV is unavailable.

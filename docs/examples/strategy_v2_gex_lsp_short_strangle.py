@@ -28,9 +28,9 @@ import math
 
 PERSIST_RUNTIME_STATE = True
 
-CALL_SYMBOL = "CNIndexOptions:10004448"  # placeholder near call wall
-PUT_SYMBOL = "CNIndexOptions:10004449"  # placeholder near put wall
-UNDERLYING_SYMBOL = "CNStock:510050"
+CALL_SYMBOL = "CNIndexOptions:10010975"  # 50ETF购9月3100 near call wall 3.1
+PUT_SYMBOL = "CNIndexOptions:10010981"  # 50ETF沽9月2900 near put wall 2.9
+UNDERLYING_SYMBOL = "CNStock:510050.SH"
 BAR_FREQUENCY = "1d"
 MULTIPLIER = 10000.0
 

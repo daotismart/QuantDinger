@@ -29,11 +29,13 @@ import math
 
 PERSIST_RUNTIME_STATE = True
 
-SHORT_CALL_SYMBOL = "CNIndexOptions:10004448"  # placeholder near call wall
-SHORT_PUT_SYMBOL = "CNIndexOptions:10004449"  # placeholder near put wall
-LONG_CALL_SYMBOL = "CNIndexOptions:10004450"  # placeholder further OTM call
-LONG_PUT_SYMBOL = "CNIndexOptions:10004451"  # placeholder further OTM put
-UNDERLYING_SYMBOL = "CNStock:510050"
+# Listed 50ETF Sep contracts that have daily bars in qd_market_bars.
+# Replace when the chain rolls; V2 cannot synthesize missing option codes.
+SHORT_CALL_SYMBOL = "CNIndexOptions:10010975"  # 50ETF购9月3100 near call wall 3.1
+SHORT_PUT_SYMBOL = "CNIndexOptions:10010981"  # 50ETF沽9月2900 near put wall 2.9
+LONG_CALL_SYMBOL = "CNIndexOptions:10010976"  # 50ETF购9月3200 wing
+LONG_PUT_SYMBOL = "CNIndexOptions:10010980"  # 50ETF沽9月2850 wing
+UNDERLYING_SYMBOL = "CNStock:510050.SH"
 BAR_FREQUENCY = "1d"
 MULTIPLIER = 10000.0
 
