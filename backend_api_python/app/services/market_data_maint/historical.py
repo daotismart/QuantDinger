@@ -23,6 +23,7 @@ def _fetch_upstream(spec: WatchSpec, *, limit: int) -> List[Dict[str, Any]]:
             max(10, int(limit)),
             exchange_id=spec.exchange_id or None,
             market_type=spec.market_type or None,
+            upstream_only=True,
         )
         or []
     )

@@ -2360,6 +2360,12 @@ CREATE INDEX IF NOT EXISTS idx_market_data_maint_runs_started
 CREATE INDEX IF NOT EXISTS idx_market_data_maint_runs_kind
   ON qd_market_data_maint_runs(run_kind, started_at DESC);
 
+CREATE TABLE IF NOT EXISTS qd_data_service_config (
+    config_key VARCHAR(64) PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Strategy API V2 templates are seeded by strategy_v2_templates.sql.
 
 -- =============================================================================
