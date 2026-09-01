@@ -172,6 +172,8 @@ class StrategyV2StorageCompatibilityTests(unittest.TestCase):
             "slippage": 0.1,
         })
 
+        self.assertIn("visualization", restored)
+        restored.pop("visualization", None)
         self.assertEqual(restored, expected)
         self.assertNotIn("compatibility", restored)
 

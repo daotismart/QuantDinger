@@ -122,6 +122,24 @@ Current mitigation on the host:
 
 Indicator page route: `#/indicator-ide` (legacy `#/indicator-analysis` redirects there).
 
+### Backtest process charts
+
+After a `fe-compat/assets` refresh, restore the decision / fill / position
+charts under Backtest Center:
+
+```bash
+python3 /database/ai/QuantDinger/ops/hotfixes/backtest-inspect/patch_backtest_inspect.py
+cd /database/ai/QuantDinger && docker compose \
+  -f docker-compose.yml -f docker-compose.production.yml \
+  -f docker-compose.hotfix.yml up -d --no-deps frontend
+```
+
+Required volume:
+
+```yaml
+- ./ops/hotfixes/fe-compat/backtest-inspect.html:/usr/share/nginx/html/backtest-inspect.html:ro
+```
+
 Crypto OHLCV from this host currently times out without `PROXY_URL` (Binance/OKX
 unreachable). USStock / CNFutures kline still work.
 

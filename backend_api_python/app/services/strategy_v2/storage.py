@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.utils.db import get_db_connection
+from app.services.strategy_v2.visualization import build_backtest_visualization
 
 
 class StrategyBacktestRepository:
@@ -312,6 +313,7 @@ def _normalize_backtest_result(
         compatibility["legacyBackfill"] = True
         compatibility["backfilledFields"] = backfilled_fields
 
+    result["visualization"] = build_backtest_visualization(result)
     return result
 
 
