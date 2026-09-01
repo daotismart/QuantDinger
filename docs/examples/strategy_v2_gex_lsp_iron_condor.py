@@ -96,7 +96,8 @@ def handle_data(context, data):
     g.lsp_score = lsp_score
     iv_rank = _iv_rank_proxy(hist)
     high_iv_ok = iv_rank is None or iv_rank >= iv_rank_min
-    equity = float(getattr(context.portfolio, "total_value", 0.0) or 0.0)
+    portfolio = context.portfolio
+    equity = float(portfolio.total_value or 0.0) if portfolio is not None else 0.0
     net_credit = max(sc - lc, 0.0) + max(sp - lp, 0.0)
     call_wing = max(long_call_k - call_wall, 0.0)
     put_wing = max(put_wall - long_put_k, 0.0)
