@@ -336,6 +336,7 @@ _RUNTIME_GLOBAL_CALL_NAMES = {
     "is_trade",
     "log",
     "order",
+    "order_combo",
     "order_target",
     "order_target_percent",
     "order_target_value",
@@ -427,6 +428,8 @@ def _validate_strategy_api_calls(code: str) -> None:
             )
         if call_name in _ORDER_API_ARGUMENTS and call_owner in {"", "context"}:
             _validate_order_call(node, call_name, static_values)
+        elif call_name == "order_combo" and call_owner in {"", "context"}:
+            _validate_combo_call(node)
         elif call_name in {"get_history", "history"} and call_owner == "":
             _validate_get_history_call(node, call_name, static_values)
         elif call_name == "history" and call_owner == "data":
@@ -684,6 +687,21 @@ def _validate_order_call(
         raise StrategyV2ContractError(
             f"strategyV2.apiCallInvalid:{call_name}:expectedSymbolAndValue"
         )
+
+
+def _validate_combo_call(node: ast.Call) -> None:
+    keywords = _call_keywords(node)
+    if len(node.args) > 1:
+        raise StrategyV2ContractError("strategyV2.apiCallInvalid:order_combo:expectedLegs")
+    if node.args and "legs" in keywords:
+        raise StrategyV2ContractError("strategyV2.apiCallInvalid:order_combo:duplicateArgument:legs")
+    if not node.args and "legs" not in keywords:
+        raise StrategyV2ContractError("strategyV2.apiCallInvalid:order_combo:missingArgument:legs")
+    legs_node = node.args[0] if node.args else keywords.get("legs")
+    if isinstance(legs_node, (ast.List, ast.Tuple)):
+        count = len(legs_node.elts)
+        if count < 2 or count > 4:
+            raise StrategyV2ContractError("strategyV2.apiCallInvalid:order_combo:legCount")
 
 
 def _validate_get_history_call(

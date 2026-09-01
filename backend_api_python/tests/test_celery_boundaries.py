@@ -21,6 +21,10 @@ def test_celery_beat_owns_periodic_maintenance():
     assert schedule["market-catalog-sync"]["task"] == "quantdinger.tasks.market_catalog_sync"
     assert schedule["market-data-historical-maint"]["task"] == "quantdinger.tasks.market_data_historical_maint"
     assert schedule["market-data-retention-maint"]["task"] == "quantdinger.tasks.market_data_retention_maint"
+    assert schedule["cn-etf-options-history-ingest"]["task"] == "quantdinger.tasks.cn_etf_options_history_ingest"
+    from celery.schedules import crontab
+
+    assert isinstance(schedule["cn-etf-options-history-ingest"]["schedule"], crontab)
     assert schedule["market-catalog-sync"]["schedule"] == 86400
 
 

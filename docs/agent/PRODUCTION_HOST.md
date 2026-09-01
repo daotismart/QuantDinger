@@ -179,3 +179,42 @@ docker exec quantdinger-db psql -U quantdinger -d quantdinger -c \
    WHERE market IN ('CNFutures','CNIndexFutures')
    GROUP BY 1,2 ORDER BY 1,2;"
 ```
+
+## CN ETF options history ingest
+
+Listed SSE/SZSE ETF option contracts plus the underlying ETF (and benchmark index) daily/weekly bars.
+
+**Primary production path is host crontab**, not Celery Beat. The host keeps `CELERY_CONCURRENCY=1`; a full options ingest would starve other maintenance if it ran on the worker.
+
+Script inside `quantdinger-backend`:
+
+```bash
+python scripts/ingest_cn_etf_options_history.py --persist \
+  --timeframes 1D,1W \
+  -o /tmp/cn_etf_options_ingest.json
+```
+
+Host cron (Asia/Shanghai, weekdays 16:40). Copy `scripts/ops/cron-cn-etf-options-ingest.sh` onto the host and install:
+
+```bash
+chmod +x /database/ai/QuantDinger/scripts/ops/cron-cn-etf-options-ingest.sh
+crontab -l | grep -v cron-cn-etf-options-ingest.sh | crontab -
+(crontab -l 2>/dev/null; echo '40 16 * * 1-5 TZ=Asia/Shanghai /database/ai/QuantDinger/scripts/ops/cron-cn-etf-options-ingest.sh') | crontab -
+```
+
+Logs: `/database/ai/QuantDinger/ops/cn_etf_options_ingest_*.log`. Overlapping runs are skipped via `flock`.
+
+Do **not** recreate `quantdinger-backend` while an ingest `docker exec` is live.
+
+Optional Celery Beat backup (disabled by default): set `CN_ETF_OPTIONS_INGEST_ENABLED=true` on the worker. Keep host cron as the source of truth to avoid double-load.
+
+Coverage check:
+
+```bash
+docker exec quantdinger-db psql -U quantdinger -d quantdinger -c \
+  "SELECT market, timeframe, COUNT(DISTINCT symbol), MAX(bar_time)
+   FROM qd_market_bars
+   WHERE market IN ('CNIndexOptions','CNStock')
+     AND (symbol ~ '^[0-9]{8}$' OR symbol IN ('510050.SH','510300.SH','510500.SH'))
+   GROUP BY 1,2 ORDER BY 1,2;"
+```

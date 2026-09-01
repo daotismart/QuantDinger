@@ -444,6 +444,7 @@ Order functions:
 | <code>order_target(symbol, amount)</code> | set a target quantity |
 | <code>order_target_value(symbol, value)</code> | set a target quote value |
 | <code>order_target_percent(symbol, percent)</code> | set a target share of portfolio equity |
+| <code>order_combo(legs)</code> | submit 2-4 option legs in the same bar (all queued or none) |
 
 Target APIs are usually best for repeatable rebalancing. Give every order a stable reason:
 

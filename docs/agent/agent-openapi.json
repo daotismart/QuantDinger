@@ -257,6 +257,91 @@
         "responses": { "200": { "description": "OK" } }
       }
     },
+    "/api/agent/v1/options/chain": {
+      "get": {
+        "summary": "Select listed option legs by underlying, DTE, and delta",
+        "description": "Uses the CTP listed catalog plus Black-Scholes/Black-76 deltas. When implied vol is unavailable, delta uses realized vol of the underlying.",
+        "x-scope-class": "R",
+        "parameters": [
+          { "in": "query", "name": "underlying", "required": true, "schema": { "type": "string" } },
+          { "in": "query", "name": "dte_min", "required": false, "schema": { "type": "integer" } },
+          { "in": "query", "name": "dte_max", "required": false, "schema": { "type": "integer" } },
+          { "in": "query", "name": "delta_min", "required": false, "schema": { "type": "number" } },
+          { "in": "query", "name": "delta_max", "required": false, "schema": { "type": "number" } },
+          { "in": "query", "name": "side", "required": false, "schema": { "type": "string", "enum": ["C", "P", "call", "put"] } },
+          { "in": "query", "name": "target_dte", "required": false, "schema": { "type": "integer" } },
+          { "in": "query", "name": "target_delta", "required": false, "schema": { "type": "number" } },
+          { "in": "query", "name": "kind", "required": false, "schema": { "type": "string", "default": "etf" } },
+          { "in": "query", "name": "limit", "required": false, "schema": { "type": "integer", "default": 40, "maximum": 200 } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/agent/v1/options/combo/estimate": {
+      "post": {
+        "summary": "Combo greeks and conservative margin estimate",
+        "x-scope-class": "R",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["legs"],
+                "properties": {
+                  "legs": { "type": "array", "minItems": 2, "maxItems": 4 },
+                  "underlying": { "type": "string" },
+                  "spot": { "type": "number" },
+                  "sigma": { "type": "number" },
+                  "dte": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/agent/v1/options/combo/order": {
+      "post": {
+        "summary": "Atomically record a 2-4 leg paper combo",
+        "description": "Paper fills are all-or-nothing in one database transaction. Live CTP combo instructions are not wired; live requests return 501.",
+        "x-scope-class": "T",
+        "parameters": [{ "in": "header", "name": "Idempotency-Key", "required": true, "schema": { "type": "string", "maxLength": 120 } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["legs"],
+                "properties": {
+                  "legs": { "type": "array", "minItems": 2, "maxItems": 4 },
+                  "underlying": { "type": "string" },
+                  "live": { "type": "boolean", "default": false }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Paper combo filled atomically" },
+          "501": { "description": "Live combo execution is not enabled" }
+        }
+      }
+    },
+    "/api/agent/v1/options/iv-rank": {
+      "get": {
+        "summary": "IV Rank / IV Percentile proxied by realized volatility",
+        "x-scope-class": "R",
+        "parameters": [
+          { "in": "query", "name": "symbol", "required": true, "schema": { "type": "string" } },
+          { "in": "query", "name": "lookback", "required": false, "schema": { "type": "integer", "default": 252 } },
+          { "in": "query", "name": "window", "required": false, "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
     "/api/agent/v1/strategies": {
       "get":  {
         "summary": "List strategies (tenant-scoped)",

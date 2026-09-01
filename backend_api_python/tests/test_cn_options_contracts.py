@@ -142,6 +142,9 @@ class TestCtpCatalogNormalize:
         assert item["symbol"] == "M2609-C-2800"
         assert item["instrument_id"] == "m2609-C-2800"
         assert item["exchange"] == "DCE"
+        assert item["strike"] == 2800.0
+        assert item["call_put"] == "C"
+        assert item["expire_date"] == "2026-09-14"
 
     def test_skips_delisted(self):
         assert normalize_ctp_option_row(self._row(**{"合约状态": 0})) is None
@@ -172,6 +175,10 @@ class TestCtpCatalogNormalize:
                     "品种ID": "ETF_O",
                     "商品类别": 1,
                     "标的合约": "510050",
+                    "执行价": 2.75,
+                    "看涨看跌": "C",
+                    "到期日": "20260923",
+                    "合约乘数": 10000,
                 }
             )
         )
@@ -180,6 +187,9 @@ class TestCtpCatalogNormalize:
         assert item["kind"] == "etf"
         assert item["underlying"] == "510050"
         assert item["exchange"] == "SSE"
+        assert item["strike"] == 2.75
+        assert item["call_put"] == "C"
+        assert item["expire_date"] == "2026-09-23"
 
     def test_etf_numeric_new_ctp_columns(self):
         item = normalize_ctp_option_row(
@@ -199,6 +209,8 @@ class TestCtpCatalogNormalize:
         assert item["exchange"] == "SZSE"
         assert item["underlying"] == "159901"
         assert item["kind"] == "etf"
+        assert item["call_put"] == "C"
+        assert item["strike"] == 3100.0
 
     def test_listed_option_catalog_from_frame(self):
         frame = pd.DataFrame(

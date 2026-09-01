@@ -38,6 +38,7 @@ Never place an agent token in prompts, logs, screenshots, source control, or MCP
 |---|---:|---|
 | `whoami`, `check_health` | R/public | Identity, allowlists, and liveness |
 | `list_markets`, `search_symbols`, `get_klines`, `get_price` | R | Market discovery and data |
+| `search_option_chain`, `estimate_option_combo`, `get_iv_rank` | R | ETF/listed option chain, combo estimate, IV rank proxy |
 | Universe and factor tools | R | Point-in-time research inputs |
 | `list_watchlist`, `add_watchlist`, `remove_watchlist` | R/W | Watchlist workspace |
 | Indicator authoring, validation, save, link, and read tools | R/W | Chart-only indicators |
@@ -51,6 +52,7 @@ Never place an agent token in prompts, logs, screenshots, source control, or MCP
 | Broker account, strategy position/trade, and quick-trade observation tools | R | Secret-free execution observations |
 | Signal-alert tools | N | Notification task lifecycle and confirmed delivery evaluation |
 | `place_quick_order` | T | Confirmed order with token notional caps |
+| `place_option_combo` | T | Confirmed 2-4 leg paper combo (atomic). Live combo is not enabled |
 | `list_portfolio_positions`, `list_paper_orders` | R | Portfolio and paper-order reads |
 | `emergency_stop_trading`, `cancel_open_paper_orders` | T | Emergency cancellation and T-token revocation |
 

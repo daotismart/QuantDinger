@@ -275,6 +275,80 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _normalize_call_put(value: Any, name: str = "") -> str | None:
+    text = str(value or "").strip().upper()
+    mapping = {
+        "C": "C",
+        "CALL": "C",
+        "看涨": "C",
+        "认购": "C",
+        "P": "P",
+        "PUT": "P",
+        "看跌": "P",
+        "认沽": "P",
+    }
+    if text in mapping:
+        return mapping[text]
+    raw_name = str(name or "")
+    if "认购" in raw_name or ("购" in raw_name and "沽" not in raw_name):
+        return "C"
+    if "认沽" in raw_name or "沽" in raw_name:
+        return "P"
+    return None
+
+
+def parse_option_expire_date(value: Any) -> str | None:
+    """Return YYYY-MM-DD from CTP expire fields such as 20260923 or 2026-09-23."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    year = month = day = None
+    if len(digits) >= 8:
+        year, month, day = int(digits[:4]), int(digits[4:6]), int(digits[6:8])
+    elif len(digits) == 6:
+        yy = int(digits[:2])
+        year = 2000 + yy if yy < 80 else 1900 + yy
+        month, day = int(digits[2:4]), int(digits[4:6])
+    if year is None:
+        return None
+    try:
+        from datetime import date as _date
+
+        return _date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
+def _infer_strike_from_name(name: str) -> float | None:
+    match = re.search(r"(\d+(?:\.\d+)?)\s*$", str(name or "").strip())
+    if not match:
+        return None
+    return _safe_float(match.group(1))
+
+
+def _option_chain_fields(row: Any, *, name: str = "", parsed: ParsedCnOption | None = None) -> dict[str, Any]:
+    strike = _safe_float(_row_get_first(row, CTP_COL_STRIKE, CTP_COL_STRIKE_ALT))
+    if strike is None and parsed is not None:
+        strike = _safe_float(parsed.strike)
+    if strike is None:
+        strike = _infer_strike_from_name(name)
+    call_put = _normalize_call_put(
+        _row_get_first(row, CTP_COL_CALL_PUT, CTP_COL_CALL_PUT_ALT),
+        name,
+    )
+    if call_put is None and parsed is not None:
+        call_put = parsed.call_put
+    expire_raw = _row_get(row, CTP_COL_EXPIRE)
+    expire_date = parse_option_expire_date(expire_raw)
+    return {
+        "strike": strike,
+        "call_put": call_put,
+        "expire": str(expire_raw).strip() if expire_raw not in (None, "") else None,
+        "expire_date": expire_date,
+    }
+
+
 def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
     """Map one option_contract_info_ctp() row to a catalog dict, or None to skip."""
     instrument = str(_row_get(row, CTP_COL_INSTRUMENT) or "").strip()
@@ -292,7 +366,7 @@ def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
         display = name or instrument
         if instrument and instrument not in display:
             display = f"{display} [{instrument}]"
-        return {
+        item = {
             "market": "CNIndexOptions",
             "symbol": instrument,
             "name": display[:255],
@@ -308,6 +382,8 @@ def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
             "product_id": product_id or "ETF_O",
             "underlying": underlying or None,
         }
+        item.update(_option_chain_fields(row, name=name))
+        return item
 
     parsed = parse_cn_option_instrument(instrument)
     if parsed is None:
@@ -332,7 +408,7 @@ def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
         tick = product.option_tick_size or product.tick_size
     if lot is None and product is not None:
         lot = float(product.option_multiplier or product.multiplier)
-    return {
+    item = {
         "market": market,
         "symbol": symbol[:50],
         "name": display[:255],
@@ -348,3 +424,5 @@ def normalize_ctp_option_row(row: Any) -> dict[str, Any] | None:
         "product_id": product_id,
         "underlying": underlying,
     }
+    item.update(_option_chain_fields(row, name=name, parsed=parsed))
+    return item

@@ -446,6 +446,7 @@ short_position = get_position(g.symbol, position_side="short")
 | <code>order_target(symbol, amount)</code> | 把持仓调整到目标数量 |
 | <code>order_target_value(symbol, value)</code> | 调整到目标价值 |
 | <code>order_target_percent(symbol, percent)</code> | 调整到组合权益的目标比例 |
+| <code>order_combo(legs)</code> | 同一根 K 线提交 2-4 个期权腿（全部入队或全部回滚） |
 
 目标型 API 最适合可重复执行的再平衡逻辑。每个订单都应提供稳定的 <code>reason</code>：
 

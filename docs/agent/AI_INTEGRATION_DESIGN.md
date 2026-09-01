@@ -131,6 +131,10 @@ GET    /api/agent/v1/health                         class R
 GET    /api/agent/v1/markets                        class R
 GET    /api/agent/v1/markets/{market}/symbols       class R
 GET    /api/agent/v1/klines                         class R
+GET    /api/agent/v1/options/chain                  class R
+POST   /api/agent/v1/options/combo/estimate         class R
+POST   /api/agent/v1/options/combo/order            class T  (paper atomic; live 501)
+GET    /api/agent/v1/options/iv-rank                class R
 GET    /api/agent/v1/indicators/authoring-contract  class R
 POST   /api/agent/v1/indicators/validate            class R
 POST   /api/agent/v1/indicators                     class W
