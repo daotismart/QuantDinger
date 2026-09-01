@@ -132,7 +132,7 @@ python3 /database/ai/QuantDinger/ops/hotfixes/strategy-manage-restore/restore_st
 # compose must mount strategy-manage.html (script adds it if missing)
 cd /database/ai/QuantDinger && docker compose \
   -f docker-compose.yml -f docker-compose.production.yml \
-  -f docker-compose.hotfix.yml up -d frontend
+  -f docker-compose.hotfix.yml up -d --no-deps frontend
 ```
 
 Required frontend volume (do **not** mount individual hashed JS chunks):

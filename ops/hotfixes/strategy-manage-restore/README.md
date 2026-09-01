@@ -14,7 +14,7 @@ restore script patches the mounted JS and adds that volume when missing.
 ```bash
 python3 ops/hotfixes/strategy-manage-restore/restore_strategy_manage_menu.py
 docker compose -f docker-compose.yml -f docker-compose.production.yml \
-  -f docker-compose.hotfix.yml up -d frontend
+  -f docker-compose.hotfix.yml up -d --no-deps frontend
 ```
 
 Hard-refresh the browser after recreate. Re-run after any `fe-compat/assets`
