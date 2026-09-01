@@ -91,7 +91,7 @@ N-scope signal-alert endpoints under `/notifications/signal-alerts` reuse the ex
 
 Listed option workflows use `/api/agent/v1/options/*`:
 
-- `GET /options/chain?underlying=510050&dte_min=20&dte_max=45&target_delta=0.25` ranks ETF (or other listed) contracts by DTE and Black-Scholes/Black-76 delta. Missing implied vol falls back to realized vol of the underlying.
+- `GET /options/chain?underlying=510050&dte_min=20&dte_max=45&target_delta=0.25` ranks ETF (or other listed) contracts by DTE and Black-Scholes/Black-76 delta. Missing implied vol falls back to realized vol of the underlying. When CTP omits 到期日, expiry is inferred from the contract month (SSE/SZSE 4th Wednesday) and returned as `expire_source=inferred_name`.
 - `POST /options/combo/estimate` returns combo greeks plus a conservative SSE/SZSE-style margin estimate (`defined_risk_width` for verticals/iron condors, otherwise short-option obligation).
 - `POST /options/combo/order` records 2-4 paper legs atomically (one transaction, all filled or none). Live CTP combo instructions are not wired and return `501`.
 - `GET /options/iv-rank?symbol=510050` returns IV Rank / IV Percentile **proxied by 20-day realized vol**.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -190,6 +192,7 @@ class TestCtpCatalogNormalize:
         assert item["strike"] == 2.75
         assert item["call_put"] == "C"
         assert item["expire_date"] == "2026-09-23"
+        assert item["expire_source"] == "ctp"
 
     def test_etf_numeric_new_ctp_columns(self):
         item = normalize_ctp_option_row(
@@ -211,6 +214,15 @@ class TestCtpCatalogNormalize:
         assert item["kind"] == "etf"
         assert item["call_put"] == "C"
         assert item["strike"] == 3100.0
+        assert item["expire_date"] is not None
+        assert item["expire_source"] == "inferred_name"
+
+    def test_infer_etf_expire_fourth_wednesday(self):
+        from app.markets.cn_options import fourth_wednesday, infer_etf_option_expire_date
+
+        assert fourth_wednesday(2026, 9).isoformat() == "2026-09-23"
+        assert infer_etf_option_expire_date("50ETF购9月2650", as_of=date(2026, 9, 1)) == "2026-09-23"
+        assert infer_etf_option_expire_date("50ETF沽12月2700", as_of=date(2026, 9, 1)) == "2026-12-23"
 
     def test_listed_option_catalog_from_frame(self):
         frame = pd.DataFrame(

@@ -260,7 +260,7 @@
     "/api/agent/v1/options/chain": {
       "get": {
         "summary": "Select listed option legs by underlying, DTE, and delta",
-        "description": "Uses the CTP listed catalog plus Black-Scholes/Black-76 deltas. When implied vol is unavailable, delta uses realized vol of the underlying.",
+        "description": "Uses the CTP listed catalog plus Black-Scholes/Black-76 deltas. When implied vol is unavailable, delta uses realized vol of the underlying. If CTP 到期日 is blank, expire_date is inferred from the contract month (4th Wednesday) and expire_source is inferred_name.",
         "x-scope-class": "R",
         "parameters": [
           { "in": "query", "name": "underlying", "required": true, "schema": { "type": "string" } },

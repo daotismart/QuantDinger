@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 # CTP option_contract_info_ctp() column names (akshare 1.18.x).
@@ -313,11 +314,32 @@ def parse_option_expire_date(value: Any) -> str | None:
     if year is None:
         return None
     try:
-        from datetime import date as _date
-
-        return _date(year, month, day).isoformat()
+        return date(year, month, day).isoformat()
     except ValueError:
         return None
+
+
+def fourth_wednesday(year: int, month: int) -> date:
+    """SSE/SZSE ETF options typically expire on the 4th Wednesday of the month."""
+    first = date(year, month, 1)
+    first_wednesday = 1 + (2 - first.weekday()) % 7
+    return date(year, month, first_wednesday + 21)
+
+
+def infer_etf_option_expire_date(name: str, *, as_of: date | None = None) -> str | None:
+    """Infer YYYY-MM-DD from names like ``50ETF购9月2650`` when CTP 到期日 is blank."""
+    match = re.search(r"(\d{1,2})月", str(name or ""))
+    if not match:
+        return None
+    month = int(match.group(1))
+    if month < 1 or month > 12:
+        return None
+    today = as_of or date.today()
+    year = today.year
+    expiry = fourth_wednesday(year, month)
+    if expiry < today:
+        expiry = fourth_wednesday(year + 1, month)
+    return expiry.isoformat()
 
 
 def _infer_strike_from_name(name: str) -> float | None:
@@ -341,11 +363,18 @@ def _option_chain_fields(row: Any, *, name: str = "", parsed: ParsedCnOption | N
         call_put = parsed.call_put
     expire_raw = _row_get(row, CTP_COL_EXPIRE)
     expire_date = parse_option_expire_date(expire_raw)
+    expire_source = "ctp"
+    if expire_date is None:
+        expire_date = infer_etf_option_expire_date(name)
+        expire_source = "inferred_name" if expire_date else None
+        if expire_date and not expire_raw:
+            expire_raw = expire_date.replace("-", "")
     return {
         "strike": strike,
         "call_put": call_put,
         "expire": str(expire_raw).strip() if expire_raw not in (None, "") else None,
         "expire_date": expire_date,
+        "expire_source": expire_source,
     }
 
 

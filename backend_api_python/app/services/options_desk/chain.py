@@ -226,6 +226,7 @@ def query_option_chain(
                 "strike": aligned if aligned is not None else strike,
                 "expire": item.get("expire"),
                 "expire_date": item.get("expire_date"),
+                "expire_source": item.get("expire_source"),
                 "dte": dte,
                 "multiplier": item.get("lot_size") or 10000.0,
                 "tick_size": item.get("tick_size"),
