@@ -12,3 +12,7 @@ docker compose -f docker-compose.yml -f docker-compose.production.yml \
 The page is also available at `/backtest-inspect.html?runId=<id>`.
 It reads `GET /api/backtest/get` and can rebuild series from research runs
 that only stored trades + equity.
+
+Auth: Vue stores `Access-Token` with the `store` library (`JSON.stringify(jwt)`).
+The inspect page must unwrap that quoted JWT; sending the raw quoted value
+as `Authorization: Bearer "eyJ..."` yields HTTP 401.
