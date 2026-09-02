@@ -241,7 +241,16 @@ def normalize_cn_symbol(symbol: str) -> str:
     raw = str(symbol or "").strip().upper()
     if ":" in raw:
         raw = raw.split(":", 1)[-1]
-    return raw.replace("=F", "").strip()
+    raw = raw.replace("=F", "").strip()
+    try:
+        from app.markets.cn_options import extract_etf_option_code
+
+        extracted = extract_etf_option_code(raw)
+        if extracted:
+            return extracted
+    except Exception:
+        pass
+    return raw
 
 
 def is_continuous_month(month: Optional[str]) -> bool:
@@ -470,7 +479,10 @@ def estimate_option_seller_margin(
 
 def resolve_market_category(symbol: str) -> str:
     if is_cn_futures_option(symbol):
-        root = parse_cn_option_symbol(symbol)["root"]  # type: ignore[index]
+        parsed = parse_cn_option_symbol(symbol) or {}
+        root = str(parsed.get("root") or "")
+        if parsed.get("kind") == "etf" or root == "ETFO":
+            return CN_INDEX_OPTIONS_MARKET
         product = CN_FUTURE_PRODUCTS.get(root)
         if root in _INDEX_OPTION_ONLY or (product and product.product_class == "index"):
             return CN_INDEX_OPTIONS_MARKET

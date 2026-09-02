@@ -79,10 +79,18 @@ class TestParseListedOptions:
         assert is_cn_futures_option("SR611MSP4700") is False
 
     def test_etf_numeric_codes(self):
-        from app.markets.cn_options import is_etf_option_code
+        from app.markets.cn_futures import resolve_market_category
+        from app.markets.cn_options import extract_etf_option_code, is_etf_option_code
 
         assert is_etf_option_code("10010971") is True
+        assert is_etf_option_code("90007051") is True
+        assert is_etf_option_code("20260918") is False
         assert parse_cn_option_instrument("10010971") is None
+        assert extract_etf_option_code("CNIndexOptions:10010971") == "10010971"
+        assert extract_etf_option_code("50ETF购9月2750 [10010971]") == "10010971"
+        assert extract_etf_option_code("到期20260918") is None
+        assert resolve_market_category("10010971") == "CNIndexOptions"
+        assert parse_cn_option_symbol("50ETF购9月2750 [10010971]")["symbol"] == "10010971"
 
     def test_new_product_roots(self):
         assert {"AD", "OP", "BZ", "PD", "PT", "PL", "PR", "ZC"} <= set(CN_FUTURE_PRODUCTS)

@@ -264,17 +264,23 @@ def _find_cn_derivative_symbol(market: str, symbol: str) -> dict | None:
         parse_cn_option_symbol,
         resolve_market_category,
     )
+    from app.markets.cn_options import extract_etf_option_code
 
-    category = resolve_market_category(symbol)
+    query = extract_etf_option_code(symbol) or symbol
+    category = resolve_market_category(query)
     if not category or not _cn_market_accepts(market, category):
         return None
     try:
-        product = get_future_product(symbol)
+        product = get_future_product(query)
     except ValueError:
         return None
-    parsed = parse_cn_future_symbol(symbol) or parse_cn_option_symbol(symbol) or {}
-    instrument = str(parsed.get("instrument_id") or parsed.get("symbol") or symbol).upper()
-    row = _cn_symbol_row(market, instrument, product.name, product.exchange)
+    parsed = parse_cn_future_symbol(query) or parse_cn_option_symbol(query) or {}
+    instrument = str(parsed.get("instrument_id") or parsed.get("symbol") or query).upper()
+    display = product.name
+    if parsed.get("kind") == "etf" or extract_etf_option_code(instrument):
+        # Keep the 8-digit contract id as the tradable symbol; never the Chinese name.
+        display = f"{product.name} [{instrument}]" if instrument not in (product.name or "") else product.name
+    row = _cn_symbol_row(market, instrument, display, product.exchange)
     return row
 
 
@@ -286,12 +292,14 @@ def _search_cn_derivative_symbols(market: str, keyword: str, limit: int) -> list
         parse_cn_future_symbol,
     )
 
+    from app.markets.cn_options import extract_etf_option_code
+
     kw = (keyword or "").strip().upper()
     if not kw:
         return []
 
     out: list[dict] = []
-    exact = _find_cn_derivative_symbol(market, kw)
+    exact = _find_cn_derivative_symbol(market, extract_etf_option_code(keyword) or kw)
     if exact:
         out.append(exact)
 
@@ -314,7 +322,7 @@ def _search_cn_derivative_symbols(market: str, keyword: str, limit: int) -> list
             continue
         if want_options and not (product.has_options or root in {"IO", "HO", "MO"}):
             continue
-        if market == "CNIndexOptions" and root not in {"IO", "HO", "MO"}:
+        if market == "CNIndexOptions" and root not in {"IO", "HO", "MO", "ETFO"}:
             continue
 
         if want_options and root in {"IO", "HO", "MO"}:
