@@ -16,6 +16,7 @@ from app.services.market_context import (
     normalize_market_type,
     SUPPORTED_CRYPTO_EXCHANGE_IDS,
 )
+from app.services.symbol_master_sync import _default_asset_class
 from app.utils.cache import CacheManager
 from app.utils.db import get_db_connection
 from app.utils.logger import get_logger
@@ -34,6 +35,15 @@ _CN_DERIVATIVE_MARKETS = frozenset({
 })
 
 
+def _resolve_asset_class(market: str, item: dict) -> str:
+    raw = str(item.get("asset_class") or "").strip().lower()
+    if raw:
+        return raw
+    if market == "Crypto":
+        return "crypto"
+    return _default_asset_class(market)
+
+
 def dedupe_symbol_results(items: Iterable[dict], limit: int) -> list:
     """Normalize, dedupe, and limit symbol search results."""
     out = []
@@ -48,7 +58,7 @@ def dedupe_symbol_results(items: Iterable[dict], limit: int) -> list:
         market_type = normalize_market_type(item.get("market_type"), market=market)
         instrument_id = str(item.get("instrument_id") or item.get("instrumentId") or "").strip()
         settle_currency = str(item.get("settle_currency") or item.get("settleCurrency") or "").strip().upper()
-        asset_class = str(item.get("asset_class") or "crypto").strip().lower()
+        asset_class = _resolve_asset_class(market, item)
         key = (market, symbol, exchange_id, market_type, instrument_id)
         if key in seen:
             continue
@@ -75,6 +85,8 @@ def search_market_symbols(
     *,
     exchange_id: str = "",
     market_type: str = "",
+    asset_class: str = "",
+    etf_only: bool = False,
 ) -> list:
     """Search the local catalog, using external fallbacks only for equities."""
     market = (market or "").strip()
@@ -92,15 +104,35 @@ def search_market_symbols(
         return dedupe_symbol_results(out, limit)
 
     if market in _CN_DERIVATIVE_MARKETS:
-        out = dedupe_symbol_results(
-            _search_cn_derivative_symbols(market, keyword, limit),
-            limit,
-        )
-        if out:
-            return out
+        if market == "CNIndexOptions" and etf_only:
+            out = dedupe_symbol_results(
+                seed_search_symbols(
+                    market=market,
+                    keyword=keyword,
+                    limit=limit,
+                    asset_class=asset_class,
+                    etf_only=True,
+                ),
+                limit,
+            )
+            if out:
+                return out
+        else:
+            out = dedupe_symbol_results(
+                _search_cn_derivative_symbols(market, keyword, limit),
+                limit,
+            )
+            if out:
+                return out
 
     out = dedupe_symbol_results(
-        seed_search_symbols(market=market, keyword=keyword, limit=limit),
+        seed_search_symbols(
+            market=market,
+            keyword=keyword,
+            limit=limit,
+            asset_class=asset_class,
+            etf_only=etf_only,
+        ),
         limit,
     )
     if out:
@@ -187,15 +219,30 @@ def find_available_crypto_symbol(
     return None
 
 
-def get_hot_symbols(market: str, limit: int = 10) -> list:
+def get_hot_symbols(
+    market: str,
+    limit: int = 10,
+    *,
+    asset_class: str = "",
+    etf_only: bool = False,
+) -> list:
     """Return curated hot symbols backed by a concrete market-data identity."""
     market = (market or "").strip()
     limit = max(1, int(limit or 10))
-    curated = seed_get_hot_symbols(market=market, limit=limit)
-    if market in _CN_DERIVATIVE_MARKETS and not curated:
+    curated = seed_get_hot_symbols(
+        market=market,
+        limit=limit,
+        asset_class=asset_class,
+        etf_only=etf_only,
+    )
+    if curated:
+        return dedupe_symbol_results(curated, limit)
+    if market in _CN_DERIVATIVE_MARKETS:
+        if market == "CNIndexOptions" and etf_only:
+            return []
         return dedupe_symbol_results(_hot_cn_derivative_symbols(market, limit), limit)
     if market != "Crypto":
-        return curated
+        return dedupe_symbol_results(curated, limit)
 
     available = []
     for item in curated:
