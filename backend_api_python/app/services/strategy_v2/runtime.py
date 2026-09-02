@@ -186,6 +186,7 @@ class StrategyRuntimeContext:
         self.data = StrategyDataView(portal)
         self.portfolio = portfolio
         self.params = dict(params or {})
+        self.metadata: dict[str, Any] = {}
         self.current_dt: pd.Timestamp | None = None
         self.previous_trading_date: pd.Timestamp | None = None
         self._orders: list[OrderIntent] = []
@@ -197,6 +198,9 @@ class StrategyRuntimeContext:
         self._cancelled_order_ids: set[str] = set()
         self._last_exit_reasons: dict[str, str] = {}
         self.logger = StrategyRuntimeLogger(self.log)
+
+    def set_metadata(self, **values: Any) -> None:
+        self.metadata.update(values)
 
     def set_default_protection(self, **values: Any) -> None:
         self._default_protection = ProtectionSpec.from_value(values)
@@ -1578,6 +1582,7 @@ class StrategyV2BacktestRunner:
             portfolio=self.broker.portfolio,
             params=runtime_params,
         )
+        self.context.metadata = dict(self.program.manifest.metadata_fields or {})
         self.logs: list[str] = []
         self._order_status_cursor = 0
         self._order_status_summaries: dict[str, dict[str, Any]] = {}
@@ -2088,6 +2093,7 @@ class StrategyV2LiveSession:
             portfolio=self.portfolio,
             params=merge_declared_params(code, dict(params or {})),
         )
+        self.context.metadata = dict(self.program.manifest.metadata_fields or {})
         self.persist_strategy_state = (
             _truthy(self.program.namespace.get("PERSIST_RUNTIME_STATE"))
             or _truthy(self.context.params.get("persist_runtime_state"))
