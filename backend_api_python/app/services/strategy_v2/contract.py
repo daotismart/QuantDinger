@@ -95,6 +95,7 @@ class DiscoveryContext:
         self.leverage_allowed = False
         self.max_leverage = 1.0
         self.metadata: dict[str, Any] = {}
+        self.params: dict[str, Any] = {}
         self.current_dt = None
         self.previous_trading_date = None
         self.portfolio = SimpleNamespace(
@@ -180,7 +181,10 @@ def compile_strategy_v2(code: str) -> CompiledStrategyV2:
     _validate_dataframe_truthiness(raw)
     _validate_strategy_api_calls(raw)
 
+    from app.services.param_values import merge_declared_params
+
     context = DiscoveryContext()
+    context.params = merge_declared_params(raw, {})
     state = StateNamespace()
     schedules = _ScheduleBindings(context)
     discovery_log = _DiscoveryLogger()

@@ -33,6 +33,31 @@ def coerce_param_value(raw: Any, declared_type: str | None = None) -> Any:
     return _coerce_undeclared(value)
 
 
+def safe_round(number: Any, ndigits: Any = None) -> Any:
+    """Builtin-compatible ``round`` that unwraps complex / numpy scalars.
+
+    ``round(7j)`` raises ``TypeError: type complex doesn't define __round__
+    method``. Strategy code often writes ``int(round(context.params.get(..., 7j)))``
+    as a fallback; the sandbox must not crash when that default is hit.
+    """
+    try:
+        real = _as_real(number)
+    except (TypeError, ValueError, OverflowError):
+        if ndigits is None:
+            return round(number)
+        return round(number, ndigits)
+    if ndigits is None:
+        return round(real)
+    try:
+        if isinstance(ndigits, bool) or not isinstance(ndigits, int):
+            digits = int(_as_real(ndigits))
+        else:
+            digits = ndigits
+    except (TypeError, ValueError, OverflowError):
+        return round(real, ndigits)
+    return round(real, digits)
+
+
 def merge_declared_params(source: str, user_params: dict[str, Any] | None) -> dict[str, Any]:
     """Merge `# @param` defaults with run-supplied values and coerce types."""
     from app.services.indicator_params import IndicatorParamsParser
