@@ -58,3 +58,31 @@ def clip_int(value, *, default: int, lo: int, hi: int) -> int:
     except Exception:
         return default
     return max(lo, min(hi, v))
+
+
+def optional_int(value, *, lo: int | None = None, hi: int | None = None) -> int | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        number = int(float(value))
+    except Exception:
+        return None
+    if lo is not None:
+        number = max(lo, number)
+    if hi is not None:
+        number = min(hi, number)
+    return number
+
+
+def optional_float(value, *, lo: float | None = None, hi: float | None = None) -> float | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        number = float(value)
+    except Exception:
+        return None
+    if lo is not None:
+        number = max(lo, number)
+    if hi is not None:
+        number = min(hi, number)
+    return number

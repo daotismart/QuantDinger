@@ -216,6 +216,49 @@ class StrategyRuntimeContext:
     def order_target_percent(self, symbol: object, percent: object, **kwargs: Any) -> str | None:
         return self._queue(symbol, "target_percent", percent, kwargs)
 
+    def order_combo(self, legs: object = None, **kwargs: Any) -> dict[str, Any]:
+        """Queue 2-4 option legs together so they fill in the same bar.
+
+        Each leg is ``{symbol, side, qty}`` (or a signed ``qty``). Validation
+        happens before any intent is appended; a later failure rolls back the
+        whole group.
+        """
+        from app.services.options_desk.combo import ComboError, parse_combo_legs
+
+        payload = legs if legs is not None else kwargs.get("legs")
+        try:
+            parsed = parse_combo_legs(payload)
+        except ComboError as exc:
+            raise StrategyV2ContractError(f"strategyV2.apiCallInvalid:order_combo:{exc.code}") from exc
+        combo_id = str(kwargs.get("combo_id") or kwargs.get("client_order_id") or "").strip()
+        if not combo_id:
+            timestamp = (
+                pd.Timestamp(self.current_dt).isoformat()
+                if self.current_dt is not None
+                else "discovery"
+            )
+            combo_id = f"combo:{timestamp}:{self._order_sequence + 1}"
+        combo_id = combo_id[:80]
+        before_orders = len(self._orders)
+        order_ids: list[str | None] = []
+        try:
+            for item in parsed:
+                signed = float(item["qty_signed"])
+                leg_kwargs = dict(kwargs)
+                leg_kwargs.pop("legs", None)
+                leg_kwargs["reason"] = str(kwargs.get("reason") or f"combo:{combo_id}")
+                leg_kwargs["client_order_id"] = f"{combo_id}:L{item['index']}"[:100]
+                order_ids.append(self._queue(item["symbol"], "quantity", signed, leg_kwargs))
+        except Exception:
+            self._orders = self._orders[:before_orders]
+            raise
+        return {
+            "combo_id": combo_id,
+            "order_ids": order_ids,
+            "legs": len(parsed),
+            "atomic": "same_bar",
+        }
+
     def get_order_status(self, client_order_id: object) -> dict[str, Any]:
         reference = str(client_order_id or "").strip()
         return dict(self._order_statuses.get(reference) or {
@@ -1618,6 +1661,7 @@ class StrategyV2BacktestRunner:
             "order_target": ctx.order_target,
             "order_target_value": ctx.order_target_value,
             "order_target_percent": ctx.order_target_percent,
+            "order_combo": ctx.order_combo,
             "set_default_protection": ctx.set_default_protection,
             "get_position": ctx.get_position,
             "get_positions": ctx.get_positions,
@@ -2365,6 +2409,7 @@ class StrategyV2LiveSession:
             "order_target": ctx.order_target,
             "order_target_value": ctx.order_target_value,
             "order_target_percent": ctx.order_target_percent,
+            "order_combo": ctx.order_combo,
             "set_default_protection": ctx.set_default_protection,
             "get_position": ctx.get_position,
             "get_positions": ctx.get_positions,

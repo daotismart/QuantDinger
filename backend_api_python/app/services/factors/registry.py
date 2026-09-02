@@ -70,6 +70,8 @@ def _technical_warmup(factor_id: str, params: Mapping[str, Any]) -> int:
         return int(params.get("slow_period") or 10)
     if factor_id in {"obv", "ad_line"}:
         return period + 1
+    if factor_id in {"iv_rank", "iv_percentile"}:
+        return int(params.get("lookback") or 120) + int(params.get("period") or 20)
     return max(1, period)
 
 
@@ -177,6 +179,8 @@ _FACTORS = {
         _technical("supertrend", "trend", ("high", "low", "close"), {"period": 10, "multiplier": 3.0, "output": "direction"}, "higher_is_bullish", lambda f, p: _supertrend(f, p)),
         _technical("atr", "volatility", ("high", "low", "close"), {"period": 14}, "neutral", lambda f, p: _atr(f, p)),
         _technical("realized_volatility", "risk", ("close",), {"period": 20}, "lower_is_bullish", lambda f, p: _realized_vol(f, p)),
+        _technical("iv_rank", "volatility", ("close",), {"period": 20, "lookback": 120}, "neutral", lambda f, p: _iv_rank(f, p)),
+        _technical("iv_percentile", "volatility", ("close",), {"period": 20, "lookback": 120}, "neutral", lambda f, p: _iv_percentile(f, p)),
         _technical("ema_slope", "trend", ("close",), {"period": 20, "slope_period": 5}, "higher_is_bullish", lambda f, p: _ema_slope(f, p)),
         _technical("atr_pct", "risk", ("high", "low", "close"), {"period": 14}, "lower_is_bullish", lambda f, p: _atr_pct(f, p)),
         _technical("downside_volatility", "risk", ("close",), {"period": 20}, "lower_is_bullish", lambda f, p: _downside_volatility(f, p)),
@@ -305,6 +309,32 @@ def _realized_vol(frame: pd.DataFrame, params: Mapping[str, Any]) -> float:
     if len(returns) < period:
         raise FactorError("factor.insufficientHistory")
     return float(returns.iloc[-period:].std(ddof=1) * math.sqrt(252))
+
+
+def _iv_rank(frame: pd.DataFrame, params: Mapping[str, Any]) -> float:
+    from app.services.options_desk.iv_rank import iv_rank_from_closes
+
+    period = _period(params)
+    lookback = _period(params, "lookback", minimum=20)
+    closes = _numeric(frame["close"]).dropna().tolist()
+    payload = iv_rank_from_closes(closes, window=period, lookback=lookback)
+    value = payload.get("iv_rank")
+    if value is None or not math.isfinite(float(value)):
+        raise FactorError("factor.insufficientHistory")
+    return float(value)
+
+
+def _iv_percentile(frame: pd.DataFrame, params: Mapping[str, Any]) -> float:
+    from app.services.options_desk.iv_rank import iv_rank_from_closes
+
+    period = _period(params)
+    lookback = _period(params, "lookback", minimum=20)
+    closes = _numeric(frame["close"]).dropna().tolist()
+    payload = iv_rank_from_closes(closes, window=period, lookback=lookback)
+    value = payload.get("iv_percentile")
+    if value is None or not math.isfinite(float(value)):
+        raise FactorError("factor.insufficientHistory")
+    return float(value)
 
 
 def _ema_slope(frame: pd.DataFrame, params: Mapping[str, Any]) -> float:
