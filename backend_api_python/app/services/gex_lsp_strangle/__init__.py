@@ -7,6 +7,7 @@ from app.services.gex_lsp_strangle.engine import (
 )
 from app.services.gex_lsp_strangle.gex_walls import (
     compute_gex_walls,
+    is_adjusted_contract,
     list_monthly_expiries,
     select_iron_condor_strikes,
     select_strangle_strikes,
@@ -17,6 +18,7 @@ from app.services.gex_lsp_strangle.iron_condor_engine import (
     IronCondorBacktestResult,
     estimate_iron_condor_margin,
     run_iron_condor_backtest,
+    size_iron_condor_by_risk,
     size_iron_condor_lots,
 )
 from app.services.gex_lsp_strangle.kelly import (
@@ -55,7 +57,9 @@ __all__ = [
     "select_iron_condor_strikes",
     "select_strangle_strikes",
     "select_target_expire",
+    "is_adjusted_contract",
     "size_by_kelly_margin",
     "size_iron_condor_lots",
+    "size_iron_condor_by_risk",
     "size_short_premium_lots",
 ]

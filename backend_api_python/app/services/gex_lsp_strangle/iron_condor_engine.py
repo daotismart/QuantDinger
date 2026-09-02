@@ -18,6 +18,7 @@ from app.services.gex_lsp_strangle.engine import (
     _fee,
     _iv_rank,
     _max_drawdown,
+    _option_delta,
     _option_px,
     _premium_slip,
     prepare_panel,
@@ -29,26 +30,46 @@ from app.services.gex_lsp_strangle.lsp import lsp_option_skew_lots
 
 @dataclass
 class IronCondorBacktestConfig(ShortStrangleBacktestConfig):
-    wing_steps: int = 1
+    # Prefer 3 listed steps; 50ETF books often only have 2 OTM steps.
+    wing_steps: int = 3
     wing_pct: float = 0.0
-    take_profit_pct: float = 0.50  # close when remaining debit <= (1-tp)*entry credit cash
+    # Close when remaining debit ≤ (1 - take_profit_pct) × entry credit (75% captured).
+    take_profit_pct: float = 0.75
     stop_loss_pct: float = 0.90  # close when MTM loss >= stop * max_risk
-    # 0 = short at GEX walls (default). >0 = short that percent OTM from spot.
+    # 0 = GEX-TV / wall shorts. >0 = short that percent OTM from spot (legacy).
     short_otm_pct: float = 0.0
-    min_credit_to_width: float = 0.0
+    min_credit_to_width: float = 0.15
+    min_credit: float = 0.015
+    min_short_delta: float = 0.14
+    max_short_delta: float = 0.25
+    exclude_adjusted: bool = True
+    strike_grid: float = 0.05
+    min_wing_steps: int = 2
     exit_on_short_breach: bool = True
-    exit_on_wall_breach: bool = True
-    # Defined-risk margin per lot is small; default to fixed 120 lots on 1M capital.
-    lots: int = 120
-    use_kelly_sizing: bool = False
+    # Walls are an *entry* filter. Flattening on wall touch cut winners on 50ETF.
+    exit_on_wall_breach: bool = False
+    short_delta_stop: float = 0.99
+    # Size: min(lots, max_lots, risk_cap×NAV / max_loss, Kelly cap).
+    lots: int = 80
+    use_kelly_sizing: bool = True
+    # 100-session IV rank is unstable; GEX-TV's 40-gate delayed into worse shorts.
     require_high_iv: bool = False
     require_inside_walls: bool = False
-    kelly_max_lots: int = 150
+    iv_rank_min: float = 0.40
+    kelly_max_fraction: float = 0.10
+    kelly_max_lots: int = 80
     kelly_prior_win_prob: float = 0.60
     lsp_max_skew_lots: int = 0
     max_hold_days: int = 60
-    roll_before_dte: int = 15
-    exit_dte: int = 15
+    # 50ETF theta is back-loaded vs SA; rolling at 21 DTE locked in MTM losses.
+    roll_before_dte: int = 10
+    exit_dte: int = 10
+    # ~45 DTE entry window (GEX-TV 28–65).
+    expiry_month: str = "target"
+    target_dte: int = 45
+    min_dte: int = 28
+    max_dte: int = 65
+    risk_cap: float = 0.06
     # Skip / flatten when |spot return over trend_lookback bars| exceeds this.
     max_abs_trend_pct: float = 0.08
     trend_lookback: int = 20
@@ -79,6 +100,8 @@ class _OpenIronCondor:
     option_fees: float = 0.0
     days_held: int = 0
     lsp_regime_entry: str = "neutral"
+    last_mark_debit: float = 0.0
+    last_mark_fee: float = 0.0
 
 
 @dataclass
@@ -95,6 +118,37 @@ class IronCondorBacktestResult:
             "trades": self.trades,
             "daily": self.daily,
         }
+
+
+def normalize_iv_rank_min(value: float) -> float:
+    """Accept 0.40 or live-script 40 (0–100 rank)."""
+    rank = float(value)
+    return rank / 100.0 if rank > 1.0 else rank
+
+
+def size_iron_condor_by_risk(
+    *,
+    equity: float,
+    max_loss_per_lot: float,
+    risk_cap: float,
+    max_lots: int,
+    base_lots: int,
+    kelly_lots: int | None = None,
+) -> int:
+    """GEX-TV: min(max_lots, base, risk_cap×NAV/max_loss, Kelly). RN Kelly ≤0 still uses risk_cap."""
+    nav = max(float(equity), 0.0)
+    per = max(float(max_loss_per_lot), 1e-9)
+    risk_lots = int((float(risk_cap) * nav) // per) if float(risk_cap) > 0 else int(base_lots)
+    caps = [max(int(max_lots), 0), max(int(base_lots), 0), max(int(risk_lots), 0)]
+    if kelly_lots is not None:
+        caps.append(max(int(kelly_lots), 0))
+    return max(min(caps), 0) if caps else 0
+
+
+def clip_iron_condor_close_debit(debit: float, entry_credit_cash: float, max_risk: float) -> float:
+    """Close debit cannot exceed credit + defined max loss, and cannot be negative."""
+    hi = max(float(entry_credit_cash), 0.0) + max(float(max_risk), 0.0)
+    return min(max(float(debit), 0.0), hi)
 
 
 def estimate_iron_condor_margin(
@@ -192,19 +246,66 @@ def _close_cost(
     open_trade: _OpenIronCondor,
     day_chain: pd.DataFrame,
     cfg: IronCondorBacktestConfig,
+    *,
+    spot: float | None = None,
+    allow_intrinsic: bool = False,
 ) -> dict[str, float]:
-    sc = _option_px(day_chain, open_trade.short_call_code, open_trade.short_call_strike, "C")
-    sp = _option_px(day_chain, open_trade.short_put_code, open_trade.short_put_strike, "P")
-    lc = _option_px(day_chain, open_trade.long_call_code, open_trade.long_call_strike, "C")
-    lp = _option_px(day_chain, open_trade.long_put_code, open_trade.long_put_strike, "P")
+    sc = _option_px(
+        day_chain,
+        open_trade.short_call_code,
+        open_trade.short_call_strike,
+        "C",
+        expire_date=open_trade.expire_date,
+    )
+    sp = _option_px(
+        day_chain,
+        open_trade.short_put_code,
+        open_trade.short_put_strike,
+        "P",
+        expire_date=open_trade.expire_date,
+    )
+    lc = _option_px(
+        day_chain,
+        open_trade.long_call_code,
+        open_trade.long_call_strike,
+        "C",
+        expire_date=open_trade.expire_date,
+    )
+    lp = _option_px(
+        day_chain,
+        open_trade.long_put_code,
+        open_trade.long_put_strike,
+        "P",
+        expire_date=open_trade.expire_date,
+    )
+    quotes_ok = min(sc, sp, lc, lp) > 0
+    if not quotes_ok and allow_intrinsic and spot is not None and float(spot) > 0:
+        sc = sc if sc > 0 else max(float(spot) - open_trade.short_call_strike, 0.0)
+        sp = sp if sp > 0 else max(open_trade.short_put_strike - float(spot), 0.0)
+        lc = lc if lc > 0 else max(float(spot) - open_trade.long_call_strike, 0.0)
+        lp = lp if lp > 0 else max(open_trade.long_put_strike - float(spot), 0.0)
+        quotes_ok = True
+    if not quotes_ok:
+        debit = float(open_trade.last_mark_debit or 0.0)
+        fee = float(open_trade.last_mark_fee or 0.0)
+        if debit <= 0:
+            # No listed quote and no prior mark: mark-to-scratch (do not gift the credit).
+            debit = float(open_trade.entry_credit_cash)
+            fee = _fee(2 * (open_trade.call_lots + open_trade.put_lots), cfg.commission_per_lot)
+        return {
+            "close_debit": float(debit),
+            "close_fee": float(fee),
+            "quotes_ok": 0.0,
+        }
     debit = (
         _premium_slip(sc, "buy", cfg.slippage_pct) * open_trade.call_lots
         + _premium_slip(sp, "buy", cfg.slippage_pct) * open_trade.put_lots
         - _premium_slip(lc, "sell", cfg.slippage_pct) * open_trade.call_lots
         - _premium_slip(lp, "sell", cfg.slippage_pct) * open_trade.put_lots
     ) * cfg.multiplier
+    debit = clip_iron_condor_close_debit(debit, open_trade.entry_credit_cash, open_trade.max_risk)
     fee = _fee(2 * (open_trade.call_lots + open_trade.put_lots), cfg.commission_per_lot)
-    return {"close_debit": float(debit), "close_fee": float(fee)}
+    return {"close_debit": float(debit), "close_fee": float(fee), "quotes_ok": 1.0}
 
 
 def _close_iron_condor(
@@ -215,13 +316,21 @@ def _close_iron_condor(
     exit_date: pd.Timestamp,
     cfg: IronCondorBacktestConfig,
     reason: str,
+    spot: float | None = None,
+    allow_intrinsic: bool = False,
 ) -> tuple[float, dict[str, Any]]:
-    mark = _close_cost(open_trade, day_chain, cfg)
+    mark = _close_cost(
+        open_trade, day_chain, cfg, spot=spot, allow_intrinsic=allow_intrinsic
+    )
     cash -= mark["close_debit"]
     cash -= mark["close_fee"]
     open_trade.option_cash -= mark["close_debit"]
     open_trade.option_fees += mark["close_fee"]
     pnl = open_trade.option_cash - open_trade.option_fees
+    # Defined-risk envelope: cannot win more than credit − fees, or lose more than max_risk + fees.
+    hi = float(open_trade.entry_credit_cash) - float(open_trade.option_fees)
+    lo = -abs(float(open_trade.max_risk)) - float(open_trade.option_fees)
+    pnl = min(max(pnl, lo), hi)
     trade = {
         "entryDate": str(open_trade.entry_date.date()),
         "exitDate": str(pd.Timestamp(exit_date).date()),
@@ -232,6 +341,10 @@ def _close_iron_condor(
         "shortPutStrike": open_trade.short_put_strike,
         "longCallStrike": open_trade.long_call_strike,
         "longPutStrike": open_trade.long_put_strike,
+        "shortCallCode": open_trade.short_call_code,
+        "shortPutCode": open_trade.short_put_code,
+        "longCallCode": open_trade.long_call_code,
+        "longPutCode": open_trade.long_put_code,
         "callLots": open_trade.call_lots,
         "putLots": open_trade.put_lots,
         "entryCredit": round(open_trade.entry_credit, 4),
@@ -281,6 +394,7 @@ def run_iron_condor_backtest(
             min_dte=cfg.min_dte,
             max_dte=cfg.max_dte,
             expiry_month=cfg.expiry_month,
+            target_dte=int(cfg.target_dte) if getattr(cfg, "target_dte", None) else None,
         )
         pick = select_iron_condor_strikes(
             walls,
@@ -289,6 +403,12 @@ def run_iron_condor_backtest(
             wing_pct=cfg.wing_pct,
             short_otm_pct=cfg.short_otm_pct,
             min_credit_to_width=cfg.min_credit_to_width,
+            min_credit=float(getattr(cfg, "min_credit", 0.0) or 0.0),
+            min_short_delta=float(getattr(cfg, "min_short_delta", 0.0) or 0.0),
+            max_short_delta=float(getattr(cfg, "max_short_delta", 1.0) or 1.0),
+            exclude_adjusted=bool(getattr(cfg, "exclude_adjusted", True)),
+            strike_grid=float(getattr(cfg, "strike_grid", 0.05) or 0.0),
+            min_wing_steps=int(getattr(cfg, "min_wing_steps", 2) or 1),
         )
         regime = str(row.get("lsp_regime") or "mixed")
         lsp_score = float(row.get("lsp_delta_score") or 0.0)
@@ -304,8 +424,9 @@ def run_iron_condor_backtest(
                     trend = spot / base - 1.0
         trend_block = float(cfg.max_abs_trend_pct) > 0 and abs(trend) > float(cfg.max_abs_trend_pct)
         iv_rank = _iv_rank(atm_iv, pd.Timestamp(dt), cfg.iv_lookback)
+        iv_floor = normalize_iv_rank_min(cfg.iv_rank_min)
         high_iv_ok = (not cfg.require_high_iv) or (
-            iv_rank is not None and float(iv_rank) >= float(cfg.iv_rank_min)
+            iv_rank is not None and float(iv_rank) >= float(iv_floor)
         )
         win_prob = estimate_win_prob(
             closed_pnls,
@@ -324,12 +445,40 @@ def run_iron_condor_backtest(
 
         if open_trade is not None:
             open_trade.days_held += 1
-            mark = _close_cost(open_trade, day_chain, cfg)
-            exit_reason = None
             dte = (pd.Timestamp(open_trade.expire_date) - pd.Timestamp(dt)).days
             roll_dte = int(cfg.roll_before_dte or cfg.exit_dte)
-            if dte <= roll_dte:
+            must_settle = dte <= roll_dte
+            mark = _close_cost(
+                open_trade, day_chain, cfg, spot=spot, allow_intrinsic=must_settle
+            )
+            quotes_ok = float(mark.get("quotes_ok") or 0.0) > 0
+            if quotes_ok:
+                open_trade.last_mark_debit = float(mark["close_debit"])
+                open_trade.last_mark_fee = float(mark["close_fee"])
+            exit_reason = None
+            d_call = abs(
+                _option_delta(
+                    day_chain,
+                    open_trade.short_call_code,
+                    open_trade.short_call_strike,
+                    "C",
+                    0.0,
+                )
+            )
+            d_put = abs(
+                _option_delta(
+                    day_chain,
+                    open_trade.short_put_code,
+                    open_trade.short_put_strike,
+                    "P",
+                    0.0,
+                )
+            )
+            if must_settle:
                 exit_reason = "roll_month"
+            elif not quotes_ok:
+                # Missing listed quote mid-hold: never flatten at 0 (phantom buyback).
+                exit_reason = None
             elif open_trade.days_held >= cfg.max_hold_days:
                 exit_reason = "max_hold"
             elif cfg.exit_on_short_breach and spot >= open_trade.short_call_strike:
@@ -340,6 +489,10 @@ def run_iron_condor_backtest(
                 exit_reason = "call_wall_breach"
             elif cfg.exit_on_wall_breach and spot <= open_trade.put_wall * (1.0 - cfg.wall_buffer_pct):
                 exit_reason = "put_wall_breach"
+            elif float(getattr(cfg, "short_delta_stop", 0.99) or 0.99) < 1.0 and (
+                d_call >= float(cfg.short_delta_stop) or d_put >= float(cfg.short_delta_stop)
+            ):
+                exit_reason = "short_delta_stop"
             elif trend_block:
                 exit_reason = "trend_filter"
             elif spot >= open_trade.long_call_strike or spot <= open_trade.long_put_strike:
@@ -363,6 +516,8 @@ def run_iron_condor_backtest(
                     exit_date=dt,
                     cfg=cfg,
                     reason=exit_reason,
+                    spot=spot,
+                    allow_intrinsic=must_settle,
                 )
                 trades.append(trade)
                 closed_pnls.append(float(trade.get("pnl") or 0.0))
@@ -382,11 +537,22 @@ def run_iron_condor_backtest(
             call_credit = max(sc_px - lc_px, 0.0)
             put_credit = max(sp_px - lp_px, 0.0)
             net_credit = call_credit + put_credit
+            quotes_ok = min(sc_px, sp_px, lc_px, lp_px) > 0
             high_iv = high_iv_ok or (pending_roll and cfg.roll_skip_iv_filter)
-            entry_allowed = bool(high_iv) and net_credit > 0 and (
+            entry_allowed = bool(high_iv) and quotes_ok and net_credit > 0 and (
                 (not cfg.require_inside_walls) or inside
             ) and not trend_block
             base_lots = max(int(cfg.lots), 1)
+            max_loss_per = estimate_iron_condor_margin(
+                short_call_strike=float(pick["call_strike"]),
+                long_call_strike=float(pick["long_call_strike"]),
+                short_put_strike=float(pick["put_strike"]),
+                long_put_strike=float(pick["long_put_strike"]),
+                net_credit=net_credit,
+                multiplier=cfg.multiplier,
+                lots=1,
+            )
+            kelly_lots: int | None = None
             if cfg.use_kelly_sizing:
                 kelly = size_iron_condor_lots(
                     equity=cash,
@@ -404,10 +570,24 @@ def run_iron_condor_backtest(
                 )
                 kelly_info.update(kelly)
                 if kelly["blocked"] or kelly["baseLots"] <= 0:
-                    entry_allowed = False
-                    base_lots = 0
+                    # GEX-TV: risk-neutral Kelly can be negative; still size on risk_cap.
+                    kelly_lots = None
+                    kelly_info["reason"] = str(kelly.get("reason") or "kelly_non_positive") + "+risk_cap"
                 else:
-                    base_lots = int(kelly["baseLots"])
+                    kelly_lots = int(kelly["baseLots"])
+            base_lots = size_iron_condor_by_risk(
+                equity=cash,
+                max_loss_per_lot=max_loss_per,
+                risk_cap=float(getattr(cfg, "risk_cap", 0.0) or 0.0),
+                max_lots=int(cfg.kelly_max_lots),
+                base_lots=max(int(cfg.lots), 1),
+                kelly_lots=kelly_lots,
+            )
+            kelly_info["baseLots"] = int(base_lots)
+            if base_lots < 1:
+                entry_allowed = False
+                kelly_info["blocked"] = True
+                kelly_info["reason"] = kelly_info.get("reason") or "risk_cap_no_lot"
             if not high_iv:
                 entry_allowed = False
                 kelly_info["blocked"] = True
@@ -477,7 +657,7 @@ def run_iron_condor_backtest(
                     pending_roll = False
 
         if open_trade is not None:
-            mark = _close_cost(open_trade, day_chain, cfg)
+            mark = _close_cost(open_trade, day_chain, cfg, spot=spot)
             equity = float(cash) - mark["close_debit"] - mark["close_fee"]
         else:
             equity = float(cash)
@@ -507,6 +687,7 @@ def run_iron_condor_backtest(
     if open_trade is not None and dates:
         dt = dates[-1]
         day_chain = panel[panel["trade_date"] == dt]
+        last_spot = float(und.loc[dt, "close"]) if dt in und.index else None
         cash, trade = _close_iron_condor(
             cash=cash,
             open_trade=open_trade,
@@ -514,6 +695,8 @@ def run_iron_condor_backtest(
             exit_date=dt,
             cfg=cfg,
             reason="eod_force_close",
+            spot=last_spot,
+            allow_intrinsic=True,
         )
         trades.append(trade)
         if equity_curve and equity_curve[-1]["date"] == str(pd.Timestamp(dt).date()):
@@ -553,6 +736,10 @@ def run_iron_condor_backtest(
         "wingPct": float(cfg.wing_pct),
         "shortOtmPct": float(cfg.short_otm_pct),
         "minCreditToWidth": float(cfg.min_credit_to_width),
+        "minShortDelta": float(getattr(cfg, "min_short_delta", 0.0) or 0.0),
+        "maxShortDelta": float(getattr(cfg, "max_short_delta", 1.0) or 1.0),
+        "targetDte": int(getattr(cfg, "target_dte", 0) or 0),
+        "riskCap": float(getattr(cfg, "risk_cap", 0.0) or 0.0),
         "takeProfitPct": float(cfg.take_profit_pct),
         "stopLossPct": float(cfg.stop_loss_pct),
         "exitOnShortBreach": bool(cfg.exit_on_short_breach),

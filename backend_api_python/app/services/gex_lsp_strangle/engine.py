@@ -130,16 +130,40 @@ def _premium_slip(price: float, side: str, slippage_pct: float) -> float:
     return px * (1.0 + slip)
 
 
-def _option_px(day_chain: pd.DataFrame, code: str, strike: float, cp: str) -> float:
-    if day_chain is None or day_chain.empty:
-        return 0.0
-    hit = day_chain[day_chain["contract_code"].astype(str) == str(code)]
-    if hit.empty:
-        hit = day_chain[(day_chain["strike"] == float(strike)) & (day_chain["cp"] == cp)]
-    if hit.empty:
+def _positive_close(hit: pd.DataFrame) -> float:
+    if hit is None or hit.empty:
         return 0.0
     px = hit["option_close"].iloc[0]
-    return float(px) if pd.notna(px) else 0.0
+    if pd.isna(px):
+        return 0.0
+    value = float(px)
+    return value if value > 0 else 0.0
+
+
+def _option_px(
+    day_chain: pd.DataFrame,
+    code: str,
+    strike: float,
+    cp: str,
+    expire_date: Any | None = None,
+) -> float:
+    """Listed-chain mid/close. Zero is missing, never a valid fill.
+
+    Prefer the exact contract code; if that quote is missing, fall back to the
+    same strike/cp **and the same expiry** so we do not pick another month.
+    """
+    if day_chain is None or day_chain.empty:
+        return 0.0
+    if code:
+        px = _positive_close(day_chain[day_chain["contract_code"].astype(str) == str(code)])
+        if px > 0:
+            return px
+    mask = (day_chain["strike"] == float(strike)) & (day_chain["cp"].astype(str).str.upper().str[0] == str(cp).upper()[0])
+    if expire_date is not None and "expire_date" in day_chain.columns:
+        exp = pd.to_datetime(expire_date, errors="coerce")
+        if pd.notna(exp):
+            mask = mask & (pd.to_datetime(day_chain["expire_date"], errors="coerce") == pd.Timestamp(exp))
+    return _positive_close(day_chain[mask])
 
 
 def _option_delta(day_chain: pd.DataFrame, code: str, strike: float, cp: str, fallback: float) -> float:
@@ -308,10 +332,15 @@ def prepare_panel(
     oi_df = oi.copy()
     oi_df["trade_date"] = pd.to_datetime(oi_df["trade_date"])
     oi_df["contract_code"] = oi_df["contract_code"].astype(str).str.strip()
-    oi_df["open_interest"] = pd.to_numeric(oi_df["open_interest"], errors="coerce").fillna(0.0)
+    oi_df["open_interest"] = pd.to_numeric(oi_df["open_interest"], errors="coerce")
     oi_df = oi_df[["trade_date", "contract_code", "open_interest"]]
+    if "open_interest" in ch.columns:
+        ch = ch.drop(columns=["open_interest"])
 
     panel = ch.merge(oi_df, on=["trade_date", "contract_code"], how="left")
+    panel = panel.sort_values(["contract_code", "trade_date"])
+    panel["open_interest"] = panel.groupby("contract_code")["open_interest"].ffill()
+    panel["open_interest"] = panel.groupby("contract_code")["open_interest"].bfill()
     panel["open_interest"] = panel["open_interest"].fillna(0.0)
     return und, panel
 

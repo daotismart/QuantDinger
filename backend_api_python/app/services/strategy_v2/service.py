@@ -145,6 +145,21 @@ class StrategyV2BacktestService:
         if initial_capital <= 0:
             raise StrategyV2ContractError("strategyV2.invalidInitialCapital")
 
+        if _is_listed_chain_iron_condor(manifest, params):
+            return self._run_listed_chain_iron_condor(
+                user_id=user_id,
+                code=code,
+                manifest=manifest,
+                start_date=start_date,
+                end_date=end_date,
+                initial_capital=initial_capital,
+                params=params,
+                persist=persist,
+                strategy_id=strategy_id,
+                source_id=source_id,
+                strategy_name=strategy_name,
+            )
+
         candidates, universe_id = self.resolve_candidates(
             user_id=user_id,
             manifest=manifest,
@@ -293,6 +308,74 @@ class StrategyV2BacktestService:
                 commission=commission,
                 slippage=slippage,
                 leverage=float(leverage if leverage_enabled else 1),
+                manifest=manifest.metadata(),
+                params=dict(params or {}),
+                result=result,
+                code=code,
+            )
+        return run_id, result
+
+    def _run_listed_chain_iron_condor(
+        self,
+        *,
+        user_id: int,
+        code: str,
+        manifest: StrategyManifest,
+        start_date: datetime,
+        end_date: datetime,
+        initial_capital: float,
+        params: dict[str, Any] | None,
+        persist: bool,
+        strategy_id: int | None,
+        source_id: int | None,
+        strategy_name: str,
+    ) -> tuple[int | None, dict[str, Any]]:
+        from app.services.gex_lsp_strangle.v2_adapter import run_listed_chain_iron_condor
+
+        meta = dict(manifest.metadata_fields or {})
+        underlying = str(
+            (params or {}).get("underlying")
+            or meta.get("underlying")
+            or "510050"
+        ).strip() or "510050"
+        try:
+            result = run_listed_chain_iron_condor(
+                code=code,
+                underlying=underlying,
+                start_date=start_date,
+                end_date=end_date,
+                initial_capital=initial_capital,
+                params=params,
+            )
+        except ValueError as exc:
+            raise StrategyV2ContractError(str(exc)) from exc
+        result["manifest"] = {
+            **(result.get("manifest") or {}),
+            **manifest.metadata(),
+        }
+        result["diagnostics"] = {
+            **(result.get("diagnostics") or {}),
+            "sourceControlled": True,
+            "universeId": None,
+        }
+        run_id = None
+        if persist:
+            if self.data_kind != "market":
+                raise StrategyV2ContractError("strategyV2.fixturePersistenceForbidden")
+            run_id = self.repository.persist_run(
+                user_id=user_id,
+                strategy_id=strategy_id,
+                strategy_name=strategy_name,
+                source_id=source_id,
+                market="CNIndexOptions",
+                symbol=f"CNStock:{underlying}",
+                timeframe="1d",
+                start_date=start_date.date().isoformat(),
+                end_date=end_date.date().isoformat(),
+                initial_capital=initial_capital,
+                commission=0.0,
+                slippage=0.0,
+                leverage=1.0,
                 manifest=manifest.metadata(),
                 params=dict(params or {}),
                 result=result,
@@ -527,6 +610,16 @@ def _member_key(member: dict[str, Any]) -> str:
         instrument_id=str(member.get("instrument_id") or ""),
     )
     return item.key
+
+
+def _is_listed_chain_iron_condor(manifest: StrategyManifest, params: dict[str, Any] | None) -> bool:
+    from app.services.gex_lsp_strangle.v2_adapter import iron_condor_family_name
+
+    meta = dict(manifest.metadata_fields or {})
+    raw = dict(params or {})
+    if iron_condor_family_name(meta.get("strategy_family") or raw.get("strategy_family")):
+        return True
+    return iron_condor_family_name(meta.get("engine") or raw.get("engine"))
 
 
 def _universe_matches(item: dict[str, Any], reference: str) -> bool:
