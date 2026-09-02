@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>策略管理</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f5f7fb; --card:#fff; --text:#0f172a; --muted:#64748b; --line:#e2e8f0; --pri:#2563eb; --ok:#059669; --bad:#dc2626; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0b1120; --card:#111827; --text:#f8fafc; --muted:#94a3b8; --line:#1f2937; --pri:#60a5fa; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { padding: 16px 20px 28px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .desc { color: var(--muted); margin: 0 0 14px; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+    .chip { border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:999px; padding:8px 14px; cursor:pointer; text-decoration:none; font-size:13px; }
+    .chip:hover { border-color: var(--pri); color: var(--pri); }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
+    input, select { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+    button.btn { background:var(--pri); color:#fff; border:0; border-radius:8px; padding:8px 12px; cursor:pointer; }
+    button.btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:9px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { color:var(--muted); font-weight:600; white-space:nowrap; }
+    .msg { margin: 8px 0; color: var(--muted); min-height: 18px; }
+    .pos { color: var(--ok); }
+    .neg { color: var(--bad); }
+    .name strong { display:block; }
+    .name span { color:var(--muted); font-size:12px; }
+    a.link { color: var(--pri); text-decoration:none; margin-right:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>策略管理</h1>
+    <p class="desc">策略清单、开发、回测与实盘入口。支持按状态 / 品种 / 可见性筛选。</p>
+    <div class="chips">
+      <a class="chip" href="/strategy-ide" target="_top">开发 IDE</a>
+      <a class="chip" href="/backtest-center" target="_top">回测中心</a>
+      <a class="chip" href="/strategy-ide?action=publish" target="_top">发布</a>
+      <a class="chip" href="/strategy-ide?action=versions" target="_top">版本</a>
+      <a class="chip" href="/strategy-center" target="_top">实盘监控</a>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <input id="kw" placeholder="搜索名称" style="width:200px" />
+        <select id="status"><option value="">全部状态</option></select>
+        <select id="asset"><option value="">全部品种</option></select>
+        <select id="vis"><option value="">全部可见性</option></select>
+        <button class="btn" id="reload">刷新</button>
+        <button class="btn ghost" id="newBtn">新建策略</button>
+      </div>
+      <div class="msg" id="msg">加载中…</div>
+      <div style="overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th><th>状态</th><th>品种</th><th>可见性</th><th>版本</th>
+              <th>回测数</th><th>得分</th><th>收益</th><th>夏普</th><th>实盘</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script>
+    function getToken() {
+      const keys = ['Access-Token', 'token', 'Authorization'];
+      for (const key of keys) {
+        let raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') return parsed.value || parsed.token || '';
+        } catch (e) {}
+        return raw;
+      }
+      return '';
+    }
+    async function api(path) {
+      const headers = { Accept: 'application/json' };
+      const token = getToken();
+      if (token) {
+        headers.Authorization = 'Bearer ' + token;
+        headers['Access-Token'] = token;
+        headers.token = token;
+      }
+      const res = await fetch(path, { headers, credentials: 'include' });
+      if (!res.ok) throw new Error(path + ' HTTP ' + res.status);
+      return res.json();
+    }
+    function fmtPct(v) {
+      if (v === null || v === undefined || v === '') return '-';
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '-';
+      return (n * 100).toFixed(2) + '%';
+    }
+    function fmtNum(v) {
+      if (v === null || v === undefined || v === '') return '-';
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toFixed(2) : '-';
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function fillSelect(sel, values, allLabel) {
+      const cur = sel.value;
+      sel.innerHTML = '';
+      const o0 = document.createElement('option');
+      o0.value = ''; o0.textContent = allLabel; sel.appendChild(o0);
+      (values || []).forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v; sel.appendChild(o);
+      });
+      if (cur) sel.value = cur;
+    }
+    async function load() {
+      const msg = document.getElementById('msg');
+      const params = new URLSearchParams();
+      const kw = document.getElementById('kw').value.trim();
+      const status = document.getElementById('status').value;
+      const asset = document.getElementById('asset').value;
+      const vis = document.getElementById('vis').value;
+      if (kw) params.set('keyword', kw);
+      if (status) params.set('status', status);
+      if (asset) params.set('assetType', asset);
+      if (vis) params.set('visibility', vis);
+      msg.textContent = '加载中…';
+      try {
+        const data = await api('/api/strategies/inventory?' + params.toString());
+        const payload = data.data || data;
+        const rows = payload.items || [];
+        const facets = payload.facets || {};
+        fillSelect(document.getElementById('status'), facets.statuses || [], '全部状态');
+        fillSelect(document.getElementById('asset'), facets.asset_types || [], '全部品种');
+        fillSelect(document.getElementById('vis'), facets.visibilities || [], '全部可见性');
+        const tb = document.getElementById('tbody');
+        tb.innerHTML = '';
+        if (!rows.length) {
+          msg.textContent = '暂无策略。可从「开发 IDE」创建脚本源，保存后会出现在此列表。';
+          return;
+        }
+        msg.textContent = '共 ' + rows.length + ' 条策略';
+        rows.forEach(r => {
+          const tr = document.createElement('tr');
+          const ret = Number(r.best_return);
+          const retCls = Number.isFinite(ret) ? (ret >= 0 ? 'pos' : 'neg') : '';
+          const id = encodeURIComponent(r.id);
+          tr.innerHTML =
+            '<td class="name"><strong>' + esc(r.name || ('#' + r.id)) + '</strong><span>' + esc(r.description || '') + '</span></td>' +
+            '<td>' + esc(r.status || '-') + '</td>' +
+            '<td>' + esc(r.asset_type || '-') + '</td>' +
+            '<td>' + esc(r.visibility || '-') + '</td>' +
+            '<td>' + esc(r.latest_version ?? '-') + '</td>' +
+            '<td>' + esc(r.backtest_count ?? 0) + '</td>' +
+            '<td>' + fmtNum(r.best_score) + '</td>' +
+            '<td class="' + retCls + '">' + fmtPct(r.best_return) + '</td>' +
+            '<td>' + fmtNum(r.best_sharpe) + '</td>' +
+            '<td>' + esc((r.live_running_count || 0) + '/' + (r.live_count || 0)) + '</td>' +
+            '<td>' +
+              '<a class="link" href="/strategy-ide?sourceId=' + id + '" target="_top">IDE</a>' +
+              '<a class="link" href="/backtest-center?sourceId=' + id + '" target="_top">回测</a>' +
+              '<a class="link" href="/strategy-ide?sourceId=' + id + '&action=versions" target="_top">版本</a>' +
+            '</td>';
+          tb.appendChild(tr);
+        });
+      } catch (e) {
+        msg.textContent = '加载失败：' + (e && e.message ? e.message : e) + '（请确认已登录）';
+      }
+    }
+    document.getElementById('reload').onclick = load;
+    document.getElementById('newBtn').onclick = () => { window.top.location.href = '/strategy-ide?draft=1'; };
+    ['kw','status','asset','vis'].forEach(id => {
+      document.getElementById(id).addEventListener('change', load);
+      document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+    });
+    load();
+  </script>
+</body>
+</html>
