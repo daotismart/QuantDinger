@@ -82,6 +82,16 @@ def parse_instrument(value: object, *, default_market: str = "") -> InstrumentSp
         market_type = market_type.strip().lower()
 
     symbol = _normalize_symbol(body)
+    try:
+        from app.markets.cn_options import extract_etf_option_code
+
+        etf_code = extract_etf_option_code(body) or extract_etf_option_code(symbol)
+    except Exception:
+        etf_code = None
+    if etf_code:
+        symbol = etf_code
+        if not market or market in {"CNIndexOptions", "CNFuturesOptions"}:
+            market = "CNIndexOptions"
     if not market:
         market = infer_market(symbol)
     if not market:
@@ -115,6 +125,13 @@ def infer_market(symbol: str) -> str:
         return "CNStock"
     if re.fullmatch(r"\d{6}", value):
         return "CNStock"
+    try:
+        from app.markets.cn_options import extract_etf_option_code
+
+        if extract_etf_option_code(value):
+            return "CNIndexOptions"
+    except Exception:
+        pass
     # Mainland China futures/options must not fall through to the USStock regex
     # (e.g. IF2509, rb2509). Require an explicit market prefix.
     try:

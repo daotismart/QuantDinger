@@ -39,7 +39,13 @@ INDEX_OPTION_UNDERLYING = {"IO": "IF", "HO": "IH", "MO": "IM"}
 _OPTION_RE = re.compile(
     r"^([A-Za-z]{1,3})(\d{3,4})(?:-([CPcp])-|([CPcp]))(\d+(?:\.\d+)?)$"
 )
-_ETF_OPTION_RE = re.compile(r"^\d{8}$")
+# SSE listed ETF options are 100xxxxx; SZSE uses 900xxxxx.
+_ETF_OPTION_RE = re.compile(r"^(?:100|900)\d{5}$")
+_ETF_CODE_IN_TEXT_RE = re.compile(r"(?<!\d)((?:100|900)\d{5})(?!\d)")
+_MARKET_PREFIX_RE = re.compile(
+    r"^(CNIndexOptions|CNFuturesOptions|CNIndexFutures|CNFutures)\s*:",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +67,29 @@ def exchange_for_root(root: str) -> str | None:
 
 def is_etf_option_code(symbol: str) -> bool:
     return bool(_ETF_OPTION_RE.fullmatch((symbol or "").strip()))
+
+
+def extract_etf_option_code(symbol: str) -> str | None:
+    """Return the 8-digit SSE/SZSE ETF option code embedded in ``symbol``.
+
+    Accepts a bare code, a ``CNIndexOptions:10010971`` key, or a CTP display
+    name such as ``50ETF购9月2750 [10010971]``. Dates like ``20260918`` are
+    not treated as contract ids.
+    """
+    raw = str(symbol or "").strip()
+    if not raw:
+        return None
+    raw = _MARKET_PREFIX_RE.sub("", raw).strip()
+    if is_etf_option_code(raw):
+        return raw
+    bracket = re.search(r"\[((?:100|900)\d{5})\]", raw)
+    if bracket:
+        return bracket.group(1)
+    if re.search(r"[^\d]", raw):
+        matches = _ETF_CODE_IN_TEXT_RE.findall(raw)
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 
 def parse_cn_option_instrument(symbol: str) -> ParsedCnOption | None:
@@ -86,7 +115,7 @@ def parse_cn_option_instrument(symbol: str) -> ParsedCnOption | None:
 
 
 def is_cn_listed_option(symbol: str) -> bool:
-    return parse_cn_option_instrument(symbol) is not None or is_etf_option_code(symbol)
+    return parse_cn_option_instrument(symbol) is not None or extract_etf_option_code(symbol) is not None
 
 
 def canonical_option_symbol(parsed: ParsedCnOption) -> str:

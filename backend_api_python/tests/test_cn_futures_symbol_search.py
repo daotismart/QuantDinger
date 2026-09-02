@@ -83,3 +83,19 @@ def test_search_and_hot_cn_futures():
     hot = symbol_search.get_hot_symbols("CNFutures", limit=5)
     assert hot
     assert all(r["market"] == "CNFutures" for r in hot)
+
+
+def test_find_etf_option_code_under_cn_index_options():
+    row = symbol_search.find_market_symbol("CNIndexOptions", "10010971")
+    assert row is not None
+    assert row["market"] == "CNIndexOptions"
+    assert row["symbol"] == "10010971"
+    assert "50ETF" not in row["symbol"]
+
+    from_name = symbol_search.find_market_symbol("CNIndexOptions", "50ETF购9月2750 [10010971]")
+    assert from_name is not None
+    assert from_name["symbol"] == "10010971"
+
+    rows = symbol_search.search_market_symbols("CNIndexOptions", "10010971", limit=5)
+    assert any(r["symbol"] == "10010971" for r in rows)
+

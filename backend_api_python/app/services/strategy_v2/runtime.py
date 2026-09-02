@@ -929,7 +929,9 @@ class MultiAssetSimulationBroker:
                     ))
                 elif order.kind == "value":
                     remaining_value = math.copysign(
-                        max(0.0, abs(requested_delta) - abs(delta)) * sizing_price,
+                        max(0.0, abs(requested_delta) - abs(delta))
+                        * sizing_price
+                        * self._contract_multiplier(order.symbol),
                         requested_delta,
                     )
                     deferred.append(replace(
@@ -1063,8 +1065,37 @@ class MultiAssetSimulationBroker:
         return self._round_to_lot(feasible, lot_size), reason
 
     @staticmethod
+    def _contract_multiplier(symbol: str) -> float:
+        """Contract multiplier for options notional. Quantity itself stays in lots."""
+        raw = str(symbol or "")
+        market = raw.split(":", 1)[0] if ":" in raw else ""
+        if market not in {"CNIndexOptions", "CNFuturesOptions"}:
+            return 1.0
+        code = raw.split(":", 1)[-1]
+        try:
+            from app.markets.cn_futures import get_future_product
+
+            product = get_future_product(code)
+            return float(product.option_multiplier or product.multiplier or 1.0) or 1.0
+        except Exception:
+            try:
+                from app.markets.cn_options import extract_etf_option_code
+
+                if extract_etf_option_code(code):
+                    return 10000.0
+            except Exception:
+                pass
+            return 1.0
+
+    @staticmethod
     def _lot_size(symbol: str, bar: Mapping[str, Any] | None) -> float:
         explicit = float((bar or {}).get("lot_size") or 0.0)
+        market = str(symbol).split(":", 1)[0] if ":" in str(symbol) else ""
+        if market in {"CNIndexOptions", "CNFuturesOptions"}:
+            # CTP 合约乘数 (100 / 10000) is not a board lot. Options trade in 1-lot units.
+            if explicit >= 100:
+                return 1.0
+            return explicit if explicit > 0 else 1.0
         if explicit > 0:
             return explicit
         return 1e-8 if str(symbol).startswith("Crypto:") else 1.0
@@ -1300,19 +1331,22 @@ class MultiAssetSimulationBroker:
 
     def _target_quantity(self, order: OrderIntent, current: Position, price: float, equity: float) -> float:
         notional_multiplier = self.leverage
+        price_unit = max(float(price), 0.0) * self._contract_multiplier(order.symbol)
         if order.kind == "quantity":
             return current.amount + order.value
+        if price_unit <= 0:
+            raise StrategyV2ContractError("strategyV2.invalidOrderPrice")
         if order.kind == "value":
-            return current.amount + order.value * notional_multiplier / price
+            return current.amount + order.value * notional_multiplier / price_unit
         if order.kind == "target_quantity":
             return order.value
         if order.kind == "target_value":
-            return order.value * notional_multiplier / price
+            return order.value * notional_multiplier / price_unit
         if order.kind == "target_percent":
             target_value = equity * order.value * notional_multiplier
             if target_value > 0:
                 target_value /= (1.0 + self.slippage) * (1.0 + self.commission)
-            return target_value / price
+            return target_value / price_unit
         raise StrategyV2ContractError(f"strategyV2.orderKindUnsupported:{order.kind}")
 
     def _gross_value(self, *, exclude: str = "") -> float:
@@ -1536,6 +1570,9 @@ class StrategyV2BacktestRunner:
         runtime_params = dict(params or {})
         runtime_params.setdefault("commission", self.broker.commission)
         runtime_params.setdefault("slippage", self.broker.slippage)
+        from app.services.param_values import merge_declared_params
+
+        runtime_params = merge_declared_params(code, runtime_params)
         self.context = StrategyRuntimeContext(
             portal=self.portal,
             portfolio=self.broker.portfolio,
@@ -2044,7 +2081,13 @@ class StrategyV2LiveSession:
         self._universe_resolver = universe_resolver
         self.portal = MultiAssetDataPortal(frames, universe_resolver=universe_resolver)
         self.portfolio = PortfolioState(initial_capital, initial_capital, total_value=initial_capital)
-        self.context = StrategyRuntimeContext(portal=self.portal, portfolio=self.portfolio, params=params)
+        from app.services.param_values import merge_declared_params
+
+        self.context = StrategyRuntimeContext(
+            portal=self.portal,
+            portfolio=self.portfolio,
+            params=merge_declared_params(code, dict(params or {})),
+        )
         self.persist_strategy_state = (
             _truthy(self.program.namespace.get("PERSIST_RUNTIME_STATE"))
             or _truthy(self.context.params.get("persist_runtime_state"))
