@@ -185,6 +185,10 @@ def search_symbols():
         limit = int(request.args.get('limit') or 20)
         exchange_id = (request.args.get('exchange_id') or request.args.get('exchangeId') or '').strip()
         market_type = (request.args.get('market_type') or request.args.get('marketType') or '').strip()
+        asset_class = (request.args.get('asset_class') or request.args.get('assetClass') or '').strip().lower()
+        etf_only = str(request.args.get('etf_only') or request.args.get('etfOnly') or '').strip().lower() in {
+            '1', 'true', 'yes', 'on',
+        }
 
         if not market or not keyword:
             return jsonify({'code': 1, 'msg': 'success', 'data': []})
@@ -195,6 +199,8 @@ def search_symbols():
             limit=limit,
             exchange_id=exchange_id,
             market_type=market_type,
+            asset_class=asset_class,
+            etf_only=etf_only,
         )
         return jsonify({'code': 1, 'msg': 'success', 'data': out})
     except Exception as e:
@@ -209,7 +215,16 @@ def get_hot_symbols():
     try:
         market = (request.args.get('market') or '').strip()
         limit = int(request.args.get('limit') or 10)
-        hot = search_hot_symbols(market=market, limit=limit)
+        asset_class = (request.args.get('asset_class') or request.args.get('assetClass') or '').strip().lower()
+        etf_only = str(request.args.get('etf_only') or request.args.get('etfOnly') or '').strip().lower() in {
+            '1', 'true', 'yes', 'on',
+        }
+        hot = search_hot_symbols(
+            market=market,
+            limit=limit,
+            asset_class=asset_class,
+            etf_only=etf_only,
+        )
         return jsonify({'code': 1, 'msg': 'success', 'data': hot})
     except Exception as e:
         logger.error(f"get_hot_symbols failed: {str(e)}")
