@@ -4,8 +4,16 @@
  */
 import {
   buildCallPutGexTrendSeries,
-  buildCallPutStackedGexSeries as createCallPutStackedGexSeries
+  buildCallPutStackedGexSeries as createCallPutStackedGexSeries,
+  buildOiStrikeSeries,
+  buildStackedNetGexSeries as createStackedNetGexSeries,
+  callPutValueAxis
 } from './gex-chart-series'
+import {
+  buildStrikeMarkLineData as createStrikeMarkLineData,
+  markLineXValues,
+  strikeValueAxis
+} from './strike-mark-lines'
 
 export default {
   data () {
@@ -157,100 +165,13 @@ export default {
       return s.replace(/\.0+$/, '').replace(/(\.[0-9]*?)0+$/, '$1').replace(/\.$/, '')
     },
     buildStrikeMarkLineData (markDefs, strikes) {
-      const groups = new Map()
-      markDefs.forEach((item) => {
-        if (item.value == null) return
-        const x = this.nearestStrikeLabel(strikes, item.value)
-        if (x == null) return
-        const key = String(x)
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key).push(item)
+      return createStrikeMarkLineData(markDefs, strikes, {
+        formatPrice: value => this.formatCurrentPrice(value),
+        formatStrike: value => this.formatStrikeMark(value)
       })
-      const out = []
-      let groupIdx = 0
-      groups.forEach((items, x) => {
-        const primary = items.find(i => i.name === 'Price') || items[0]
-        const lines = items.map((item) => {
-          const raw = item.value != null ? item.value : x
-          const v = item.name === 'Price'
-            ? this.formatCurrentPrice(raw)
-            : this.formatStrikeMark(raw)
-          return v && v !== '-' ? `${item.name} ${v}` : item.name
-        })
-        out.push({
-          name: items.map(i => i.name).join('/'),
-          xAxis: String(x),
-          lineStyle: {
-            color: primary.color,
-            width: primary.name === 'Price' ? 2 : (primary.width || 1.5),
-            type: primary.name === 'Price' ? 'solid' : 'dashed'
-          },
-          label: {
-            show: true,
-            formatter: lines.join('\n'),
-            color: primary.color,
-            position: 'end',
-            distance: 8 + groupIdx * 4,
-            lineHeight: 14,
-            fontSize: 11,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            padding: [2, 4],
-            borderRadius: 2
-          }
-        })
-        groupIdx += 1
-      })
-      return out
     },
     buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
-      const months = (monthSeries || []).filter(ms => (ms.gex_distribution || []).length)
-      if (months.length > 1) {
-        const strikeNums = new Set()
-        months.forEach(ms => {
-          (ms.gex_distribution || []).forEach(p => {
-            const k = Number(p.strike)
-            if (Number.isFinite(k)) strikeNums.add(k)
-          })
-        })
-        const strikes = Array.from(strikeNums).sort((a, b) => a - b).map(k => String(k))
-        const series = months.map((ms, idx) => {
-          const byK = new Map(
-            (ms.gex_distribution || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
-          )
-          return {
-            name: String(ms.month || `M${idx + 1}`),
-            type: 'bar',
-            stack: 'gex',
-            barMaxWidth: 18,
-            data: strikes.map(k => byK.get(k) || 0),
-            itemStyle: { color: palette[idx % palette.length], opacity: 0.78 }
-          }
-        })
-        const aggByK = new Map(
-          (points || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
-        )
-        const netData = strikes.map((k, i) => {
-          if (aggByK.has(k)) return aggByK.get(k)
-          return series.reduce((sum, ser) => sum + (Number(ser.data[i]) || 0), 0)
-        })
-        series.push({
-          name: 'Net GEX',
-          type: 'line',
-          data: netData,
-          itemStyle: { color: '#fa8c16' },
-          markLine: { symbol: 'none', data: buildMarks(strikes) }
-        })
-        return { strikes, series }
-      }
-      const strikes = (points || []).map(p => String(p.strike))
-      return {
-        strikes,
-        series: [
-          { name: 'Call GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: (points || []).map(p => p.call_gex), itemStyle: { color: '#52c41a', opacity: 0.55 } },
-          { name: 'Put GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: (points || []).map(p => p.put_gex), itemStyle: { color: '#ff4d4f', opacity: 0.55 } },
-          { name: 'Net GEX', type: 'line', data: (points || []).map(p => p.net_gex), itemStyle: { color: '#fa8c16' }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
-        ]
-      }
+      return createStackedNetGexSeries(monthSeries, points, palette, buildMarks)
     },
     applyCallPutGexChart (chart, monthSeries, points, buildMarks) {
       if (!chart) return
@@ -259,8 +180,13 @@ export default {
         ...this.baseChartOption(),
         legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         grid: { left: 56, right: 36, top: 56, bottom: 40 },
-        xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
-        yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        xAxis: strikeValueAxis(stacked.strikes, markLineXValues(stacked.series), {
+          axisLabel: { color: this.chartText },
+          axisLine: { onZero: true }
+        }),
+        yAxis: callPutValueAxis(stacked.valueRange, {
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        }),
         series: stacked.series
       }, true)
     },
@@ -590,7 +516,7 @@ export default {
     renderCallPutGexTrend () {
       const chart = this.ensureChart('historyLevelsChart')
       if (!chart) return
-      const { labels, series } = buildCallPutGexTrendSeries(this.historySlices || [])
+      const { labels, series, valueRange } = buildCallPutGexTrendSeries(this.historySlices || [])
       const slice = this.historySlices[this.historySliceIndex] || {}
       const markLabel = slice.label || slice.ts || labels[this.historySliceIndex]
       const marked = series.map((item, idx) => {
@@ -610,9 +536,16 @@ export default {
       chart.setOption({
         ...this.baseChartOption(),
         legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-        grid: { left: 56, right: 24, top: 48, bottom: 48 },
-        xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
-        yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        grid: { left: 56, right: 36, top: 48, bottom: 48 },
+        xAxis: {
+          type: 'category',
+          data: labels,
+          axisLabel: { color: this.chartText, hideOverlap: true },
+          axisLine: { onZero: true }
+        },
+        yAxis: callPutValueAxis(valueRange, {
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        }),
         series: marked
       }, true)
       this.$nextTick(() => chart.resize())
@@ -646,7 +579,9 @@ export default {
           ...this.baseChartOption(),
           legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
           grid: { left: 56, right: 36, top: 72, bottom: 40 },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
+          xAxis: strikeValueAxis(stacked.strikes, markLineXValues(stacked.series), {
+            axisLabel: { color: this.chartText }
+          }),
           yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
           series: stacked.series
         }, true)
@@ -657,23 +592,25 @@ export default {
 
       if (key === 'options.oi' || key === 'options.gex') {
         const points = slice.gex_distribution || []
+        const summary = slice.gex_summary || {}
+        const price = slice.current_price || slice.underlying || summary.underlying
+        const markDefs = this.buildOptionsMarkDefs(summary, price)
         let strikes = points.map(p => String(p.strike))
         let series
         if (key === 'options.oi') {
-          series = [
-            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi) },
-            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi) },
-            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi) }
-          ]
+          const strikeMarks = this.buildStrikeMarkLineData(markDefs, strikes)
+          series = buildOiStrikeSeries(points, strikeMarks)
         } else {
-          const stacked = this.buildStackedGexSeries(slice.month_series || [], points, ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb'], () => [])
+          const stacked = this.buildStackedGexSeries(slice.month_series || [], points, ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb'], (labels) => this.buildStrikeMarkLineData(markDefs, labels))
           strikes = stacked.strikes
           series = stacked.series
         }
         chart.setOption({
           ...this.baseChartOption(),
           legend: { top: 0, textStyle: { color: this.chartText } },
-          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
+          xAxis: strikeValueAxis(strikes, markLineXValues(series), {
+            axisLabel: { color: this.chartText }
+          }),
           yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
           series
         }, true)
@@ -770,13 +707,11 @@ export default {
           ...this.baseChartOption(),
           legend: { top: 0, textStyle: { color: this.chartText } },
           grid: { left: 56, right: 24, top: 48, bottom: 40 },
-          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
+          xAxis: strikeValueAxis(strikes, markLineXValues(strikeMarks), {
+            axisLabel: { color: this.chartText }
+          }),
           yAxis: { type: 'value', name: 'OI', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: [
-            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi), itemStyle: { color: '#52c41a', opacity: 0.7 } },
-            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi), itemStyle: { color: '#ff4d4f', opacity: 0.7 } },
-            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi), itemStyle: { color: '#2f54eb' }, markLine: strikeMarks.length ? { symbol: 'none', data: strikeMarks } : undefined }
-          ]
+          series: buildOiStrikeSeries(points, strikeMarks)
         }, true)
       }
 
@@ -792,7 +727,9 @@ export default {
           ...this.baseChartOption(),
           legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
           grid: { left: 56, right: 24, top: 48, bottom: 40 },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
+          xAxis: strikeValueAxis(stacked.strikes, markLineXValues(stacked.series), {
+            axisLabel: { color: this.chartText }
+          }),
           yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
           series: stacked.series
         }, true)

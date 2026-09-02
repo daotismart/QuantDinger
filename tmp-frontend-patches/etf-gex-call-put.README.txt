@@ -2,9 +2,12 @@ ETF options Call/Put GEX stacked-by-month chart
 
 Rename the existing GEX chart to 净GEX 分布, and add GEX分布 above it:
 
-- Strike bars: Call GEX and Put GEX stacked by expiry month
+- Strike bars: Call GEX and Put GEX stacked by expiry month (same-sign stack)
 - History button reuses `options.gex` playback slices
 - Lower history chart: monthly Call/Put GEX totals over time
+- OI / GEX strike charts use a numeric value x-axis so Price and Flip
+  markLines sit at the exact quoted price between strikes (Walls/Pin still
+  snap to the nearest listed strike)
 
 Apply on QuantDinger-Vue:
 
@@ -16,8 +19,12 @@ Apply on QuantDinger-Vue:
      QuantDinger-Vue/src/views/market-composite-analysis/options-analytics-mixin.js
   cp tmp-frontend-patches/gex-chart-series.js \
      QuantDinger-Vue/src/views/market-composite-analysis/gex-chart-series.js
+  cp tmp-frontend-patches/strike-mark-lines.js \
+     QuantDinger-Vue/src/views/market-composite-analysis/strike-mark-lines.js
   cp tmp-frontend-patches/gex-chart-series.test.mjs \
      QuantDinger-Vue/tests/unit/gex-chart-series.test.mjs
+  cp tmp-frontend-patches/strike-mark-lines.test.mjs \
+     QuantDinger-Vue/tests/unit/strike-mark-lines.test.mjs
 
 Merge locale snippets:
 
@@ -26,3 +33,6 @@ Merge locale snippets:
 
 History API: `GET /api/cn-derivatives/history?chart=options.gex` (frontend maps
 `options.gexCallPut` onto the existing GEX playback payload).
+
+Production hotfix (2026-09-02): `ops/hotfixes/fe-compat` bundle
+`index-DTsxghus.js` / `etf-derivatives-DVQwIleT.js`, fix=gex-price-flip-value-axis.
