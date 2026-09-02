@@ -1,0 +1,93 @@
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index 562225b..3a06a70 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -7327,6 +7327,7 @@ export default {
+   "marketComposite.futures.options.marginLongTotal": "Long margin",
+   "marketComposite.futures.options.marginShortTotal": "Short margin",
+   "marketComposite.futures.options.marginTotal": "Short margin",
++  "marketComposite.futures.options.totalMargin": "Total margin",
+   "marketComposite.futures.options.timeValueTotal": "Time value",
+   "marketComposite.futures.options.intrinsicTotal": "Intrinsic value",
+   "marketComposite.futures.options.longShortRatio": "Long / short",
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index f4afa8c..2740da0 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -7628,6 +7628,7 @@ export default {
+   "marketComposite.futures.options.marginLongTotal": "多头保证金",
+   "marketComposite.futures.options.marginShortTotal": "空头保证金",
+   "marketComposite.futures.options.marginTotal": "空头保证金",
++  "marketComposite.futures.options.totalMargin": "总保证金",
+   "marketComposite.futures.options.timeValueTotal": "时间价值",
+   "marketComposite.futures.options.intrinsicTotal": "内在价值",
+   "marketComposite.futures.options.longShortRatio": "多头/空头",
+diff --git a/src/views/market-composite-analysis/etf-derivatives.vue b/src/views/market-composite-analysis/etf-derivatives.vue
+index 1efae34..a953982 100644
+--- a/src/views/market-composite-analysis/etf-derivatives.vue
++++ b/src/views/market-composite-analysis/etf-derivatives.vue
+@@ -222,6 +222,13 @@
+             </div>
+           </div>
+ 
++          <div class="fda-metrics fda-metrics-capital" data-testid="etf-options-capital-summary">
++            <div class="fda-metric" v-for="item in capitalSummaryMetrics" :key="item.key">
++              <span>{{ item.label }}</span>
++              <strong>{{ item.display }}</strong>
++            </div>
++          </div>
++
+           <div class="fda-charts fda-charts-options">
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+@@ -587,6 +594,31 @@ export default {
+         { key: 'maxPain', label: 'Max Pain', display: this.fmt(mp && mp.strike) }
+       ]
+     },
++    capitalSummaryMetrics () {
++      const curve = (this.optionsData && this.optionsData.capital_curve) || {}
++      const total = curve.total || {}
++      const margin =
++        total.margin_total != null
++          ? total.margin_total
++          : total.margin_short_total
++      return [
++        {
++          key: 'margin',
++          label: this.$t('marketComposite.futures.options.totalMargin'),
++          display: this.fmtMoney(margin)
++        },
++        {
++          key: 'premium',
++          label: this.$t('marketComposite.futures.options.premiumTotal'),
++          display: this.fmtMoney(total.premium_total)
++        },
++        {
++          key: 'timeValue',
++          label: this.$t('marketComposite.futures.options.timeValueTotal'),
++          display: this.fmtMoney(total.time_value_total)
++        }
++      ]
++    },
+     aiMarket () {
+       if (this.activeTab === 'index') return 'CNIndexFutures'
+       if (this.activeTab === 'etf') return 'CNStock'
+@@ -2265,9 +2297,18 @@ export default {
+ }
+ 
+ .fda-metrics-gex {
++  margin-bottom: 12px;
++}
++
++.fda-metrics-capital {
+   margin-bottom: 16px;
+ }
+ 
++.fda-metrics-capital .fda-metric strong {
++  font-size: 18px;
++  letter-spacing: 0.01em;
++}
++
+ .fda-etf-note {
+   margin: 0 0 12px;
+ }
