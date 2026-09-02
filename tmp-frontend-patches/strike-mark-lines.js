@@ -169,19 +169,7 @@ export function buildStrikeMarkLineData (markDefs, strikes, formatters = {}) {
   const out = []
   let groupIdx = 0
 
-  exactPrice.forEach(({ item, x }) => {
-    out.push(markEntry({
-      name: item.name,
-      xAxis: x,
-      color: item.color || '#1890ff',
-      width: item.width || (item.name === 'Price' ? 2 : 1.5),
-      type: item.type || (item.name === 'Price' ? 'solid' : 'dashed'),
-      formatter: markLabel(item, item.value, formatPrice, formatStrike),
-      groupIdx
-    }))
-    groupIdx += 1
-  })
-
+  // Walls / pin first so Price and Flip paint on top when they share an x.
   groups.forEach((entries) => {
     const items = entries.map(entry => entry.item)
     const primary = items[0]
@@ -192,6 +180,19 @@ export function buildStrikeMarkLineData (markDefs, strikes, formatters = {}) {
       width: primary.width || 1.5,
       type: 'dashed',
       formatter: items.map(item => markLabel(item, entries[0].x, formatPrice, formatStrike)).join('\n'),
+      groupIdx
+    }))
+    groupIdx += 1
+  })
+
+  exactPrice.forEach(({ item, x }) => {
+    out.push(markEntry({
+      name: item.name,
+      xAxis: x,
+      color: item.color || '#1890ff',
+      width: item.width || (item.name === 'Price' ? 2 : 1.5),
+      type: item.type || (item.name === 'Price' ? 'solid' : 'dashed'),
+      formatter: markLabel(item, item.value, formatPrice, formatStrike),
       groupIdx
     }))
     groupIdx += 1

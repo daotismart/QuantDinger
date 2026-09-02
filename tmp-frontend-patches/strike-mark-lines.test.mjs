@@ -34,6 +34,30 @@ test('price and flip marks use the exact numeric price on a value axis', () => {
   assert.equal(pin.xAxis, 3)
   assert.equal(wall.xAxis, 3.1)
   assert.equal(nearestStrikeLabel(['2.90', '2.95', '3'], 2.993), '3')
+  assert.ok(marks.indexOf(pin) < marks.indexOf(price))
+  assert.ok(marks.indexOf(pin) < marks.indexOf(flip))
+})
+
+test('flip stays yellow and paints above pin when both sit on the same strike', () => {
+  const marks = buildStrikeMarkLineData(
+    [
+      { name: 'Price', value: 3.024, color: '#1890ff', width: 2 },
+      { name: 'Flip', value: 3, color: '#faad14', width: 1.5 },
+      { name: 'Pin', value: 3, color: '#722ed1', width: 1.5 }
+    ],
+    ['2.95', '3', '3.1'],
+    {
+      formatPrice: v => Number(v).toFixed(3),
+      formatStrike: v => String(v)
+    }
+  )
+  const flip = marks.find(m => m.name === 'Flip')
+  const pin = marks.find(m => String(m.name).includes('Pin'))
+  assert.equal(flip.xAxis, 3)
+  assert.equal(pin.xAxis, 3)
+  assert.equal(flip.lineStyle.color, '#faad14')
+  assert.equal(flip.lineStyle.type, 'dashed')
+  assert.ok(marks.indexOf(pin) < marks.indexOf(flip))
 })
 
 test('strike value axis expands to include price between listed strikes', () => {
