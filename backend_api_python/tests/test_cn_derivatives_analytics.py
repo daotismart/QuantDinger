@@ -1,0 +1,393 @@
+"""Unit tests for CN derivatives analytics (no live AkShare)."""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+import pytest
+
+from app.services import cn_derivatives_analytics as svc
+
+
+def _chain_row(strike, call_mid, put_mid, call_oi, put_oi):
+    return {
+        "strike": float(strike),
+        "call_mid": float(call_mid),
+        "put_mid": float(put_mid),
+        "call_oi": float(call_oi),
+        "put_oi": float(put_oi),
+        "call_last": float(call_mid),
+        "put_last": float(put_mid),
+        "call_bid": 0.0,
+        "call_ask": 0.0,
+        "put_bid": 0.0,
+        "put_ask": 0.0,
+    }
+
+
+def test_black76_call_put_parity_shape():
+    F, K, T, sigma = 3000.0, 3000.0, 0.25, 0.2
+    call = svc.black76_price(F, K, T, sigma, True)
+    put = svc.black76_price(F, K, T, sigma, False)
+    assert call > 0 and put > 0
+    assert abs((call - put) - (F - K)) < 1e-6
+
+
+def test_implied_vol_roundtrip():
+    F, K, T, sigma = 2800.0, 2900.0, 0.2, 0.35
+    price = svc.black76_price(F, K, T, sigma, True)
+    iv = svc.implied_vol_black76(price, F, K, T, True)
+    assert iv is not None
+    assert iv == pytest.approx(sigma, rel=0.05)
+
+
+def test_max_pain_prefers_high_put_wall_side():
+    chain = [
+        _chain_row(100, 12, 1, 10, 100),
+        _chain_row(110, 5, 4, 20, 20),
+        _chain_row(120, 1, 12, 100, 10),
+    ]
+    result = svc.compute_max_pain(chain)
+    assert result is not None
+    assert result["strike"] in {100.0, 110.0, 120.0}
+    assert result["pain"] >= 0
+    assert len(result["curve"]) == 3
+
+
+def test_gex_summary_walls_and_portfolio():
+    chain = [
+        _chain_row(2900, 80, 10, 50, 10),
+        _chain_row(3000, 40, 40, 30, 30),
+        _chain_row(3100, 10, 90, 10, 80),
+    ]
+    gex = svc.compute_gex(chain, underlying=3000.0, multiplier=10.0, T=0.2)
+    summary = gex["summary"]
+    # Call/Put walls follow GEX peaks on the spot-appropriate side.
+    assert summary["call_wall"] == 3000.0
+    assert summary["put_wall"] == 3000.0
+    assert summary["pin"] == 3100.0
+    assert "delta" in gex["portfolio_greeks"]
+    assert len(gex["points"]) == 3
+    assert len(gex["iv_smile"]) >= 1
+
+
+def test_build_spot_panel_uses_board_and_continuous():
+    board = {
+        "date": "20260320",
+        "root": "M",
+        "spot_price": 2800.0,
+        "near_contract": "m2505",
+        "near_contract_price": 2810.0,
+        "dominant_contract": "m2509",
+        "dominant_contract_price": 2850.0,
+        "near_basis": 10.0,
+        "dom_basis": 50.0,
+        "near_basis_rate": 0.0035,
+        "dom_basis_rate": 0.0178,
+    }
+    continuous = {
+        "symbol": "M0",
+        "price": 2840.0,
+        "volume": 1000.0,
+        "open_interest": 2000.0,
+    }
+    with patch.object(svc, "_spot_board_row", return_value=board), patch.object(
+        svc, "_futures_zh_spot", return_value=continuous
+    ), patch.object(
+        svc,
+        "_product_payload",
+        return_value={"root": "M", "name_cn": "豆粕", "has_options": True, "multiplier": 10},
+    ):
+        data = svc.build_spot_panel("M")
+    assert data["spot_price"] == 2800.0
+    assert any("升水" in line for line in data["analysis"])
+
+
+def test_build_options_panel_unavailable_without_months():
+    with patch.object(svc, "_option_months", return_value=[]), patch.object(
+        svc,
+        "_product_payload",
+        return_value={"root": "IF", "name_cn": "沪深300", "has_options": False, "multiplier": 300},
+    ):
+        data = svc.build_options_panel("IF")
+    assert data["available"] is False
+    assert data["months"] == []
+
+
+def test_option_capital_splits_notional_and_premium():
+    chain = [
+        _chain_row(3000, 50, 20, 10, 5),
+        _chain_row(3100, 30, 40, 8, 12),
+    ]
+    capital = svc._option_capital_for_chain(chain, underlying=3050.0, multiplier=10.0)
+    assert capital["call_premium"] == pytest.approx(50 * 10 * 10 + 30 * 8 * 10)
+    assert capital["put_premium"] == pytest.approx(20 * 5 * 10 + 40 * 12 * 10)
+    assert capital["call_notional"] == pytest.approx((10 + 8) * 3050 * 10)
+    assert capital["put_notional"] == pytest.approx((5 + 12) * 3050 * 10)
+    assert capital["notional"] == capital["call_notional"] + capital["put_notional"]
+    assert capital["premium"] == capital["call_premium"] + capital["put_premium"]
+
+
+def test_time_value_annualized_yield_shape():
+    chain = [
+        _chain_row(2900, 120, 10, 1, 1),  # ITM call -> smaller time value
+        _chain_row(3000, 80, 80, 1, 1),   # ATM
+        _chain_row(3100, 10, 120, 1, 1),  # ITM put
+    ]
+    result = svc._time_value_annualized_yield(
+        chain,
+        underlying=3000.0,
+        multiplier=10.0,
+        margin_rate=0.12,
+        T=0.25,
+        month="m2505",
+    )
+    assert result["month"] == "m2505"
+    assert len(result["call"]) == 3
+    assert len(result["put"]) == 3
+    assert all(p["yield"] >= 0 for p in result["call"] + result["put"])
+    atm_call = next(p for p in result["call"] if p["strike"] == 3000)
+    # ATM call time value ~= 80, margin = 3000*10*0.12=3600, yield=(800/3600)/0.25
+    assert atm_call["yield"] == pytest.approx((80 * 10 / 3600) / 0.25, rel=1e-6)
+
+
+def test_gex_points_include_total_oi():
+    chain = [_chain_row(3000, 40, 40, 30, 20)]
+    gex = svc.compute_gex(chain, underlying=3000.0, multiplier=10.0, T=0.2)
+    assert gex["points"][0]["total_oi"] == 50.0
+
+
+def test_aggregate_chains_sums_oi_and_weights_mid():
+    chains = [
+        [_chain_row(3000, 40, 20, 10, 5)],
+        [_chain_row(3000, 60, 30, 30, 15)],
+    ]
+    rows = svc._aggregate_chains_by_strike(chains)
+    assert len(rows) == 1
+    assert rows[0]["call_oi"] == 40.0
+    assert rows[0]["put_oi"] == 20.0
+    assert rows[0]["call_mid"] == pytest.approx((40 * 10 + 60 * 30) / 40)
+    assert rows[0]["put_mid"] == pytest.approx((20 * 5 + 30 * 15) / 20)
+
+
+def test_build_options_panel_defaults_to_all(monkeypatch):
+    chain_a = [_chain_row(3000, 40, 20, 10, 5)]
+    chain_b = [_chain_row(3100, 20, 40, 8, 12)]
+
+    monkeypatch.setattr(svc, "_option_months", lambda root: ["m2505", "m2509"])
+    monkeypatch.setattr(
+        svc,
+        "_option_chain_table",
+        lambda root, month: chain_a if "05" in month else chain_b,
+    )
+    monkeypatch.setattr(svc, "_spot_board_row", lambda root: {"spot_price": 3000, "dominant_contract_price": 3010})
+    monkeypatch.setattr(svc, "_futures_zh_spot", lambda symbol: {"price": 3020})
+    monkeypatch.setattr(
+        svc,
+        "_product_payload",
+        lambda root: {
+            "root": "M",
+            "name_cn": "豆粕",
+            "multiplier": 10,
+            "option_multiplier": 10,
+            "option_seller_margin_rate": 0.12,
+        },
+    )
+    data = svc.build_options_panel("M", month="all")
+    assert data["month"] == "all"
+    assert len(data["month_series"]) == 2
+    assert data["gex_distribution"]
+    # aggregated should include both strikes
+    strikes = {p["strike"] for p in data["gex_distribution"]}
+    assert 3000.0 in strikes and 3100.0 in strikes
+
+
+def test_sina_option_names_match_live_aliases():
+    # Critical renames that previously 404'd on Sina
+    assert svc.SINA_OPTION_NAME["CU"] == "沪铜期权"
+    assert svc.SINA_OPTION_NAME["AL"] == "沪铝期权"
+    assert svc.SINA_OPTION_NAME["RM"] == "菜籽粕期权"
+    assert svc.SINA_OPTION_NAME["BR"] == "丁二烯橡胶期权"
+    assert svc.SINA_OPTION_NAME["SH"] == "烧碱期权"
+    assert svc.SINA_OPTION_NAME["PX"] == "二甲苯期权"
+    assert svc.SINA_OPTION_NAME["ZC"] == "动力煤期权"
+    assert "IO" not in svc.SINA_OPTION_NAME
+    assert "IO" in svc.CFFEX_OPTION_LIST_FN
+    assert len(svc.CN_NAME) >= 80
+
+
+def test_underlying_futures_symbol_for_index_options():
+    assert svc._underlying_futures_symbol("IO", "io2609") == "if2609"
+    assert svc._underlying_futures_symbol("HO", None) == "IH0"
+    assert svc._underlying_futures_symbol("M", "m2505") == "m2505"
+
+
+def test_cffex_option_months(monkeypatch):
+    class _Ak:
+        def option_cffex_hs300_list_sina(self):
+            return {"沪深300指数": ["io2609", "io2612"]}
+
+    monkeypatch.setattr(svc, "_ak", lambda: _Ak())
+    assert svc._option_months("IO") == ["io2609", "io2612"]
+
+
+def test_cffex_option_chain_table(monkeypatch):
+    import pandas as pd
+
+    class _Ak:
+        def option_cffex_hs300_spot_sina(self, symbol="io2609"):
+            return pd.DataFrame(
+                [
+                    {
+                        "行权价": 4000,
+                        "看涨合约-最新价": 100,
+                        "看涨合约-买价": 99,
+                        "看涨合约-卖价": 101,
+                        "看涨合约-持仓量": 10,
+                        "看涨合约-涨跌": 1,
+                        "看涨合约-标识": "io2609C4000",
+                        "看跌合约-最新价": 20,
+                        "看跌合约-买价": 19,
+                        "看跌合约-卖价": 21,
+                        "看跌合约-持仓量": 8,
+                        "看跌合约-涨跌": -1,
+                        "看跌合约-标识": "io2609P4000",
+                    }
+                ]
+            )
+
+    monkeypatch.setattr(svc, "_ak", lambda: _Ak())
+    rows = svc._option_chain_table("IO", "io2609")
+    assert len(rows) == 1
+    assert rows[0]["strike"] == 4000
+    assert rows[0]["call_symbol"] == "io2609C4000"
+    assert rows[0]["call_mid"] == 100
+
+
+def test_product_payload_marks_chain_feed():
+    payload = svc._product_payload("IO")
+    assert payload["has_option_chain"] is True
+    assert payload["option_feed"] == "cffex_sina"
+    assert payload["continuous_symbol"] == "IF0"
+    assert payload["name_cn"] == "沪深300股指期权"
+
+    cu = svc._product_payload("CU")
+    assert cu["option_sina_name"] == "沪铜期权"
+    assert cu["option_feed"] == "commodity_sina"
+
+
+def test_resample_slice_dates_week_and_month():
+    dates = [
+        "2026-01-02",
+        "2026-01-05",
+        "2026-01-06",
+        "2026-01-12",
+        "2026-02-03",
+        "2026-02-27",
+    ]
+    weekly = svc._resample_slice_dates(dates, "week")
+    monthly = svc._resample_slice_dates(dates, "month")
+    assert weekly == ["2026-01-02", "2026-01-06", "2026-01-12", "2026-02-03", "2026-02-27"]
+    assert monthly == ["2026-01-12", "2026-02-27"]
+    assert svc._resample_slice_dates(dates, "day") == dates
+
+
+def test_build_futures_cross_section_slices(monkeypatch):
+    daily = {
+        "m2505": {
+            "2026-03-01": {"price": 2800.0, "volume": 10.0, "open_interest": 100.0},
+            "2026-03-02": {"price": 2810.0, "volume": 12.0, "open_interest": 110.0},
+            "2026-03-09": {"price": 2820.0, "volume": 15.0, "open_interest": 120.0},
+        },
+        "m2509": {
+            "2026-03-01": {"price": 2900.0, "volume": 20.0, "open_interest": 200.0},
+            "2026-03-02": {"price": 2910.0, "volume": 22.0, "open_interest": 210.0},
+            "2026-03-09": {"price": 2920.0, "volume": 25.0, "open_interest": 220.0},
+        },
+    }
+
+    monkeypatch.setattr(svc, "_history_month_symbols", lambda root: ["m2505", "m2509"])
+    monkeypatch.setattr(svc, "_futures_daily_by_date", lambda symbol: daily[symbol.lower()])
+    monkeypatch.setattr(svc, "_spot_board_row", lambda root: {"spot_price": 2790.0})
+    monkeypatch.setattr(
+        svc,
+        "_product_payload",
+        lambda root: {"root": "M", "multiplier": 10.0, "option_multiplier": 10.0},
+    )
+
+    slices = svc._build_futures_cross_section_slices("M", days=30, frequency="week")
+    assert len(slices) >= 2
+    latest = slices[-1]
+    assert latest["date"] == "2026-03-09"
+    assert len(latest["term_structure"]) == 2
+    assert latest["term_structure"][0]["price"] == 2820.0
+    assert latest["monthly_activity"][0]["futures_capital"] == pytest.approx(2820.0 * 120.0 * 10.0)
+
+
+def test_build_chart_history_futures_slices(monkeypatch):
+    fake_slices = [
+        {
+            "date": "2026-03-01",
+            "label": "2026-03-01",
+            "term_structure": [{"symbol": "m2505", "price": 2800, "label": "m2505"}],
+            "monthly_activity": [],
+            "options_settled_capital": [],
+        },
+        {
+            "date": "2026-03-09",
+            "label": "2026-03-09",
+            "term_structure": [{"symbol": "m2505", "price": 2820, "label": "m2505"}],
+            "monthly_activity": [
+                {
+                    "symbol": "m2505",
+                    "month_code": "2505",
+                    "futures_capital": 100.0,
+                    "option_notional": None,
+                }
+            ],
+            "options_settled_capital": [],
+        },
+    ]
+    monkeypatch.setattr(
+        svc,
+        "_build_futures_cross_section_slices",
+        lambda root, days, frequency: fake_slices,
+    )
+    monkeypatch.setattr(
+        svc,
+        "build_futures_panel",
+        lambda root: {
+            "options_settled_capital": [{"month": "m2505", "call_notional": 1, "put_notional": 2}],
+            "monthly_activity": [
+                {
+                    "month_code": "2505",
+                    "option_notional": 50.0,
+                    "option_premium": 5.0,
+                    "option_call_notional": 30.0,
+                    "option_put_notional": 20.0,
+                }
+            ],
+        },
+    )
+    data = svc.build_chart_history("M", chart_key="futures.term", days=30, frequency="week")
+    assert data["mode"] == "slices"
+    assert data["frequency"] == "week"
+    assert len(data["slices"]) == 2
+
+
+def test_build_chart_history_options_single_slice(monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "build_options_panel",
+        lambda root, month="all": {
+            "current_price": 3000,
+            "month": "all",
+            "gex_distribution": [{"strike": 3000, "call_oi": 1, "put_oi": 2}],
+            "gex_summary": {},
+            "month_series": [{"month": "m2505"}],
+        },
+    )
+    data = svc.build_chart_history("M", chart_key="options.gex", days=30, frequency="day")
+    assert data["mode"] == "slices"
+    assert len(data["slices"]) == 1
+    assert data["slices"][0]["gex_distribution"][0]["strike"] == 3000
