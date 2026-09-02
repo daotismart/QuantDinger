@@ -1,0 +1,697 @@
+From 17a9910efbed77e6972964fbd4d2a7b0f8732627 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Tue, 25 Aug 2026 01:15:37 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20ETF/=E8=A1=8D=E7=94=9F=E5=93=81=E5=88=86?=
+ =?UTF-8?q?=E6=9E=90=E5=9B=BE=E6=94=B9=E4=B8=BA=E5=8D=95=E5=88=97=E5=85=A8?=
+ =?UTF-8?q?=E5=B1=8F=EF=BC=8CGEX=20=E7=AB=96=E7=BA=BF=E6=A0=87=E6=B3=A8?=
+ =?UTF-8?q?=E6=95=B0=E5=80=BC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+图表统一 1 列多行展示，每图支持全屏放大；GEX 分布图中 Price/Flip/Walls/Pin
+竖线标签显示对应数值。
+---
+ src/locales/lang/en-US.js                     |   2 +
+ src/locales/lang/zh-CN.js                     |   2 +
+ .../etf-derivatives.vue                       | 215 +++++++++++++++---
+ .../futures-derivatives.vue                   | 215 +++++++++++++++---
+ 4 files changed, 372 insertions(+), 62 deletions(-)
+
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index c5f6d67..8742148 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -7330,6 +7330,8 @@ export default {
+   "marketComposite.futures.futures.combinedCapital": "Futures + option notional",
+   "marketComposite.futures.futures.capitalAxis": "Settled capital",
+   "marketComposite.futures.history": "History",
++  "marketComposite.futures.fullscreen": "Fullscreen",
++  "marketComposite.futures.exitFullscreen": "Exit fullscreen",
+   "marketComposite.futures.historyPeriod": "Lookback",
+   "marketComposite.futures.historyFrequency": "Frequency",
+   "marketComposite.futures.historySlice": "Time slice",
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index cc0e86f..3b1edb8 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -7631,6 +7631,8 @@ export default {
+   "marketComposite.futures.futures.combinedCapital": "期货+期权沉淀合计",
+   "marketComposite.futures.futures.capitalAxis": "沉淀资金",
+   "marketComposite.futures.history": "历史趋势",
++  "marketComposite.futures.fullscreen": "全屏",
++  "marketComposite.futures.exitFullscreen": "退出全屏",
+   "marketComposite.futures.historyPeriod": "回看",
+   "marketComposite.futures.historyFrequency": "频率",
+   "marketComposite.futures.historySlice": "时间切片",
+diff --git a/src/views/market-composite-analysis/etf-derivatives.vue b/src/views/market-composite-analysis/etf-derivatives.vue
+index 565fa26..5d883ba 100644
+--- a/src/views/market-composite-analysis/etf-derivatives.vue
++++ b/src/views/market-composite-analysis/etf-derivatives.vue
+@@ -117,28 +117,64 @@
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
+-                <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('termChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('termChart')"
++                  >
++                    {{ isChartFullscreen('termChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="termChart" class="fda-chart" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
+-                <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('activityChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('activityChart')"
++                  >
++                    {{ isChartFullscreen('activityChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="activityChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
+-                <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('notionalChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('notionalChart')"
++                  >
++                    {{ isChartFullscreen('notionalChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="notionalChart" class="fda-chart" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
+-                <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('premiumChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('premiumChart')"
++                  >
++                    {{ isChartFullscreen('premiumChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="premiumChart" class="fda-chart" />
+             </div>
+@@ -195,35 +231,80 @@
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.oiDist') }}</h3>
+-                <a-button size="small" @click="openHistory('options.oi')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.oi')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('oiChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('oiChart')"
++                  >
++                    {{ isChartFullscreen('oiChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="oiChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.gexDist') }}</h3>
+-                <a-button size="small" @click="openHistory('options.gex')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.gex')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('gexChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('gexChart')"
++                  >
++                    {{ isChartFullscreen('gexChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="gexChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.timeValueYield') }}</h3>
+-                <a-button size="small" @click="openHistory('options.tv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.tv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('tvYieldChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('tvYieldChart')"
++                  >
++                    {{ isChartFullscreen('tvYieldChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="tvYieldChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.ivSmile') }}</h3>
+-                <a-button size="small" @click="openHistory('options.iv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.iv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('smileChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('smileChart')"
++                  >
++                    {{ isChartFullscreen('smileChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="smileChart" class="fda-chart" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.maxPain') }}</h3>
+-                <a-button size="small" @click="openHistory('options.maxPain')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.maxPain')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('painChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('painChart')"
++                  >
++                    {{ isChartFullscreen('painChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="painChart" class="fda-chart" />
+             </div>
+@@ -317,6 +398,7 @@ export default {
+       futuresData: null,
+       optionsData: null,
+       charts: {},
++      fullscreenChartRef: null,
+       historyVisible: false,
+       historyLoading: false,
+       historyKey: '',
+@@ -445,9 +527,13 @@ export default {
+   },
+   mounted () {
+     window.addEventListener('resize', this.resizeCharts)
++    document.addEventListener('fullscreenchange', this.onFullscreenChange)
++    document.addEventListener('webkitfullscreenchange', this.onFullscreenChange)
+   },
+   beforeDestroy () {
+     window.removeEventListener('resize', this.resizeCharts)
++    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
++    document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange)
+     Object.values(this.charts).forEach(chart => chart && chart.dispose())
+   },
+   watch: {
+@@ -921,7 +1007,8 @@ export default {
+             xAxis: x,
+             lineStyle: { color: item.color, width: item.width, type: (item.dashed === false || item.name === 'Price') ? 'solid' : 'dashed' },
+             label: {
+-              formatter: item.name,
++              show: true,
++              formatter: this.buildMarkLabel(item.name, item.value),
+               color: item.color,
+               position: 'insideEndTop',
+               distance: idx * 16
+@@ -1278,6 +1365,63 @@ export default {
+         })
+       })
+     },
++
++    chartBoxEl (refName) {
++      const el = this.$refs[refName]
++      const node = Array.isArray(el) ? el[0] : el
++      return node && node.closest ? node.closest('.fda-chart-box') : null
++    },
++    isChartFullscreen (refName) {
++      return this.fullscreenChartRef === refName
++    },
++    async toggleChartFullscreen (refName) {
++      const box = this.chartBoxEl(refName)
++      if (!box) return
++      const active = document.fullscreenElement || document.webkitFullscreenElement
++      try {
++        if (active === box) {
++          if (document.exitFullscreen) await document.exitFullscreen()
++          else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
++        } else {
++          if (active) {
++            if (document.exitFullscreen) await document.exitFullscreen()
++            else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
++          }
++          if (box.requestFullscreen) await box.requestFullscreen()
++          else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen()
++          this.fullscreenChartRef = refName
++        }
++      } catch (err) {
++        console.warn('chart fullscreen failed', err)
++      }
++      this.$nextTick(() => this.resizeCharts())
++    },
++    onFullscreenChange () {
++      const active = document.fullscreenElement || document.webkitFullscreenElement
++      if (!active) {
++        this.fullscreenChartRef = null
++      } else {
++        const match = Object.keys(this.charts || {}).find(ref => this.chartBoxEl(ref) === active)
++        if (match) this.fullscreenChartRef = match
++      }
++      this.$nextTick(() => {
++        this.resizeCharts()
++        requestAnimationFrame(() => this.resizeCharts())
++      })
++    },
++    formatMarkValue (value) {
++      const num = Number(value)
++      if (!Number.isFinite(num)) return ''
++      const abs = Math.abs(num)
++      if (abs >= 1000) return num.toFixed(0)
++      if (abs >= 100) return num.toFixed(1)
++      if (abs >= 10) return num.toFixed(2)
++      return num.toFixed(3)
++    },
++    buildMarkLabel (name, value) {
++      const formatted = this.formatMarkValue(value)
++      return formatted ? `${name} ${formatted}` : String(name || '')
++    },
+     resizeCharts () {
+       Object.values(this.charts).forEach(chart => chart && chart.resize())
+     }
+@@ -1464,16 +1608,11 @@ export default {
+   display: grid;
+   grid-template-columns: 1fr;
+   gap: 12px;
++  width: 100%;
+ }
+ 
+-@media (min-width: 1100px) {
+-  .fda-charts {
+-    grid-template-columns: 1fr 1fr;
+-  }
+-
+-  .fda-chart-box-wide {
+-    grid-column: 1 / -1;
+-  }
++.fda-chart-box-wide {
++  grid-column: 1 / -1;
+ }
+ 
+ .fda-charts.fda-charts-options {
+@@ -1489,21 +1628,35 @@ export default {
+   min-width: 0;
+ }
+ 
+-@media (min-width: 1100px) {
+-  .fda-charts.fda-charts-options {
+-    flex-direction: row;
+-    flex-wrap: wrap;
+-  }
++.fda-chart-actions {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  flex-wrap: wrap;
++}
+ 
+-  .fda-charts.fda-charts-options .fda-chart-box-wide {
+-    flex: 0 0 100%;
+-    width: 100%;
+-  }
++.fda-chart-box:fullscreen,
++.fda-chart-box:-webkit-full-screen {
++  box-sizing: border-box;
++  width: 100%;
++  height: 100%;
++  padding: 16px 20px;
++  background: #fff;
++  display: flex;
++  flex-direction: column;
++  overflow: auto;
++}
+ 
+-  .fda-charts.fda-charts-options .fda-chart-box:not(.fda-chart-box-wide) {
+-    flex: 1 1 calc(50% - 6px);
+-    width: calc(50% - 6px);
+-  }
++.fda-chart-box:fullscreen .fda-chart,
++.fda-chart-box:-webkit-full-screen .fda-chart {
++  flex: 1 1 auto;
++  height: auto !important;
++  min-height: calc(100vh - 72px);
++}
++
++.theme-dark .fda-chart-box:fullscreen,
++.theme-dark .fda-chart-box:-webkit-full-screen {
++  background: #0d0d0d;
+ }
+ 
+ .fda-chart-box {
+diff --git a/src/views/market-composite-analysis/futures-derivatives.vue b/src/views/market-composite-analysis/futures-derivatives.vue
+index 35401b9..4c24ec1 100644
+--- a/src/views/market-composite-analysis/futures-derivatives.vue
++++ b/src/views/market-composite-analysis/futures-derivatives.vue
+@@ -102,28 +102,64 @@
+           <div class="fda-chart-box">
+             <div class="fda-chart-head">
+               <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
+-              <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
++                              <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('termChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('termChart')"
++                  >
++                    {{ isChartFullscreen('termChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+             </div>
+             <div ref="termChart" class="fda-chart" />
+           </div>
+           <div class="fda-chart-box">
+             <div class="fda-chart-head">
+               <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
+-              <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
++                              <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('activityChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('activityChart')"
++                  >
++                    {{ isChartFullscreen('activityChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+             </div>
+             <div ref="activityChart" class="fda-chart fda-chart-tall" />
+           </div>
+           <div class="fda-chart-box">
+             <div class="fda-chart-head">
+               <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
+-              <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
++                              <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('notionalChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('notionalChart')"
++                  >
++                    {{ isChartFullscreen('notionalChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+             </div>
+             <div ref="notionalChart" class="fda-chart" />
+           </div>
+           <div class="fda-chart-box">
+             <div class="fda-chart-head">
+               <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
+-              <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
++                              <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('premiumChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('premiumChart')"
++                  >
++                    {{ isChartFullscreen('premiumChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+             </div>
+             <div ref="premiumChart" class="fda-chart" />
+           </div>
+@@ -179,35 +215,80 @@
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.oiDist') }}</h3>
+-                <a-button size="small" @click="openHistory('options.oi')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.oi')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('oiChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('oiChart')"
++                  >
++                    {{ isChartFullscreen('oiChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="oiChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.gexDist') }}</h3>
+-                <a-button size="small" @click="openHistory('options.gex')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.gex')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('gexChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('gexChart')"
++                  >
++                    {{ isChartFullscreen('gexChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="gexChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box fda-chart-box-wide">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.timeValueYield') }}</h3>
+-                <a-button size="small" @click="openHistory('options.tv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.tv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('tvYieldChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('tvYieldChart')"
++                  >
++                    {{ isChartFullscreen('tvYieldChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="tvYieldChart" class="fda-chart fda-chart-tall" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.ivSmile') }}</h3>
+-                <a-button size="small" @click="openHistory('options.iv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.iv')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('smileChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('smileChart')"
++                  >
++                    {{ isChartFullscreen('smileChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="smileChart" class="fda-chart" />
+             </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.maxPain') }}</h3>
+-                <a-button size="small" @click="openHistory('options.maxPain')">{{ $t('marketComposite.futures.history') }}</a-button>
++                                <div class="fda-chart-actions">
++                  <a-button size="small" @click="openHistory('options.maxPain')">{{ $t('marketComposite.futures.history') }}</a-button>
++                  <a-button
++                    size="small"
++                    :icon="isChartFullscreen('painChart') ? 'fullscreen-exit' : 'fullscreen'"
++                    @click="toggleChartFullscreen('painChart')"
++                  >
++                    {{ isChartFullscreen('painChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
++                  </a-button>
++                </div>
+               </div>
+               <div ref="painChart" class="fda-chart" />
+             </div>
+@@ -300,6 +381,7 @@ export default {
+       futuresData: null,
+       optionsData: null,
+       charts: {},
++      fullscreenChartRef: null,
+       historyVisible: false,
+       historyLoading: false,
+       historyKey: '',
+@@ -390,9 +472,13 @@ export default {
+   },
+   mounted () {
+     window.addEventListener('resize', this.resizeCharts)
++    document.addEventListener('fullscreenchange', this.onFullscreenChange)
++    document.addEventListener('webkitfullscreenchange', this.onFullscreenChange)
+   },
+   beforeDestroy () {
+     window.removeEventListener('resize', this.resizeCharts)
++    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
++    document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange)
+     Object.values(this.charts).forEach(chart => chart && chart.dispose())
+   },
+   watch: {
+@@ -788,7 +874,8 @@ export default {
+             xAxis: x,
+             lineStyle: { color: item.color, width: item.width, type: (item.dashed === false || item.name === 'Price') ? 'solid' : 'dashed' },
+             label: {
+-              formatter: item.name,
++              show: true,
++              formatter: this.buildMarkLabel(item.name, item.value),
+               color: item.color,
+               position: 'insideEndTop',
+               distance: idx * 16
+@@ -1144,6 +1231,63 @@ export default {
+         })
+       })
+     },
++
++    chartBoxEl (refName) {
++      const el = this.$refs[refName]
++      const node = Array.isArray(el) ? el[0] : el
++      return node && node.closest ? node.closest('.fda-chart-box') : null
++    },
++    isChartFullscreen (refName) {
++      return this.fullscreenChartRef === refName
++    },
++    async toggleChartFullscreen (refName) {
++      const box = this.chartBoxEl(refName)
++      if (!box) return
++      const active = document.fullscreenElement || document.webkitFullscreenElement
++      try {
++        if (active === box) {
++          if (document.exitFullscreen) await document.exitFullscreen()
++          else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
++        } else {
++          if (active) {
++            if (document.exitFullscreen) await document.exitFullscreen()
++            else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
++          }
++          if (box.requestFullscreen) await box.requestFullscreen()
++          else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen()
++          this.fullscreenChartRef = refName
++        }
++      } catch (err) {
++        console.warn('chart fullscreen failed', err)
++      }
++      this.$nextTick(() => this.resizeCharts())
++    },
++    onFullscreenChange () {
++      const active = document.fullscreenElement || document.webkitFullscreenElement
++      if (!active) {
++        this.fullscreenChartRef = null
++      } else {
++        const match = Object.keys(this.charts || {}).find(ref => this.chartBoxEl(ref) === active)
++        if (match) this.fullscreenChartRef = match
++      }
++      this.$nextTick(() => {
++        this.resizeCharts()
++        requestAnimationFrame(() => this.resizeCharts())
++      })
++    },
++    formatMarkValue (value) {
++      const num = Number(value)
++      if (!Number.isFinite(num)) return ''
++      const abs = Math.abs(num)
++      if (abs >= 1000) return num.toFixed(0)
++      if (abs >= 100) return num.toFixed(1)
++      if (abs >= 10) return num.toFixed(2)
++      return num.toFixed(3)
++    },
++    buildMarkLabel (name, value) {
++      const formatted = this.formatMarkValue(value)
++      return formatted ? `${name} ${formatted}` : String(name || '')
++    },
+     resizeCharts () {
+       Object.values(this.charts).forEach(chart => chart && chart.resize())
+     }
+@@ -1330,16 +1474,11 @@ export default {
+   display: grid;
+   grid-template-columns: 1fr;
+   gap: 12px;
++  width: 100%;
+ }
+ 
+-@media (min-width: 1100px) {
+-  .fda-charts {
+-    grid-template-columns: 1fr 1fr;
+-  }
+-
+-  .fda-chart-box-wide {
+-    grid-column: 1 / -1;
+-  }
++.fda-chart-box-wide {
++  grid-column: 1 / -1;
+ }
+ 
+ .fda-charts.fda-charts-options {
+@@ -1355,21 +1494,35 @@ export default {
+   min-width: 0;
+ }
+ 
+-@media (min-width: 1100px) {
+-  .fda-charts.fda-charts-options {
+-    flex-direction: row;
+-    flex-wrap: wrap;
+-  }
++.fda-chart-actions {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  flex-wrap: wrap;
++}
+ 
+-  .fda-charts.fda-charts-options .fda-chart-box-wide {
+-    flex: 0 0 100%;
+-    width: 100%;
+-  }
++.fda-chart-box:fullscreen,
++.fda-chart-box:-webkit-full-screen {
++  box-sizing: border-box;
++  width: 100%;
++  height: 100%;
++  padding: 16px 20px;
++  background: #fff;
++  display: flex;
++  flex-direction: column;
++  overflow: auto;
++}
+ 
+-  .fda-charts.fda-charts-options .fda-chart-box:not(.fda-chart-box-wide) {
+-    flex: 1 1 calc(50% - 6px);
+-    width: calc(50% - 6px);
+-  }
++.fda-chart-box:fullscreen .fda-chart,
++.fda-chart-box:-webkit-full-screen .fda-chart {
++  flex: 1 1 auto;
++  height: auto !important;
++  min-height: calc(100vh - 72px);
++}
++
++.theme-dark .fda-chart-box:fullscreen,
++.theme-dark .fda-chart-box:-webkit-full-screen {
++  background: #0d0d0d;
+ }
+ 
+ .fda-chart-box {
+-- 
+2.43.0
+
