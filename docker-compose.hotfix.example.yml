@@ -1,0 +1,13 @@
+# Example overlay for production frontend login-compat mounts.
+# Usage (host):
+#   docker compose -f docker-compose.yml -f docker-compose.production.yml \
+#     -f docker-compose.hotfix.example.yml up -d --no-deps --force-recreate frontend
+#
+# Keep live host overlay as docker-compose.hotfix.yml (may include more mounts).
+
+services:
+  frontend:
+    volumes:
+      - ./ops/hotfixes/nginx-docker.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./ops/hotfixes/fe-compat/index.html:/usr/share/nginx/html/index.html:ro
+      - ./ops/hotfixes/fe-compat/assets/QuickTradePanel-B0Dq_CAe.js:/usr/share/nginx/html/assets/QuickTradePanel-B0Dq_CAe.js:ro
