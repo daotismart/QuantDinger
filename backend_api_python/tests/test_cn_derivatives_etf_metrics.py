@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import app.services.cn_derivatives_etf_metrics as metrics
 
 
@@ -51,7 +53,7 @@ def test_build_etf_metrics_history_shape(monkeypatch):
     assert data["points"][0]["fee_pct"] == 0.6
     assert data["points"][0]["constituent_profit_sum"] == 1.2e11
     assert data["metrics"]["scale"] == 4.2e10
-    assert "新浪" in data["note"]
+    assert "日线" in data["note"]
 
 
 def test_weighted_avg():
@@ -242,3 +244,33 @@ def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
     assert out["constituent_market_value_sum"] == 9e8
     assert out["avg_pe"] == 15.5
     assert len(out["holdings"]) == 1
+
+
+def test_metrics_history_uses_local_bars_when_sina_hangs(monkeypatch):
+    monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
+    monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(metrics, "_REMOTE_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(
+        metrics,
+        "_query_local_ohlcv",
+        lambda code6, *, days: [
+            {"date": "2026-09-02", "price": 3.03, "volume": 100, "amount": None},
+            {"date": "2026-09-03", "price": 3.04, "volume": 110, "amount": None},
+        ],
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_load_sina_ohlcv_history",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sina should not run")),
+    )
+    monkeypatch.setattr(
+        metrics,
+        "enrich_etf_metrics",
+        lambda code, etf_row=None: {"code": "510050", "shares": None, "total_fee_pct": None},
+    )
+
+    started = time.monotonic()
+    data = metrics.build_etf_metrics_history("510050.SH", chart_key="etf.metrics", days=30)
+    assert time.monotonic() - started < 2.0
+    assert len(data["points"]) == 2
+    assert data["points"][-1]["price"] == 3.04

@@ -17,6 +17,19 @@ _SPOT_EM_TTL = 300.0
 _METRICS_CACHE_TTL = 6 * 3600
 _PROFIT_CACHE_TTL = 24 * 3600
 _HIST_CACHE_TTL = 3600
+_REMOTE_TIMEOUT_SEC = 3.0
+# Module-level pool: never `with ThreadPoolExecutor` around a hanging akshare call
+# (shutdown joins the worker and blocks the ETF page).
+_TIMED_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="etf-metrics")
+
+
+def _call_with_timeout(fn, timeout: float, default: Any = None) -> Any:
+    """Run ``fn`` with a hard timeout; do not join the worker if it hangs."""
+    try:
+        return _TIMED_POOL.submit(fn).result(timeout=max(0.05, float(timeout)))
+    except Exception as exc:
+        logger.warning("timed ETF metrics fetch failed: %s", exc)
+        return default
 
 
 def _code6(value: Any) -> str:
@@ -766,8 +779,8 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
         merged.update(cached.get("metrics") or {})
         return merged
 
-    spot_em = _spot_em_row(code6)
-    fees = _fee_metrics(code6)
+    spot_em = _call_with_timeout(lambda: _spot_em_row(code6), _REMOTE_TIMEOUT_SEC, default={}) or {}
+    fees = _call_with_timeout(lambda: _fee_metrics(code6), _REMOTE_TIMEOUT_SEC, default={}) or {}
     price = base.get("price") if base.get("price") not in (None, 0) else spot_em.get("price")
     shares = spot_em.get("shares")
     scale = spot_em.get("scale")
@@ -777,7 +790,7 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
         except Exception:
             scale = None
 
-    holdings: Dict[str, Any] = {
+    empty_holdings: Dict[str, Any] = {
         "constituent_profit_sum": None,
         "constituent_profit_weighted": None,
         "constituent_profit_coverage": 0,
@@ -794,14 +807,19 @@ def enrich_etf_metrics(code: str, etf_row: Optional[Dict[str, Any]] = None) -> D
         "holdings_sample": [],
         "source": "skipped",
     }
-    try:
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(_holdings_profit_metrics, code6, etf_scale=scale)
-            holdings = fut.result(timeout=120)
-    except Exception as exc:
-        logger.warning("enrich holdings profit timed out/failed %s: %s", code6, exc)
+    holdings = _call_with_timeout(
+        lambda: _holdings_profit_metrics(code6, etf_scale=scale),
+        _REMOTE_TIMEOUT_SEC,
+        default=None,
+    )
+    if not isinstance(holdings, dict):
+        holdings = dict(empty_holdings)
         try:
-            base_bundle = _holdings_base_bundle(code6, etf_scale=scale)
+            base_bundle = _call_with_timeout(
+                lambda: _holdings_base_bundle(code6, etf_scale=scale),
+                _REMOTE_TIMEOUT_SEC,
+                default=None,
+            ) or {}
             rows = base_bundle.get("rows") or []
             if rows:
                 holdings = {
@@ -871,11 +889,65 @@ def _sina_symbol(code6: str) -> str:
     return f"sz{code6}"
 
 
-def _load_etf_ohlcv_history(code6: str, *, days: int) -> List[Dict[str, Any]]:
-    cache_key = f"etf:ohlcv:{code6}:{days}"
-    cached = _cache_get(cache_key)
-    if isinstance(cached, list):
-        return cached
+def _bar_date(ts: Any) -> str:
+    try:
+        value = float(ts)
+        if value > 1e12:
+            value /= 1000.0
+        return datetime.utcfromtimestamp(value).strftime("%Y-%m-%d")
+    except Exception:
+        text = str(ts or "")
+        return text[:10] if len(text) >= 10 else text
+
+
+def _query_local_ohlcv(code6: str, *, days: int) -> List[Dict[str, Any]]:
+    """Read ETF daily OHLCV from ``qd_market_bars`` only (no upstream)."""
+    from app.markets.cn_options import cn_etf_stock_symbol
+    from app.utils.db import get_db_connection
+
+    symbol = cn_etf_stock_symbol(code6)
+    if not symbol:
+        return []
+    limit = max(7, min(int(days or 180), 800))
+    sql = (
+        "SELECT close, volume, open, high, low, bar_time FROM qd_market_bars "
+        "WHERE market = %s AND symbol = %s AND timeframe = %s "
+        "ORDER BY bar_time DESC LIMIT %s"
+    )
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(sql, ("CNStock", symbol, "1D", limit))
+            rows = cur.fetchall() or []
+    except Exception as exc:
+        logger.debug("local ETF ohlcv %s failed: %s", symbol, exc)
+        return []
+    points: List[Dict[str, Any]] = []
+    for row in reversed(list(rows)):
+        if isinstance(row, dict):
+            close = row.get("close")
+            volume = row.get("volume")
+            opn = row.get("open")
+            high = row.get("high")
+            low = row.get("low")
+            ts = row.get("bar_time")
+        else:
+            close, volume, opn, high, low, ts = row[0], row[1], row[2], row[3], row[4], row[5]
+        points.append(
+            {
+                "date": _bar_date(ts),
+                "price": _safe_float(close),
+                "open": _safe_float(opn),
+                "high": _safe_float(high),
+                "low": _safe_float(low),
+                "volume": _safe_float(volume),
+                "amount": None,
+            }
+        )
+    return [p for p in points if p.get("date") and p.get("price") is not None]
+
+
+def _load_sina_ohlcv_history(code6: str, *, days: int) -> List[Dict[str, Any]]:
     try:
         frame = _ak().fund_etf_hist_sina(symbol=_sina_symbol(code6))
     except Exception as exc:
@@ -898,8 +970,26 @@ def _load_etf_ohlcv_history(code6: str, *, days: int) -> List[Dict[str, Any]]:
                 "amount": _safe_float(row.get("amount")),
             }
         )
-    _cache_set(cache_key, points, _HIST_CACHE_TTL)
     return points
+
+
+def _load_etf_ohlcv_history(code6: str, *, days: int) -> List[Dict[str, Any]]:
+    cache_key = f"etf:ohlcv:local:{code6}:{days}"
+    cached = _cache_get(cache_key)
+    if isinstance(cached, list) and cached:
+        return cached
+    local = _query_local_ohlcv(code6, days=days)
+    if local:
+        _cache_set(cache_key, local, _HIST_CACHE_TTL)
+        return local
+    sina = _call_with_timeout(
+        lambda: _load_sina_ohlcv_history(code6, days=days),
+        _REMOTE_TIMEOUT_SEC,
+        default=[],
+    ) or []
+    if sina:
+        _cache_set(cache_key, sina, _HIST_CACHE_TTL)
+    return sina
 
 
 def _resample_metric_points(points: List[Dict[str, Any]], freq: str) -> List[Dict[str, Any]]:
@@ -940,8 +1030,13 @@ def build_etf_metrics_history(
     else:
         freq = "day"
 
-    metrics = enrich_etf_metrics(code6, {})
     ohlcv = _load_etf_ohlcv_history(code6, days=days_i)
+    # Enrichment talks to East Money; never let it block the price/volume series.
+    metrics = _call_with_timeout(
+        lambda: enrich_etf_metrics(code6, {}),
+        _REMOTE_TIMEOUT_SEC,
+        default={},
+    ) or {}
     shares = _safe_float(metrics.get("shares"))
     fee = _safe_float(metrics.get("total_fee_pct"))
     profit_sum = _safe_float(metrics.get("constituent_profit_sum"))
@@ -965,7 +1060,7 @@ def build_etf_metrics_history(
         points = _resample_metric_points(points, freq)
 
     notes = [
-        "价格/成交量/成交额来自新浪 ETF 日线。",
+        "价格/成交量来自本地日线（qd_market_bars），上游不可用时回退新浪。",
         "规模趋势按「最新份额 × 历史收盘价」估算。",
     ]
     if fee is not None:
