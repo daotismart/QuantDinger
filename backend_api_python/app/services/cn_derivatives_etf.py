@@ -13,6 +13,19 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 ETF_INDEX_ROOTS = ("IF", "IH", "IC", "IM")
+# Sina/East Money often hang from this host; never block the ETF spot panel on them.
+_SINA_TIMEOUT_SEC = 4.0
+_ENRICH_TIMEOUT_SEC = 3.0
+_TIMED_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="etf-spot")
+
+
+def _call_with_timeout(fn, timeout: float, default: Any = None) -> Any:
+    """Run ``fn`` with a hard timeout; do not join the worker if it hangs."""
+    try:
+        return _TIMED_POOL.submit(fn).result(timeout=max(0.05, float(timeout)))
+    except Exception as exc:
+        logger.warning("timed ETF fetch failed: %s", exc)
+        return default
 
 def _etf_code6(value: str) -> str:
     digits = re.sub(r"\D", "", str(value or ""))
@@ -178,14 +191,12 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
         raise ValueError("index symbol is required")
 
     name = _cn_display_name(sym, sym)
-    index_frame = None
-    try:
-        index_frame = _ak().stock_zh_index_spot_sina()
-    except Exception as exc:
-        logger.warning("stock_zh_index_spot_sina failed: %s", exc)
-
-    code_key = sym.split(".")[0].lower()
-    index_row = _index_row_from_spot(index_frame, code_key, _safe_float) if index_frame is not None else None
+    index_row = _index_row_from_local_bars(sym)
+    index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
+    if index_frame is not None:
+        live = _index_row_from_spot(index_frame, sym.split(".")[0].lower(), _safe_float)
+        if live and float(live.get("price") or 0.0) > 0:
+            index_row = live
     price = float((index_row or {}).get("price") or 0.0)
     analysis: List[str] = []
     if price > 0:
@@ -277,30 +288,44 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
     if not code6:
         raise ValueError("ETF code is required")
 
-    ak = _ak()
-    etf_frame = _load_etf_spot_frame_sina(ak)
-    index_frame = None
-    try:
-        index_frame = ak.stock_zh_index_spot_sina()
-    except Exception as exc:
-        logger.warning("stock_zh_index_spot_sina failed: %s", exc)
-
-    etf = _etf_row_from_spot(etf_frame, code6, _safe_float) or {
+    etf = _etf_row_from_local_bars(code6) or {
         "code": code6,
         "name": _cn_display_name(code6, etf_underlying_display_name(code6)),
         "price": 0.0,
+        "source": "none",
     }
+    sina_frame = _call_with_timeout(lambda: _load_etf_spot_frame_sina(_ak), _SINA_TIMEOUT_SEC)
+    sina_row = _etf_row_from_spot(sina_frame, code6, _safe_float) if sina_frame is not None else None
+    if sina_row and float(sina_row.get("price") or 0.0) > 0:
+        merged = dict(etf)
+        for key, value in sina_row.items():
+            if value not in (None, ""):
+                merged[key] = value
+        if etf.get("source") == "qd_market_bars":
+            merged["source"] = "sina+local"
+        else:
+            merged["source"] = "sina"
+        etf = merged
+
     bench = etf_benchmark_index(code6)
     index_symbol = etf_benchmark_symbol(code6) if bench else ""
-    index_row = None
+    index_row = _index_row_from_local_bars(index_symbol) if index_symbol else None
+    index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
     if bench and index_frame is not None:
-        index_code = str(bench[0] or "").strip()
-        index_row = _index_row_from_spot(index_frame, index_code.lower(), _safe_float)
+        live = _index_row_from_spot(index_frame, str(bench[0] or "").strip().lower(), _safe_float)
+        if live and float(live.get("price") or 0.0) > 0:
+            index_row = live
 
     try:
         from app.services.cn_derivatives_etf_metrics import enrich_etf_metrics
 
-        etf = enrich_etf_metrics(code6, etf)
+        enriched = _call_with_timeout(
+            lambda: enrich_etf_metrics(code6, etf),
+            _ENRICH_TIMEOUT_SEC,
+            default=None,
+        )
+        if isinstance(enriched, dict):
+            etf = enriched
     except Exception as exc:
         logger.warning("enrich_etf_metrics %s failed: %s", code6, exc)
 
@@ -785,6 +810,100 @@ def _aggregate_etf_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[
             }
         )
     return rows
+
+
+def _query_local_daily_bars(symbol: str) -> List[Dict[str, Any]]:
+    try:
+        from app.data_sources.local_bar import query_local_kline
+
+        return query_local_kline("CNStock", symbol, "1D", 1) or []
+    except Exception:
+        pass
+    try:
+        from app.services.market_data_maint import repository
+
+        return repository.query_kline_bars(
+            market="CNStock",
+            symbol=symbol,
+            timeframe="1D",
+            limit=1,
+        ) or []
+    except Exception as exc:
+        logger.debug("local ETF bar query %s failed: %s", symbol, exc)
+        return []
+
+
+def _last_local_bar(symbol: str) -> Optional[Dict[str, Any]]:
+    """Latest daily bar from ``qd_market_bars`` (no upstream fallback)."""
+    from app.markets.cn_options import cn_etf_stock_symbol
+
+    raw = str(symbol or "").strip().upper()
+    if not raw:
+        return None
+    candidates = [raw]
+    if "." not in raw:
+        candidates.append(cn_etf_stock_symbol(raw))
+    seen: set[str] = set()
+    for sym in candidates:
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        try:
+            bars = _query_local_daily_bars(sym)
+        except Exception as exc:
+            logger.debug("local ETF bar %s failed: %s", sym, exc)
+            continue
+        if not bars:
+            continue
+        bar = bars[-1]
+        try:
+            price = float(bar.get("close") or 0.0)
+        except (TypeError, ValueError):
+            price = 0.0
+        if price <= 0:
+            continue
+        try:
+            volume = float(bar.get("volume") or 0.0)
+        except (TypeError, ValueError):
+            volume = 0.0
+        return {
+            "symbol": sym,
+            "price": price,
+            "volume": volume,
+            "time": bar.get("time"),
+            "source": "qd_market_bars",
+        }
+    return None
+
+
+def _etf_row_from_local_bars(code6: str) -> Optional[Dict[str, Any]]:
+    from app.markets.cn_options import cn_etf_stock_symbol, etf_underlying_display_name
+
+    bar = _last_local_bar(cn_etf_stock_symbol(code6))
+    if not bar:
+        return None
+    return {
+        "code": code6,
+        "name": _cn_display_name(code6, etf_underlying_display_name(code6)),
+        "price": bar["price"],
+        "volume": bar.get("volume"),
+        "source": "qd_market_bars",
+    }
+
+
+def _index_row_from_local_bars(index_symbol: str) -> Optional[Dict[str, Any]]:
+    sym = str(index_symbol or "").strip().upper()
+    if not sym:
+        return None
+    bar = _last_local_bar(sym)
+    if not bar:
+        return None
+    return {
+        "code": sym,
+        "name": _cn_display_name(sym, sym),
+        "price": bar["price"],
+        "source": "qd_market_bars",
+    }
 
 
 def _load_etf_spot_frame_sina(ak_fn) -> Any:
