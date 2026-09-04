@@ -163,23 +163,42 @@ def list_etf_derivative_products(tab: str = "") -> List[Dict[str, Any]]:
 
 
 def _etf_product_payload(code6: str) -> Dict[str, Any]:
-    code6 = _etf_code6(code6)
-    for row in list_etf_derivative_products("etf"):
-        if row.get("underlying_code") == code6 or _etf_code6(row.get("root")) == code6:
-            return row
-    from app.markets.cn_options import etf_underlying_display_name
+    """Static picker payload — do not scan the live option catalog here.
 
+    The spot panel used to call ``list_etf_derivative_products`` which can hang
+    on ``listed_option_catalog()`` and block the whole ETF page.
+    """
+    from app.markets.cn_options import (
+        cn_etf_stock_symbol,
+        etf_benchmark_display_name,
+        etf_benchmark_symbol,
+        etf_underlying_display_name,
+    )
+
+    code6 = _etf_code6(code6)
     name = _cn_display_name(code6, etf_underlying_display_name(code6))
-    return {
-        "root": code6,
-        "name": name,
-        "name_cn": name,
-        "underlying_code": code6,
-        "has_options": True,
-        "has_option_chain": True,
-        "multiplier": 10000.0,
-        "option_multiplier": 10000.0,
-    }
+    index_symbol = etf_benchmark_symbol(code6) or ""
+    index_name = (
+        _cn_display_name(index_symbol, etf_benchmark_display_name(code6))
+        if index_symbol
+        else ""
+    )
+    return _product_row(
+        root=cn_etf_stock_symbol(code6) if code6 else code6,
+        name_cn=name,
+        picker_kind="cn_etf",
+        market="CNStock",
+        underlying_code=code6,
+        product_class="etf",
+        stock_symbol=cn_etf_stock_symbol(code6) if code6 else code6,
+        has_options=True,
+        has_option_chain=True,
+        multiplier=10000.0,
+        option_multiplier=10000.0,
+        index_symbol=index_symbol,
+        index_name=index_name,
+        index_futures_root=ETF_INDEX_FUTURES_ROOT.get(code6, ""),
+    )
 
 
 def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
@@ -813,24 +832,29 @@ def _aggregate_etf_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[
 
 
 def _query_local_daily_bars(symbol: str) -> List[Dict[str, Any]]:
-    try:
-        from app.data_sources.local_bar import query_local_kline
+    """Read the latest daily close from ``qd_market_bars`` only (no upstream)."""
+    from app.utils.db import get_db_connection
 
-        return query_local_kline("CNStock", symbol, "1D", 1) or []
-    except Exception:
-        pass
+    sql = (
+        "SELECT close, volume, bar_time FROM qd_market_bars "
+        "WHERE market = %s AND symbol = %s AND timeframe = %s "
+        "ORDER BY bar_time DESC LIMIT 1"
+    )
     try:
-        from app.services.market_data_maint import repository
-
-        return repository.query_kline_bars(
-            market="CNStock",
-            symbol=symbol,
-            timeframe="1D",
-            limit=1,
-        ) or []
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(sql, ("CNStock", str(symbol or "").strip(), "1D"))
+            row = cur.fetchone()
     except Exception as exc:
         logger.debug("local ETF bar query %s failed: %s", symbol, exc)
         return []
+    if not row:
+        return []
+    if isinstance(row, dict):
+        close, volume, ts = row.get("close"), row.get("volume"), row.get("bar_time")
+    else:
+        close, volume, ts = row[0], row[1], row[2]
+    return [{"close": close, "volume": volume, "time": ts}]
 
 
 def _last_local_bar(symbol: str) -> Optional[Dict[str, Any]]:
