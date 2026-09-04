@@ -92,3 +92,15 @@ def test_spot_index_panel_uses_local_bars_when_sina_hangs(monkeypatch):
     panel = etf_mod.build_spot_index_panel("000016.SH")
     assert time.monotonic() - started < 2.5
     assert panel["spot_price"] == 3999.1
+
+
+def test_etf_product_payload_skips_live_catalog(monkeypatch):
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("live option catalog should not be scanned")
+
+    monkeypatch.setattr(etf_mod, "list_etf_derivative_products", _boom)
+    row = etf_mod._etf_product_payload("510050")
+    assert row["root"] == "510050.SH"
+    assert row["underlying_code"] == "510050"
+    assert row["index_symbol"] == "000016.SH"
+    assert row["picker_kind"] == "cn_etf"

@@ -211,11 +211,12 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
 
     name = _cn_display_name(sym, sym)
     index_row = _index_row_from_local_bars(sym)
-    index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
-    if index_frame is not None:
-        live = _index_row_from_spot(index_frame, sym.split(".")[0].lower(), _safe_float)
-        if live and float(live.get("price") or 0.0) > 0:
-            index_row = live
+    if not (index_row and float(index_row.get("price") or 0.0) > 0):
+        index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
+        if index_frame is not None:
+            live = _index_row_from_spot(index_frame, sym.split(".")[0].lower(), _safe_float)
+            if live and float(live.get("price") or 0.0) > 0:
+                index_row = live
     price = float((index_row or {}).get("price") or 0.0)
     analysis: List[str] = []
     if price > 0:
@@ -313,27 +314,27 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
         "price": 0.0,
         "source": "none",
     }
-    sina_frame = _call_with_timeout(lambda: _load_etf_spot_frame_sina(_ak), _SINA_TIMEOUT_SEC)
-    sina_row = _etf_row_from_spot(sina_frame, code6, _safe_float) if sina_frame is not None else None
-    if sina_row and float(sina_row.get("price") or 0.0) > 0:
-        merged = dict(etf)
-        for key, value in sina_row.items():
-            if value not in (None, ""):
-                merged[key] = value
-        if etf.get("source") == "qd_market_bars":
-            merged["source"] = "sina+local"
-        else:
+    # Local bars already render the page; only hit Sina when the close is missing.
+    if float(etf.get("price") or 0.0) <= 0:
+        sina_frame = _call_with_timeout(lambda: _load_etf_spot_frame_sina(_ak), _SINA_TIMEOUT_SEC)
+        sina_row = _etf_row_from_spot(sina_frame, code6, _safe_float) if sina_frame is not None else None
+        if sina_row and float(sina_row.get("price") or 0.0) > 0:
+            merged = dict(etf)
+            for key, value in sina_row.items():
+                if value not in (None, ""):
+                    merged[key] = value
             merged["source"] = "sina"
-        etf = merged
+            etf = merged
 
     bench = etf_benchmark_index(code6)
     index_symbol = etf_benchmark_symbol(code6) if bench else ""
     index_row = _index_row_from_local_bars(index_symbol) if index_symbol else None
-    index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
-    if bench and index_frame is not None:
-        live = _index_row_from_spot(index_frame, str(bench[0] or "").strip().lower(), _safe_float)
-        if live and float(live.get("price") or 0.0) > 0:
-            index_row = live
+    if bench and not (index_row and float(index_row.get("price") or 0.0) > 0):
+        index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
+        if index_frame is not None:
+            live = _index_row_from_spot(index_frame, str(bench[0] or "").strip().lower(), _safe_float)
+            if live and float(live.get("price") or 0.0) > 0:
+                index_row = live
 
     try:
         from app.services.cn_derivatives_etf_metrics import enrich_etf_metrics
