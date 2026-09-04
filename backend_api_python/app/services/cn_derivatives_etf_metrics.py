@@ -1030,8 +1030,13 @@ def build_etf_metrics_history(
     else:
         freq = "day"
 
-    metrics = enrich_etf_metrics(code6, {})
     ohlcv = _load_etf_ohlcv_history(code6, days=days_i)
+    # Enrichment talks to East Money; never let it block the price/volume series.
+    metrics = _call_with_timeout(
+        lambda: enrich_etf_metrics(code6, {}),
+        _REMOTE_TIMEOUT_SEC,
+        default={},
+    ) or {}
     shares = _safe_float(metrics.get("shares"))
     fee = _safe_float(metrics.get("total_fee_pct"))
     profit_sum = _safe_float(metrics.get("constituent_profit_sum"))

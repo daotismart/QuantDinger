@@ -336,18 +336,20 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
             if live and float(live.get("price") or 0.0) > 0:
                 index_row = live
 
-    try:
-        from app.services.cn_derivatives_etf_metrics import enrich_etf_metrics
+    # Extra fund metrics are optional; never block the first paint on East Money.
+    if float(etf.get("price") or 0.0) <= 0:
+        try:
+            from app.services.cn_derivatives_etf_metrics import enrich_etf_metrics
 
-        enriched = _call_with_timeout(
-            lambda: enrich_etf_metrics(code6, etf),
-            _ENRICH_TIMEOUT_SEC,
-            default=None,
-        )
-        if isinstance(enriched, dict):
-            etf = enriched
-    except Exception as exc:
-        logger.warning("enrich_etf_metrics %s failed: %s", code6, exc)
+            enriched = _call_with_timeout(
+                lambda: enrich_etf_metrics(code6, etf),
+                _ENRICH_TIMEOUT_SEC,
+                default=None,
+            )
+            if isinstance(enriched, dict):
+                etf = enriched
+        except Exception as exc:
+            logger.warning("enrich_etf_metrics %s failed: %s", code6, exc)
 
     etf_price = float(etf.get("price") or 0.0)
     index_price = float((index_row or {}).get("price") or 0.0)
