@@ -94,6 +94,29 @@ def test_spot_index_panel_uses_local_bars_when_sina_hangs(monkeypatch):
     assert panel["spot_price"] == 3999.1
 
 
+def test_products_are_static_and_skip_ctp_catalog(monkeypatch):
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("live CTP option catalog should not be scanned")
+
+    monkeypatch.setattr(
+        "app.services.cn_options_chain.listed_etf_underlying_catalog",
+        _boom,
+    )
+    monkeypatch.setattr(
+        "app.services.cn_options_chain.listed_option_catalog",
+        _boom,
+    )
+    from app.markets.cn_options import KNOWN_ETF_UNDERLYINGS
+
+    started = time.monotonic()
+    rows = list_etf_derivative_products("etf")
+    assert time.monotonic() - started < 0.5
+    codes = {r["underlying_code"] for r in rows}
+    assert codes == set(KNOWN_ETF_UNDERLYINGS)
+    assert "510050" in codes
+    assert len(rows) == 9
+
+
 def test_etf_product_payload_skips_live_catalog(monkeypatch):
     def _boom(*_args, **_kwargs):
         raise AssertionError("live option catalog should not be scanned")

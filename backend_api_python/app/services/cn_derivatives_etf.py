@@ -108,56 +108,18 @@ def _product_row(
     return row
 
 
-def _etf_picker_row(item: Dict[str, Any]) -> Dict[str, Any]:
-    """One shared picker row for an ETF option underlying (used by all tabs)."""
-    from app.markets.cn_options import etf_benchmark_display_name, etf_benchmark_symbol
-
-    sym = str(item.get("symbol") or "").strip().upper()
-    code6 = _etf_code6(sym)
-    name = _cn_display_name(code6, str(item.get("name") or sym))
-    index_symbol = etf_benchmark_symbol(code6) or ""
-    index_name = (
-        _cn_display_name(index_symbol, etf_benchmark_display_name(code6))
-        if index_symbol
-        else ""
-    )
-    futures_root = ETF_INDEX_FUTURES_ROOT.get(code6, "")
-    return _product_row(
-        root=sym or code6,
-        name_cn=name,
-        picker_kind="cn_etf",
-        market="CNStock",
-        underlying_code=code6,
-        product_class="etf",
-        stock_symbol=sym or code6,
-        exchange=str(item.get("exchange") or "CN").upper(),
-        multiplier=10000.0,
-        option_multiplier=10000.0,
-        has_options=True,
-        has_option_chain=True,
-        index_symbol=index_symbol,
-        index_name=index_name,
-        index_futures_root=futures_root,
-    )
-
-
 def list_etf_derivative_products(tab: str = "") -> List[Dict[str, Any]]:
-    """Return the shared ETF picker list.
+    """Return the fixed CN ETF option-underlying picker.
 
-    The ETF workbench selects an ETF once; index / ETF / options tabs all reuse
-    the same underlying. ``tab`` is kept for API compatibility but ignored.
+    The workbench only lists the nine SSE/SZSE ETF option underlyings in
+    ``KNOWN_ETF_UNDERLYINGS``. Do not scan the live CTP option catalog —
+    ``option_contract_info_ctp()`` is slow and often hangs from this host.
+    ``tab`` is kept for API compatibility but ignored.
     """
-    from app.services.cn_options_chain import listed_etf_underlying_catalog
+    from app.markets.cn_options import KNOWN_ETF_UNDERLYINGS
 
     _ = str(tab or "").strip().lower()
-    rows: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in listed_etf_underlying_catalog():
-        code6 = _etf_code6(item.get("symbol"))
-        if not code6 or code6 in seen:
-            continue
-        seen.add(code6)
-        rows.append(_etf_picker_row(item))
+    rows = [_etf_product_payload(code6) for code6 in KNOWN_ETF_UNDERLYINGS]
     rows.sort(key=lambda r: r.get("underlying_code") or r["root"])
     return rows
 
@@ -173,6 +135,7 @@ def _etf_product_payload(code6: str) -> Dict[str, Any]:
         etf_benchmark_display_name,
         etf_benchmark_symbol,
         etf_underlying_display_name,
+        infer_cn_etf_board,
     )
 
     code6 = _etf_code6(code6)
@@ -183,14 +146,16 @@ def _etf_product_payload(code6: str) -> Dict[str, Any]:
         if index_symbol
         else ""
     )
+    stock = cn_etf_stock_symbol(code6) if code6 else code6
     return _product_row(
-        root=cn_etf_stock_symbol(code6) if code6 else code6,
+        root=stock,
         name_cn=name,
         picker_kind="cn_etf",
         market="CNStock",
         underlying_code=code6,
         product_class="etf",
-        stock_symbol=cn_etf_stock_symbol(code6) if code6 else code6,
+        stock_symbol=stock,
+        exchange=infer_cn_etf_board(code6),
         has_options=True,
         has_option_chain=True,
         multiplier=10000.0,
