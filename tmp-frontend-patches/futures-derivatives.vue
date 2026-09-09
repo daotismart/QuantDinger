@@ -102,28 +102,64 @@
           <div class="fda-chart-box">
             <div class="fda-chart-head">
               <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
-              <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
+                              <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('termChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('termChart')"
+                  >
+                    {{ isChartFullscreen('termChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
             </div>
             <div ref="termChart" class="fda-chart" />
           </div>
           <div class="fda-chart-box">
             <div class="fda-chart-head">
               <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
-              <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
+                              <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('activityChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('activityChart')"
+                  >
+                    {{ isChartFullscreen('activityChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
             </div>
             <div ref="activityChart" class="fda-chart fda-chart-tall" />
           </div>
           <div class="fda-chart-box">
             <div class="fda-chart-head">
               <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
-              <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
+                              <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('notionalChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('notionalChart')"
+                  >
+                    {{ isChartFullscreen('notionalChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
             </div>
             <div ref="notionalChart" class="fda-chart" />
           </div>
           <div class="fda-chart-box">
             <div class="fda-chart-head">
               <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
-              <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
+                              <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('premiumChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('premiumChart')"
+                  >
+                    {{ isChartFullscreen('premiumChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
             </div>
             <div ref="premiumChart" class="fda-chart" />
           </div>
@@ -160,7 +196,7 @@
           <div class="fda-metrics">
             <div class="fda-metric fda-metric-price">
               <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
-              <strong>{{ fmt(optionsData && (optionsData.current_price || optionsData.underlying)) }}</strong>
+              <strong>{{ fmt(optionsData && (optionsData.current_price || optionsData.underlying), 3, true) }}</strong>
             </div>
             <div class="fda-metric" v-for="item in greeksMetrics" :key="item.key">
               <span>{{ item.label }}</span>
@@ -175,39 +211,139 @@
             </div>
           </div>
 
+          <div class="fda-metrics fda-metrics-capital" data-testid="futures-options-capital-summary">
+            <div class="fda-metric" v-for="item in capitalSummaryMetrics" :key="item.key">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.display }}</strong>
+            </div>
+          </div>
+
           <div class="fda-charts fda-charts-options">
             <div class="fda-chart-box fda-chart-box-wide">
               <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.oiDist') }}</h3>
-                <a-button size="small" @click="openHistory('options.oi')">{{ $t('marketComposite.futures.history') }}</a-button>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.oi')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('oiChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('oiChart')"
+                  >
+                    {{ isChartFullscreen('oiChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
               </div>
               <div ref="oiChart" class="fda-chart fda-chart-tall" />
             </div>
             <div class="fda-chart-box fda-chart-box-wide">
               <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.futures.options.gexCallPutDist') }}</h3>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.gexCallPut')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('gexCallPutChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('gexCallPutChart')"
+                  >
+                    {{ isChartFullscreen('gexCallPutChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
+              </div>
+              <div ref="gexCallPutChart" class="fda-chart fda-chart-tall" />
+            </div>
+            <div class="fda-chart-box fda-chart-box-wide">
+              <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.gexDist') }}</h3>
-                <a-button size="small" @click="openHistory('options.gex')">{{ $t('marketComposite.futures.history') }}</a-button>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.gex')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('gexChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('gexChart')"
+                  >
+                    {{ isChartFullscreen('gexChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
               </div>
               <div ref="gexChart" class="fda-chart fda-chart-tall" />
             </div>
             <div class="fda-chart-box fda-chart-box-wide">
               <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.timeValueYield') }}</h3>
-                <a-button size="small" @click="openHistory('options.tv')">{{ $t('marketComposite.futures.history') }}</a-button>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.tv')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('tvYieldChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('tvYieldChart')"
+                  >
+                    {{ isChartFullscreen('tvYieldChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
               </div>
               <div ref="tvYieldChart" class="fda-chart fda-chart-tall" />
+            </div>
+            <div class="fda-chart-box fda-chart-box-wide">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.futures.options.capitalCurve') }}</h3>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.capital')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('capitalCurveChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('capitalCurveChart')"
+                  >
+                    {{ isChartFullscreen('capitalCurveChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
+              </div>
+              <div ref="capitalCurveChart" class="fda-chart fda-chart-tall" />
             </div>
             <div class="fda-chart-box">
               <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.ivSmile') }}</h3>
-                <a-button size="small" @click="openHistory('options.iv')">{{ $t('marketComposite.futures.history') }}</a-button>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.iv')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('smileChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('smileChart')"
+                  >
+                    {{ isChartFullscreen('smileChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
               </div>
               <div ref="smileChart" class="fda-chart" />
+            </div>
+            <div class="fda-chart-box fda-chart-box-wide">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.futures.options.ivRank') }}</h3>
+                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.ivRank')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('ivRankChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('ivRankChart')"
+                  >
+                    {{ isChartFullscreen('ivRankChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
+              </div>
+              <div ref="ivRankChart" class="fda-chart fda-chart-tall" />
             </div>
             <div class="fda-chart-box">
               <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.maxPain') }}</h3>
-                <a-button size="small" @click="openHistory('options.maxPain')">{{ $t('marketComposite.futures.history') }}</a-button>
+                                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.maxPain')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('painChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('painChart')"
+                  >
+                    {{ isChartFullscreen('painChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
               </div>
               <div ref="painChart" class="fda-chart" />
             </div>
@@ -220,23 +356,41 @@
       :title="historyTitle"
       :visible="historyVisible"
       :footer="null"
-      :width="920"
+      :width="(isGexFamilyHistory || isIvHistory || isMaxPainHistory) ? 1100 : 920"
       destroy-on-close
       @cancel="closeHistory"
     >
       <div class="fda-history-toolbar">
-        <span>{{ $t('marketComposite.futures.historyPeriod') }}</span>
-        <a-radio-group v-model="historyDays" button-style="solid" size="small" @change="loadHistory">
-          <a-radio-button :value="30">30D</a-radio-button>
-          <a-radio-button :value="90">90D</a-radio-button>
-          <a-radio-button :value="180">180D</a-radio-button>
-        </a-radio-group>
-        <span>{{ $t('marketComposite.futures.historyFrequency') }}</span>
-        <a-radio-group v-model="historyFrequency" button-style="solid" size="small" @change="loadHistory">
-          <a-radio-button value="day">{{ $t('marketComposite.futures.freqDay') }}</a-radio-button>
-          <a-radio-button value="week">{{ $t('marketComposite.futures.freqWeek') }}</a-radio-button>
-          <a-radio-button value="month">{{ $t('marketComposite.futures.freqMonth') }}</a-radio-button>
-        </a-radio-group>
+        <template v-if="isPlaybackHistory">
+          <span>回看条数</span>
+          <a-radio-group v-model="historyBars" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button :value="30">30</a-radio-button>
+            <a-radio-button :value="60">60</a-radio-button>
+            <a-radio-button :value="90">90</a-radio-button>
+            <a-radio-button :value="240">240</a-radio-button>
+          </a-radio-group>
+          <span>周期</span>
+          <a-radio-group v-model="historyInterval" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button value="1m">1m</a-radio-button>
+            <a-radio-button value="30m">30m</a-radio-button>
+            <a-radio-button value="day">日</a-radio-button>
+            <a-radio-button value="week">周</a-radio-button>
+          </a-radio-group>
+        </template>
+        <template v-else>
+          <span>{{ $t('marketComposite.futures.historyPeriod') }}</span>
+          <a-radio-group v-model="historyDays" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button :value="30">30D</a-radio-button>
+            <a-radio-button :value="90">90D</a-radio-button>
+            <a-radio-button :value="180">180D</a-radio-button>
+          </a-radio-group>
+          <span>{{ $t('marketComposite.futures.historyFrequency') }}</span>
+          <a-radio-group v-model="historyFrequency" button-style="solid" size="small" @change="loadHistory">
+            <a-radio-button value="day">{{ $t('marketComposite.futures.freqDay') }}</a-radio-button>
+            <a-radio-button value="week">{{ $t('marketComposite.futures.freqWeek') }}</a-radio-button>
+            <a-radio-button value="month">{{ $t('marketComposite.futures.freqMonth') }}</a-radio-button>
+          </a-radio-group>
+        </template>
       </div>
       <a-spin :spinning="historyLoading">
         <p v-if="historyNote" class="fda-muted">{{ historyNote }}</p>
@@ -253,7 +407,16 @@
             @change="onHistorySliceChange"
           />
         </div>
-        <div ref="historyChart" class="fda-chart fda-chart-history" />
+        <div
+          ref="historyChart"
+          class="fda-chart"
+          :class="(isGexFamilyHistory || isIvHistory || isMaxPainHistory) ? 'fda-chart-history-gex' : 'fda-chart-history'"
+        />
+        <div
+          v-show="isGexFamilyHistory || isIvHistory || isMaxPainHistory"
+          ref="historyLevelsChart"
+          class="fda-chart fda-chart-history-levels"
+        />
       </a-spin>
     </a-modal>
 
@@ -284,10 +447,12 @@ import {
   getOptionsPanel,
   getChartHistory
 } from '@/api/cnDerivatives'
+import optionsAnalyticsMixin from './options-analytics-mixin'
 
 export default {
   name: 'FuturesDerivativesAnalysis',
   components: { AnalysisView },
+  mixins: [optionsAnalyticsMixin],
   data () {
     return {
       activeTab: 'spot',
@@ -300,6 +465,7 @@ export default {
       futuresData: null,
       optionsData: null,
       charts: {},
+      fullscreenChartRef: null,
       historyVisible: false,
       historyLoading: false,
       historyKey: '',
@@ -317,7 +483,7 @@ export default {
     }),
     historySliceLabel () {
       const slice = this.historySlices[this.historySliceIndex]
-      return (slice && (slice.label || slice.date)) || '--'
+      return (slice && (slice.label || slice.ts || slice.date)) || '--'
     },
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
@@ -343,7 +509,8 @@ export default {
       ]
     },
     gexMetrics () {
-      const s = (this.optionsData && this.optionsData.gex_summary) || {}
+      const ind = ((this.optionsData && this.optionsData.indicators) || {}).gex || {}
+      const s = ind.summary || (this.optionsData && this.optionsData.gex_summary) || {}
       const mp = this.optionsData && this.optionsData.max_pain
       return [
         { key: 'net', label: 'Net GEX', display: this.fmt(s.net_gex, 0) },
@@ -384,14 +551,19 @@ export default {
     }
   },
   created () {
+    this.$optionsHistoryApi = getChartHistory
     this.syncTabFromRoute()
     this.loadProducts()
   },
   mounted () {
     window.addEventListener('resize', this.resizeCharts)
+    document.addEventListener('fullscreenchange', this.onFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', this.onFullscreenChange)
   },
   beforeDestroy () {
     window.removeEventListener('resize', this.resizeCharts)
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
+    document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange)
     Object.values(this.charts).forEach(chart => chart && chart.dispose())
   },
   watch: {
@@ -408,11 +580,14 @@ export default {
       const opt = item.has_options ? this.$t('marketComposite.futures.hasOptions') : ''
       return opt ? `${item.root} · ${name} (${opt})` : `${item.root} · ${name}`
     },
-    fmt (value, digits = 2) {
+    fmt (value, digits = 2, fixed = false) {
       if (value === null || value === undefined || value === '') return '-'
       const n = Number(value)
       if (!Number.isFinite(n)) return '-'
-      return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 })
+      return n.toLocaleString(undefined, {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: fixed ? digits : 0
+      })
     },
     pct (value) {
       if (value === null || value === undefined || value === '') return '-'
@@ -515,6 +690,7 @@ export default {
       } finally {
         this.loadingTab = false
         this.scheduleOptionsChartRender()
+        this.loadIvRankLive()
       }
     },
     ensureChart (refName) {
@@ -657,8 +833,6 @@ export default {
       }
     },
     nearestStrikeLabel (strikes, value) {
-      // ECharts category markLine: numeric xAxis is treated as INDEX, not category value.
-      // Always return a string category name so Flip/Walls/Pin land on the right strike.
       if (value == null || !strikes.length) return null
       const num = Number(value)
       if (!Number.isFinite(num)) return null
@@ -673,312 +847,26 @@ export default {
       })
       return String(best)
     },
-
-
-    formatStrikeMark (value) {
-      const n = Number(value)
-      if (!Number.isFinite(n)) return ''
-      const abs = Math.abs(n)
-      let s
-      if (abs >= 100) s = n.toFixed(0)
-      else if (abs >= 10) s = n.toFixed(1)
-      else s = n.toFixed(2)
-      return s.replace(/\.0+$/, '').replace(/(\.[0-9]*?)0+$/, '$1').replace(/\.$/, '')
-    },
-
-    buildStrikeMarkLineData (markDefs, strikes) {
-      // Group marks that snap to the same category so one vertical line can carry
-      // stacked labels with strike values (avoids clipping + missing numbers).
-      const groups = new Map()
-      markDefs.forEach((item) => {
-        if (item.value == null) return
-        const x = this.nearestStrikeLabel(strikes, item.value)
-        if (x == null) return
-        const key = String(x)
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key).push(item)
-      })
-      const out = []
-      let groupIdx = 0
-      groups.forEach((items, x) => {
-        const primary = items.find(i => i.name === 'Price') || items[0]
-        const lines = items.map((item) => {
-          const v = this.formatStrikeMark(item.value != null ? item.value : x)
-          return v ? `${item.name} ${v}` : item.name
-        })
-        out.push({
-          name: items.map(i => i.name).join('/'),
-          xAxis: String(x),
-          lineStyle: {
-            color: primary.color,
-            width: primary.name === 'Price' ? 2 : (primary.width || 1.5),
-            type: primary.name === 'Price' ? 'solid' : 'dashed'
-          },
-          label: {
-            show: true,
-            formatter: lines.join('\n'),
-            color: primary.color,
-            position: 'end',
-            distance: 8 + groupIdx * 4,
-            lineHeight: 14,
-            fontSize: 11,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            padding: [2, 4],
-            borderRadius: 2
-          }
-        })
-        groupIdx += 1
-      })
-      return out
-    },
-
-    buildStackedStrikeSeries (monthSeries, points, palette, buildMarks, opts) {
-      const {
-        stack,
-        valueKey,
-        netKey,
-        netName,
-        singlePositive,
-        singleNegative,
-        singlePosKey,
-        singleNegKey,
-        negateSingleNegative = false
-      } = opts
-      const months = (monthSeries || []).filter(ms => (ms.gex_distribution || []).length)
-      if (months.length > 1) {
-        const strikeNums = new Set()
-        months.forEach(ms => {
-          (ms.gex_distribution || []).forEach(p => {
-            const k = Number(p.strike)
-            if (Number.isFinite(k)) strikeNums.add(k)
-          })
-        })
-        const strikes = Array.from(strikeNums).sort((a, b) => a - b).map(k => String(k))
-        const series = months.map((ms, idx) => {
-          const byK = new Map(
-            (ms.gex_distribution || []).map(p => {
-              let v = Number(p[valueKey])
-              if (!Number.isFinite(v) && valueKey === 'total_oi') {
-                v = (Number(p.call_oi) || 0) + (Number(p.put_oi) || 0)
-              }
-              return [String(Number(p.strike)), Number.isFinite(v) ? v : 0]
-            })
-          )
-          return {
-            name: String(ms.month || `M${idx + 1}`),
-            type: 'bar',
-            stack,
-            barMaxWidth: 18,
-            data: strikes.map(k => byK.get(k) || 0),
-            itemStyle: { color: palette[idx % palette.length], opacity: 0.78 }
-          }
-        })
-        const aggByK = new Map(
-          (points || []).map(p => {
-            let v = Number(p[netKey])
-            if (!Number.isFinite(v) && netKey === 'net_oi') {
-              v = (Number(p.call_oi) || 0) - (Number(p.put_oi) || 0)
-            }
-            return [String(Number(p.strike)), Number.isFinite(v) ? v : 0]
-          })
-        )
-        const netData = strikes.map((k, i) => {
-          if (aggByK.has(k)) return aggByK.get(k)
-          return series.reduce((sum, ser) => sum + (Number(ser.data[i]) || 0), 0)
-        })
-        series.push({
-          name: netName,
-          type: 'line',
-          data: netData,
-          itemStyle: { color: opts.netColor || '#fa8c16' },
-          markLine: { symbol: 'none', data: buildMarks(strikes) }
-        })
-        return { strikes, series }
-      }
-      const strikes = (points || []).map(p => String(p.strike))
-      return {
-        strikes,
-        series: [
-          {
-            name: singlePositive,
-            type: 'bar',
-            stack,
-            barMaxWidth: 18,
-            data: (points || []).map(p => p[singlePosKey]),
-            itemStyle: { color: '#52c41a', opacity: 0.55 }
-          },
-          {
-            name: singleNegative,
-            type: 'bar',
-            stack,
-            barMaxWidth: 18,
-            data: (points || []).map(p => (negateSingleNegative ? -Math.abs(Number(p[singleNegKey]) || 0) : p[singleNegKey])),
-            itemStyle: { color: '#ff4d4f', opacity: 0.55 }
-          },
-          {
-            name: netName,
-            type: 'line',
-            data: (points || []).map(p => {
-              const v = Number(p[netKey])
-              if (Number.isFinite(v)) return v
-              if (netKey === 'net_oi') return (Number(p.call_oi) || 0) - (Number(p.put_oi) || 0)
-              return 0
-            }),
-            itemStyle: { color: opts.netColor || '#fa8c16' },
-            markLine: { symbol: 'none', data: buildMarks(strikes) }
-          }
-        ]
-      }
-    },
-
-    buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
-      return this.buildStackedStrikeSeries(monthSeries, points, palette, buildMarks, {
-        stack: 'gex',
-        valueKey: 'net_gex',
-        netKey: 'net_gex',
-        netName: 'Net GEX',
-        netColor: '#fa8c16',
-        singlePositive: 'Call GEX',
-        singleNegative: 'Put GEX',
-        singlePosKey: 'call_gex',
-        singleNegKey: 'put_gex'
-      })
-    },
-
-    buildStackedOiSeries (monthSeries, points, palette, buildMarks) {
-      return this.buildStackedStrikeSeries(monthSeries, points, palette, buildMarks, {
-        stack: 'oi',
-        valueKey: 'total_oi',
-        netKey: 'net_oi',
-        netName: 'Net OI',
-        netColor: '#2f54eb',
-        singlePositive: 'Call OI',
-        singleNegative: 'Put OI',
-        singlePosKey: 'call_oi',
-        singleNegKey: 'put_oi',
-        negateSingleNegative: true
-      })
-    },
-
     renderOptionsCharts () {
-      if (!this.optionsData || this.optionsData.available === false) return
-      const points = this.optionsData.gex_distribution || []
-      const summary = this.optionsData.gex_summary || {}
-      const price = this.optionsData.current_price || this.optionsData.underlying || summary.underlying
-      const monthSeries = this.optionsData.month_series || []
-      const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb']
-
-      const markDefs = [
-        { name: 'Price', value: price, color: '#1890ff', width: 2 },
-        { name: 'Flip', value: summary.flip, color: '#faad14', width: 1.5 },
-        { name: 'Call Wall', value: summary.call_wall, color: '#52c41a', width: 1.5 },
-        { name: 'Put Wall', value: summary.put_wall, color: '#ff4d4f', width: 1.5 },
-        { name: 'Pin', value: summary.pin, color: '#722ed1', width: 1.5 }
-      ]
-
-      const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
-
-      const oi = this.ensureChart('oiChart')
-      if (oi) {
-        const stackedOi = this.buildStackedOiSeries(monthSeries, points, palette, buildMarks)
-        oi.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 36, top: 80, bottom: 40 },
-          xAxis: { type: 'category', data: stackedOi.strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', name: 'OI', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stackedOi.series
-        }, true)
-      }
-
-      const gex = this.ensureChart('gexChart')
-      if (gex) {
-        const stacked = this.buildStackedGexSeries(monthSeries, points, palette, buildMarks)
-        gex.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 36, top: 80, bottom: 40 },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stacked.series
-        }, true)
-      }
-
-      const tv = this.ensureChart('tvYieldChart')
-      if (tv) {
-        const series = []
-        const source = monthSeries.length ? monthSeries : [{ month: this.optionsData.month, time_value_yield: this.optionsData.time_value_yield }]
-        source.forEach((item, idx) => {
-          const tvData = item.time_value_yield || {}
-          const color = palette[idx % palette.length]
-          series.push({ name: `Call ${item.month || ''}`.trim(), type: 'line', showSymbol: false, data: (tvData.call || []).map(r => [r.strike, r.yield]), itemStyle: { color } })
-          series.push({ name: `Put ${item.month || ''}`.trim(), type: 'line', showSymbol: false, data: (tvData.put || []).map(r => [r.strike, r.yield]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
-        })
-        tv.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 24, top: 56, bottom: 40 },
-          xAxis: { type: 'value', name: this.$t('marketComposite.futures.options.strike'), scale: true, axisLabel: { color: this.chartText } },
-          yAxis: {
-            type: 'value',
-            name: this.$t('marketComposite.futures.options.tvYieldAxis'),
-            axisLabel: { formatter: v => `${(Number(v) * 100).toFixed(0)}%`, color: this.chartText },
-            splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
-          },
-          series
-        }, true)
-      }
-
-      const smile = this.ensureChart('smileChart')
-      if (smile) {
-        const series = []
-        const source = monthSeries.length ? monthSeries : [{ month: this.optionsData.month, iv_smile: this.optionsData.iv_smile }]
-        source.forEach((item, idx) => {
-          const color = palette[idx % palette.length]
-          const rows = item.iv_smile || []
-          series.push({ name: `Call IV ${item.month || ''}`.trim(), type: 'line', showSymbol: true, data: rows.filter(r => r.side === 'call').map(r => [r.strike, r.iv]), itemStyle: { color } })
-          series.push({ name: `Put IV ${item.month || ''}`.trim(), type: 'line', showSymbol: true, data: rows.filter(r => r.side === 'put').map(r => [r.strike, r.iv]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
-        })
-        smile.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          xAxis: { type: 'value', name: 'K', scale: true, axisLabel: { color: this.chartText } },
-          yAxis: {
-            type: 'value',
-            name: 'IV',
-            axisLabel: { formatter: v => `${(Number(v) * 100).toFixed(0)}%`, color: this.chartText },
-            splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
-          },
-          series
-        }, true)
-      }
-
-      const pain = this.ensureChart('painChart')
-      if (pain) {
-        const series = []
-        const source = monthSeries.length ? monthSeries : [{ month: this.optionsData.month, max_pain: this.optionsData.max_pain }]
-        source.forEach((item, idx) => {
-          const curve = (item.max_pain && item.max_pain.curve) || []
-          series.push({ name: `${item.month || 'pain'}`, type: 'line', showSymbol: false, data: curve.map(r => [r.strike, r.pain]), itemStyle: { color: palette[idx % palette.length] } })
-        })
-        pain.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          xAxis: { type: 'value', scale: true, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series
-        }, true)
-      }
+      this.renderOptionsChartsShared()
     },
     openHistory (chartKey) {
+      if (String(chartKey || '').startsWith('options.')) {
+        this.openOptionsHistory(chartKey)
+        return
+      }
       this.historyKey = chartKey
       this.historyTitle = `${this.$t('marketComposite.futures.history')} · ${chartKey}`
       this.historySlices = []
       this.historySliceIndex = 0
       this.historyVisible = true
-      this.$nextTick(() => this.loadHistory())
+      this.$nextTick(() => this.loadFuturesHistory())
     },
     closeHistory () {
+      if (String(this.historyKey || '').startsWith('options.')) {
+        this.closeOptionsHistory()
+        return
+      }
       this.historyVisible = false
       this.historySlices = []
       this.historySliceIndex = 0
@@ -989,12 +877,23 @@ export default {
     },
     historyTipFormatter (index) {
       const slice = this.historySlices[index]
-      return (slice && (slice.label || slice.date)) || String(index)
+      return (slice && (slice.label || slice.ts || slice.date)) || String(index)
     },
     onHistorySliceChange () {
+      if (String(this.historyKey || '').startsWith('options.')) {
+        this.onOptionsHistorySliceChange()
+        return
+      }
       this.renderHistorySlice()
     },
     async loadHistory () {
+      if (String(this.historyKey || '').startsWith('options.')) {
+        await this.loadOptionsHistory()
+        return
+      }
+      await this.loadFuturesHistory()
+    },
+    async loadFuturesHistory () {
       if (!this.selectedRoot || !this.historyKey) return
       this.historyLoading = true
       try {
@@ -1027,6 +926,11 @@ export default {
       const chart = this.ensureChart('historyChart')
       if (!chart) return
       const key = this.historyKey
+
+      if (String(key).startsWith('options.')) {
+        this.renderOptionsHistorySlice()
+        return
+      }
 
       if (key === 'futures.term') {
         const curve = (slice.term_structure || []).filter(p => !p.is_continuous)
@@ -1154,48 +1058,6 @@ export default {
         }, true)
         return
       }
-
-      if (key === 'options.oi' || key === 'options.gex') {
-        const points = slice.gex_distribution || []
-        const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb']
-        const stacked = key === 'options.oi'
-          ? this.buildStackedOiSeries(slice.month_series || [], points, palette, () => [])
-          : this.buildStackedGexSeries(slice.month_series || [], points, palette, () => [])
-        chart.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stacked.series
-        }, true)
-        return
-      }
-
-      const seriesList = slice.month_series || []
-      const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1']
-      const series = []
-      seriesList.forEach((item, idx) => {
-        const color = palette[idx % palette.length]
-        if (key === 'options.tv') {
-          const tv = item.time_value_yield || {}
-          series.push({ name: `Call ${item.month}`, type: 'line', showSymbol: false, data: (tv.call || []).map(r => [r.strike, r.yield]), itemStyle: { color } })
-          series.push({ name: `Put ${item.month}`, type: 'line', showSymbol: false, data: (tv.put || []).map(r => [r.strike, r.yield]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
-        } else if (key === 'options.iv') {
-          const rows = item.iv_smile || []
-          series.push({ name: `Call ${item.month}`, type: 'line', data: rows.filter(r => r.side === 'call').map(r => [r.strike, r.iv]), itemStyle: { color } })
-          series.push({ name: `Put ${item.month}`, type: 'line', data: rows.filter(r => r.side === 'put').map(r => [r.strike, r.iv]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
-        } else if (key === 'options.maxPain') {
-          const curve = (item.max_pain && item.max_pain.curve) || []
-          series.push({ name: item.month, type: 'line', data: curve.map(r => [r.strike, r.pain]), itemStyle: { color } })
-        }
-      })
-      chart.setOption({
-        ...this.baseChartOption(),
-        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-        xAxis: { type: 'value', scale: true, axisLabel: { color: this.chartText } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-        series
-      }, true)
     },
     renderHistoryChart (data) {
       const chart = this.ensureChart('historyChart')
@@ -1229,6 +1091,50 @@ export default {
         requestAnimationFrame(() => {
           this.resizeCharts()
         })
+      })
+    },
+
+    chartBoxEl (refName) {
+      const el = this.$refs[refName]
+      const node = Array.isArray(el) ? el[0] : el
+      return node && node.closest ? node.closest('.fda-chart-box') : null
+    },
+    isChartFullscreen (refName) {
+      return this.fullscreenChartRef === refName
+    },
+    async toggleChartFullscreen (refName) {
+      const box = this.chartBoxEl(refName)
+      if (!box) return
+      const active = document.fullscreenElement || document.webkitFullscreenElement
+      try {
+        if (active === box) {
+          if (document.exitFullscreen) await document.exitFullscreen()
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
+        } else {
+          if (active) {
+            if (document.exitFullscreen) await document.exitFullscreen()
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
+          }
+          if (box.requestFullscreen) await box.requestFullscreen()
+          else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen()
+          this.fullscreenChartRef = refName
+        }
+      } catch (err) {
+        console.warn('chart fullscreen failed', err)
+      }
+      this.$nextTick(() => this.resizeCharts())
+    },
+    onFullscreenChange () {
+      const active = document.fullscreenElement || document.webkitFullscreenElement
+      if (!active) {
+        this.fullscreenChartRef = null
+      } else {
+        const match = Object.keys(this.charts || {}).find(ref => this.chartBoxEl(ref) === active)
+        if (match) this.fullscreenChartRef = match
+      }
+      this.$nextTick(() => {
+        this.resizeCharts()
+        requestAnimationFrame(() => this.resizeCharts())
       })
     },
     resizeCharts () {
@@ -1398,6 +1304,24 @@ export default {
   height: 420px;
 }
 
+.fda-chart-history-gex {
+  height: 380px;
+}
+
+.fda-chart-history-levels {
+  height: 280px;
+  margin-top: 12px;
+}
+
+.fda-metrics-capital {
+  margin-bottom: 16px;
+}
+
+.fda-metrics-capital .fda-metric strong {
+  font-size: 18px;
+  letter-spacing: 0.01em;
+}
+
 .fda-metrics-gex {
   margin-bottom: 16px;
 }
@@ -1417,16 +1341,11 @@ export default {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  width: 100%;
 }
 
-@media (min-width: 1100px) {
-  .fda-charts {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .fda-chart-box-wide {
-    grid-column: 1 / -1;
-  }
+.fda-chart-box-wide {
+  grid-column: 1 / -1;
 }
 
 .fda-charts.fda-charts-options {
@@ -1442,21 +1361,35 @@ export default {
   min-width: 0;
 }
 
-@media (min-width: 1100px) {
-  .fda-charts.fda-charts-options {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
+.fda-chart-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 
-  .fda-charts.fda-charts-options .fda-chart-box-wide {
-    flex: 0 0 100%;
-    width: 100%;
-  }
+.fda-chart-box:fullscreen,
+.fda-chart-box:-webkit-full-screen {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 16px 20px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
 
-  .fda-charts.fda-charts-options .fda-chart-box:not(.fda-chart-box-wide) {
-    flex: 1 1 calc(50% - 6px);
-    width: calc(50% - 6px);
-  }
+.fda-chart-box:fullscreen .fda-chart,
+.fda-chart-box:-webkit-full-screen .fda-chart {
+  flex: 1 1 auto;
+  height: auto !important;
+  min-height: calc(100vh - 72px);
+}
+
+.theme-dark .fda-chart-box:fullscreen,
+.theme-dark .fda-chart-box:-webkit-full-screen {
+  background: #0d0d0d;
 }
 
 .fda-chart-box {
