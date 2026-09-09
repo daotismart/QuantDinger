@@ -1,0 +1,6 @@
+"marketComposite.futures.options.gexDist": "Net GEX distribution (net GEX / price / flip / walls / pin)",
+"marketComposite.futures.options.gexCallPutDist": "GEX distribution (call / put by expiry)",
+"marketComposite.futures.options.ivRank": "IV Rank",
+"marketComposite.futures.options.ivPercentile": "IV Percentile",
+"marketComposite.futures.options.atmIv": "Near-month ATM IV",
+"marketComposite.futures.options.hvProxy": "20-day realized vol",

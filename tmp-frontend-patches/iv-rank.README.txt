@@ -1,0 +1,20 @@
+IV Rank chart + history button (options / ETF options)
+
+Backend
+  GET /api/cn-derivatives/history?chart=options.ivRank
+  ETF: scope=etf  → near-month ATM IV rank from ClickHouse playback
+  Futures:        → 20-day realized-vol rank of the continuous contract
+
+Frontend (QuantDinger-Vue)
+
+  cp tmp-frontend-patches/etf-derivatives.vue \
+     QuantDinger-Vue/src/views/market-composite-analysis/etf-derivatives.vue
+  cp tmp-frontend-patches/futures-derivatives.vue \
+     QuantDinger-Vue/src/views/market-composite-analysis/futures-derivatives.vue
+  cp tmp-frontend-patches/options-analytics-mixin.js \
+     QuantDinger-Vue/src/views/market-composite-analysis/options-analytics-mixin.js
+
+Merge locale keys from:
+
+  tmp-frontend-patches/locales/zh-CN.gex-call-put.snippet.txt
+  tmp-frontend-patches/locales/en-US.gex-call-put.snippet.txt
