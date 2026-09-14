@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.services.gex_indicator import (
+    _cumulative_net_gex_flip,
     compute_gex,
     derive_gex_levels,
     panel_fields_from_gex_indicator,
@@ -20,8 +23,8 @@ def _sample_chain():
     ]
 
 
-def test_derive_gex_levels_flip_only_on_neg_to_pos_cross():
-    """Per-strike Net GEX sign change; walls follow net GEX peaks."""
+def test_derive_gex_levels_flip_interpolates_cumulative_zero():
+    """Cumulative net GEX crosses zero between 3.0 (-50) and 3.1 (+70)."""
     points = [
         {"strike": 2.7, "call_oi": 1, "put_oi": 10, "call_gex": 1.0, "put_gex": -50.0, "net_gex": -50.0},
         {"strike": 2.8, "call_oi": 2, "put_oi": 40, "call_gex": 2.0, "put_gex": -80.0, "net_gex": -90.0},
@@ -32,13 +35,14 @@ def test_derive_gex_levels_flip_only_on_neg_to_pos_cross():
         {"strike": 3.2, "call_oi": 80, "put_oi": 6, "call_gex": 8.0, "put_gex": -1.0, "net_gex": -5.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
-    assert levels["flip"] == 3.0
+    # cum: -50, -140, -150, -50, +70 → interpolate 3.0 → 3.1
+    assert levels["flip"] == pytest.approx(3.0 + 0.1 * 50.0 / 120.0)
     assert levels["call_wall"] == 3.1  # max net_gex at/above spot
     assert levels["put_wall"] == 2.8  # min net_gex at/below spot
     assert levels["pin"] == 3.2  # still max total OI
 
 
-def test_derive_gex_levels_ignores_pos_to_neg_cross():
+def test_derive_gex_levels_flip_also_crosses_pos_to_neg():
     points = [
         {"strike": 2.8, "call_oi": 10, "put_oi": 1, "call_gex": 40.0, "put_gex": -1.0, "net_gex": 40.0},
         {"strike": 2.9, "call_oi": 10, "put_oi": 1, "call_gex": 20.0, "put_gex": -1.0, "net_gex": 20.0},
@@ -46,10 +50,11 @@ def test_derive_gex_levels_ignores_pos_to_neg_cross():
         {"strike": 3.1, "call_oi": 10, "put_oi": 1, "call_gex": 5.0, "put_gex": -1.0, "net_gex": -10.0},
     ]
     levels = derive_gex_levels(points, underlying=2.95)
-    assert levels["flip"] is None
+    # cum: 40, 60, -20 → interpolate 2.9 → 3.0
+    assert levels["flip"] == pytest.approx(2.9 + 0.1 * 60.0 / 80.0)
 
 
-def test_derive_gex_levels_ignores_zero_product_false_flip():
+def test_derive_gex_levels_flip_hits_exact_zero_on_listed_strike():
     points = [
         {"strike": 2.8, "call_oi": 1, "put_oi": 5, "call_gex": 10.0, "put_gex": -1.0, "net_gex": 10.0},
         {"strike": 2.9, "call_oi": 2, "put_oi": 5, "call_gex": 5.0, "put_gex": -1.0, "net_gex": -10.0},
@@ -57,7 +62,8 @@ def test_derive_gex_levels_ignores_zero_product_false_flip():
         {"strike": 3.1, "call_oi": 4, "put_oi": 5, "call_gex": 30.0, "put_gex": -1.0, "net_gex": 30.0},
     ]
     levels = derive_gex_levels(points, underlying=3.0)
-    assert levels["flip"] == 3.1
+    # cum: 10, 0 → Flip sits on 2.9
+    assert levels["flip"] == 2.9
 
 
 def test_derive_gex_levels_walls_follow_net_gex_peaks_not_oi():
@@ -73,8 +79,8 @@ def test_derive_gex_levels_walls_follow_net_gex_peaks_not_oi():
     assert levels["pin"] == 2.5
 
 
-def test_derive_gex_levels_flip_uses_per_strike_when_cum_never_crosses():
-    """588000-style: cumulative stays negative but Net GEX line flips near spot."""
+def test_derive_gex_levels_flip_none_when_cumulative_never_crosses():
+    """588000-style: cumulative stays negative → no Flip (walls still from net GEX)."""
     points = [
         {"strike": 1.5, "call_oi": 1, "put_oi": 10, "call_gex": 1.0, "put_gex": -500.0, "net_gex": -400.0},
         {"strike": 1.6, "call_oi": 2, "put_oi": 20, "call_gex": 2.0, "put_gex": -800.0, "net_gex": -700.0},
@@ -83,9 +89,26 @@ def test_derive_gex_levels_flip_uses_per_strike_when_cum_never_crosses():
         {"strike": 1.75, "call_oi": 15, "put_oi": 5, "call_gex": 60.0, "put_gex": -10.0, "net_gex": 120.0},
     ]
     levels = derive_gex_levels(points, underlying=1.67)
-    assert levels["flip"] == 1.7
+    assert levels["flip"] is None
     assert levels["call_wall"] == 1.75
     assert levels["put_wall"] == 1.6
+
+
+def test_cumulative_net_gex_flip_linear_interpolation():
+    points = [
+        {"strike": 1.0, "net_gex": -10.0},
+        {"strike": 2.0, "net_gex": 30.0},
+    ]
+    # cum -10 → +20, Flip = 1 + 1 * 10/30
+    assert _cumulative_net_gex_flip(points) == pytest.approx(1.0 + 10.0 / 30.0)
+
+
+def test_cumulative_net_gex_flip_first_strike_zero():
+    points = [
+        {"strike": 1.5, "net_gex": 0.0},
+        {"strike": 1.6, "net_gex": 8.0},
+    ]
+    assert _cumulative_net_gex_flip(points) == 1.5
 
 
 def test_aggregate_gex_points_sums_monthly_profiles():

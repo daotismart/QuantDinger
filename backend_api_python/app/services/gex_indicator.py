@@ -199,6 +199,41 @@ def compute_gex_raw(
     }
 
 
+_FLIP_ZERO = 1e-12
+
+
+def _cumulative_net_gex_flip(points: List[Dict[str, Any]]) -> Optional[float]:
+    """Flip from the running sum of per-strike ``net_gex`` (low → high).
+
+    Walk every listed strike. If the cumulative sum is exactly (or numerically)
+    zero at ``K_i``, Flip is ``K_i``. If it changes sign between ``K_{i-1}`` and
+    ``K_i``, Flip is the linear interpolate of those two strikes through zero:
+
+        K = K_{i-1} + (K_i - K_{i-1}) * (0 - G_{i-1}) / (G_i - G_{i-1})
+
+    No 0.8×spot floor. The first zero-hit or sign change wins (either direction).
+    """
+    ordered = sorted(points, key=lambda p: float(p["strike"]))
+    cum = 0.0
+    prev_cum: Optional[float] = None
+    prev_k: Optional[float] = None
+    for point in ordered:
+        strike = float(point["strike"])
+        if strike <= 0:
+            continue
+        cum += _safe_float(point.get("net_gex"))
+        if abs(cum) <= _FLIP_ZERO:
+            return strike
+        if prev_cum is not None and prev_k is not None and prev_cum * cum < 0.0:
+            denom = cum - prev_cum
+            if abs(denom) <= _FLIP_ZERO:
+                return strike
+            return float(prev_k + (strike - prev_k) * (0.0 - prev_cum) / denom)
+        prev_cum = cum
+        prev_k = strike
+    return None
+
+
 def derive_gex_levels(
     points: List[Dict[str, Any]],
     *,
@@ -211,9 +246,9 @@ def derive_gex_levels(
     - **Call wall** — max ``net_gex`` at strikes ``>=`` spot (peak positive stack)
     - **Put wall** — min ``net_gex`` at strikes ``<=`` spot (deepest trough)
     - **Pin** — strike with max total OI (call + put)
-    - **Flip** — first strike (ascending, at/above ``0.8×`` spot) where **per-strike**
-      ``net_gex`` crosses from negative to non-negative (same place the Net GEX
-      line crosses zero). Falls back to cumulative cross when no per-strike cross.
+    - **Flip** — first zero of the **cumulative** ``net_gex`` (all strikes,
+      low → high). Hits at a listed strike stay on that strike; a sign change
+      is linearly interpolated between ``K_{i-1}`` and ``K_i``.
     """
     if not points:
         return {"call_wall": None, "put_wall": None, "pin": None, "flip": None}
@@ -267,35 +302,7 @@ def derive_gex_levels(
         )["strike"]
     )
 
-    # Primary Flip: per-strike Net GEX sign change (matches the plotted orange line).
-    flip = None
-    floor = 0.8 * spot if spot > 0 else float("-inf")
-    prev_net: Optional[float] = None
-    for point in ordered:
-        strike = float(point["strike"])
-        net = _safe_float(point.get("net_gex"))
-        if strike < floor:
-            prev_net = net
-            continue
-        if prev_net is not None and prev_net < 0.0 <= net:
-            flip = strike
-            break
-        prev_net = net
-
-    # Fallback: cumulative cross when the profile never flips strike-by-strike.
-    if flip is None:
-        cum = 0.0
-        prev_cum: Optional[float] = None
-        for point in ordered:
-            strike = float(point["strike"])
-            cum += _safe_float(point.get("net_gex"))
-            if strike < floor:
-                prev_cum = cum
-                continue
-            if prev_cum is not None and prev_cum < 0.0 <= cum:
-                flip = strike
-                break
-            prev_cum = cum
+    flip = _cumulative_net_gex_flip(ordered)
 
     return {
         "call_wall": call_wall,
