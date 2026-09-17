@@ -235,55 +235,67 @@ export function buildCallPutGexTrendSeries (slices) {
   return { labels, series, valueRange: symmetricValueRange(series) }
 }
 
+function netGexByStrike (rows) {
+  const byK = new Map()
+  ;(rows || []).forEach(p => {
+    const k = strikeKey(p.strike)
+    if (!k) return
+    byK.set(k, Number(p.net_gex) || 0)
+  })
+  return byK
+}
+
+function attachMarks (seriesItem, marks) {
+  if (marks && marks.length) {
+    seriesItem.markLine = { symbol: 'none', data: marks }
+  }
+  return seriesItem
+}
+
 export function buildStackedNetGexSeries (monthSeries, points, palette, buildMarks) {
-  const months = (monthSeries || []).filter(ms => (ms.gex_distribution || []).length)
-  if (months.length > 1) {
-    const strikeNums = new Set()
-    months.forEach(ms => {
-      (ms.gex_distribution || []).forEach(p => {
-        const k = Number(p.strike)
-        if (Number.isFinite(k)) strikeNums.add(k)
-      })
-    })
-    const strikes = Array.from(strikeNums).sort((a, b) => a - b).map(k => String(k))
-    const series = months.map((ms, idx) => {
-      const byK = new Map(
-        (ms.gex_distribution || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
-      )
-      return {
+  const colors = (palette && palette.length) ? palette : ['#fa8c16']
+  const source = monthSources(monthSeries, points)
+  const strikes = collectStrikes(source)
+  const marks = typeof buildMarks === 'function' ? (buildMarks(strikes) || []) : []
+  const series = []
+
+  // Always plot net_gex. The single-month fallback used to reuse Call/Put
+  // stacked bars, which made Net GEX identical to the GEX distribution chart.
+  if (source.length > 1) {
+    source.forEach((ms, idx) => {
+      const byK = netGexByStrike(ms.gex_distribution)
+      series.push({
         name: String(ms.month || `M${idx + 1}`),
         type: 'bar',
         stack: 'gex',
         barMaxWidth: 18,
         data: pairStrikeData(strikes, strikes.map(k => byK.get(k) || 0)),
-        itemStyle: { color: palette[idx % palette.length], opacity: 0.78 }
-      }
+        itemStyle: { color: colors[idx % colors.length], opacity: 0.78 }
+      })
     })
-    const aggByK = new Map(
-      (points || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
-    )
+    const aggByK = netGexByStrike(points)
     const netValues = strikes.map((k, i) => {
       if (aggByK.has(k)) return aggByK.get(k)
       return series.reduce((sum, ser) => sum + (Number(ser.data[i] && ser.data[i][1]) || 0), 0)
     })
-    series.push({
+    series.push(attachMarks({
       name: 'Net GEX',
       type: 'line',
       data: pairStrikeData(strikes, netValues),
-      itemStyle: { color: '#fa8c16' },
-      markLine: { symbol: 'none', data: buildMarks(strikes) }
-    })
+      itemStyle: { color: '#fa8c16' }
+    }, marks))
     return { strikes, series }
   }
-  const strikes = (points || []).map(p => String(p.strike))
-  return {
-    strikes,
-    series: [
-      { name: 'Call GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: pairPointField(points, 'call_gex'), itemStyle: { color: '#52c41a', opacity: 0.55 } },
-      { name: 'Put GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: pairPointField(points, 'put_gex'), itemStyle: { color: '#ff4d4f', opacity: 0.55 } },
-      { name: 'Net GEX', type: 'line', data: pairPointField(points, 'net_gex'), itemStyle: { color: '#fa8c16' }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
-    ]
-  }
+
+  const byK = netGexByStrike((source[0] && source[0].gex_distribution) || points)
+  series.push(attachMarks({
+    name: 'Net GEX',
+    type: 'bar',
+    barMaxWidth: 18,
+    data: pairStrikeData(strikes, strikes.map(k => byK.get(k) || 0)),
+    itemStyle: { color: '#fa8c16', opacity: 0.78 }
+  }, marks))
+  return { strikes, series }
 }
 
 export function buildOiStrikeSeries (points, strikeMarks) {
