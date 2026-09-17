@@ -8,6 +8,7 @@ from app.services.strategy_v2 import StrategyV2BacktestRunner, compile_strategy_
 
 
 SEED_PATH = Path(__file__).resolve().parents[1] / "migrations" / "strategy_v2_templates.sql"
+ADVANCED_PACKS_PATH = Path(__file__).resolve().parents[1] / "migrations" / "strategy_v2_advanced_packs_50.sql"
 ENTRY_PATTERN = re.compile(
     r"\('(?P<key>strategy_v2_[^']+)', "
     r"'(?P<asset_type>script|portfolio_strategy)', .*?, "
@@ -19,6 +20,8 @@ ENTRY_PATTERN = re.compile(
 
 def _seed_entries():
     sql = SEED_PATH.read_text(encoding="utf-8")
+    if ADVANCED_PACKS_PATH.exists():
+        sql += "\n" + ADVANCED_PACKS_PATH.read_text(encoding="utf-8")
     return [match.groupdict() for match in ENTRY_PATTERN.finditer(sql)]
 
 
@@ -30,15 +33,20 @@ _PACK_KEYS = {
     "strategy_v2_relative_value_pack",
     "strategy_v2_volatility_pack",
     "strategy_v2_market_microstructure_pack",
+    "strategy_v2_stat_arb_pack",
+    "strategy_v2_options_vol_pack",
+    "strategy_v2_session_alpha_pack",
+    "strategy_v2_regime_switch_pack",
+    "strategy_v2_orderflow_proxy_pack",
 }
 
 
 def test_strategy_v2_seed_has_explicit_cta_and_portfolio_catalogs():
     entries = _seed_entries()
-    assert len(entries) == 19
+    assert len(entries) == 24
     assert SEED_PATH.read_text(encoding="utf-8").count('"version":11') == 19
     assert sum(item["asset_type"] == "script" for item in entries) == 8
-    assert sum(item["asset_type"] == "portfolio_strategy" for item in entries) == 11
+    assert sum(item["asset_type"] == "portfolio_strategy" for item in entries) == 16
 
     by_key = {item["key"]: item for item in entries}
     assert by_key["strategy_v2_supertrend"]["asset_type"] == "script"
@@ -76,6 +84,11 @@ def test_strategy_v2_seed_templates_declare_current_direction_contract():
                 "strategy_v2_relative_value_pack",
                 "strategy_v2_volatility_pack",
                 "strategy_v2_market_microstructure_pack",
+                "strategy_v2_stat_arb_pack",
+                "strategy_v2_options_vol_pack",
+                "strategy_v2_session_alpha_pack",
+                "strategy_v2_regime_switch_pack",
+                "strategy_v2_orderflow_proxy_pack",
             }
             else "long_only"
         )
@@ -135,7 +148,7 @@ def test_portfolio_templates_use_fixed_ten_symbol_universe():
 
 def test_pack_templates_use_futures_and_options_universe():
     packs = [item for item in _seed_entries() if item["key"] in _PACK_KEYS]
-    assert len(packs) == 7
+    assert len(packs) == 12
     for item in packs:
         manifest = compile_strategy_v2(item["code"]).manifest
         assert manifest.universe.kind == "static"

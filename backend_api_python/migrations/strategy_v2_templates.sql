@@ -20,7 +20,12 @@ WHERE template_key NOT IN (
     'strategy_v2_carry_pack',
     'strategy_v2_relative_value_pack',
     'strategy_v2_volatility_pack',
-    'strategy_v2_market_microstructure_pack'
+    'strategy_v2_market_microstructure_pack',
+    'strategy_v2_stat_arb_pack',
+    'strategy_v2_options_vol_pack',
+    'strategy_v2_session_alpha_pack',
+    'strategy_v2_regime_switch_pack',
+    'strategy_v2_orderflow_proxy_pack'
 );
 
 INSERT INTO qd_script_templates

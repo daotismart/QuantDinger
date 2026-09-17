@@ -625,6 +625,10 @@ _MCP_EXTENSION_ROUTES = {
     "set_signal_alert_status": "/api/agent/v1/notifications/signal-alerts/{task_id}/status",
     "delete_signal_alert": "/api/agent/v1/notifications/signal-alerts/{task_id}",
     "run_signal_alert": "/api/agent/v1/notifications/signal-alerts/{task_id}/run",
+    "search_option_chain": "/api/agent/v1/options/chain",
+    "estimate_option_combo": "/api/agent/v1/options/combo/estimate",
+    "get_iv_rank": "/api/agent/v1/options/iv-rank",
+    "place_option_combo": "/api/agent/v1/options/combo/order",
 }
 _MCP_EXTENSION_WRITES = {
     "emergency_stop_trading",
@@ -637,6 +641,7 @@ _MCP_EXTENSION_WRITES = {
     "set_signal_alert_status",
     "delete_signal_alert",
     "run_signal_alert",
+    "place_option_combo",
 }
 MCP_AGENT_TOOLS = MCP_AGENT_TOOLS + tuple(
     ToolDefinition(
@@ -646,6 +651,7 @@ MCP_AGENT_TOOLS = MCP_AGENT_TOOLS + tuple(
                 "list_universes", "get_universe", "list_universe_members",
                 "list_factors", "get_factor", "list_watchlist", "add_watchlist",
                 "remove_watchlist",
+                "search_option_chain", "estimate_option_combo", "get_iv_rank",
             }
             else "notifications" if "signal_alert" in name
             else "jobs" if name == "cancel_job"

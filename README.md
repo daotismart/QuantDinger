@@ -566,7 +566,7 @@ and **Broker Accounts → Open account**.
 - QuantDinger is a product of **Open Byte Inc**. The name, logo, product
   identity, and commercial licensing are managed separately from the code license.
 - Web frontend source is published in
-  [QuantDinger Frontend](https://github.com/OpenByteInc/QuantDinger-Vue) under
+  [QuantDinger Frontend](https://github.com/daotismart/QuantDinger-Vue) under
   its own source-available license.
 - Mobile H5 and native client source is published in
   [QuantDinger Mobile](https://github.com/OpenByteInc/QuantDinger-Mobile) under

@@ -44,6 +44,7 @@ Keep the configuration private. Prefer an environment-secret facility when the c
 ## Expected workflow
 
 - Use market tools for discovery and OHLCV reads.
+- Use `search_option_chain`, `estimate_option_combo`, and `get_iv_rank` for listed-option research. `place_option_combo` is paper-atomic and requires confirmation.
 - Use universe, factor, and watchlist tools for research workspace inputs.
 - Use indicator tools only for chart artifacts.
 - Compile Strategy API V2 code before saving it.

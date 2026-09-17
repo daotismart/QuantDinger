@@ -147,17 +147,11 @@ class IndicatorParamsParser:
     @classmethod
     def _convert_value(cls, value_str: str, param_type: str) -> Any:
         """Convert a raw string value to the declared parameter type."""
+        from app.services.param_values import coerce_param_value
+
         try:
-            param_type = param_type.lower()
-            if param_type == 'int':
-                return int(value_str)
-            elif param_type == 'float':
-                return float(value_str)
-            elif param_type == 'bool':
-                return value_str.lower() in ('true', '1', 'yes', 'on')
-            else:  # str/string
-                return value_str
-        except (ValueError, TypeError):
+            return coerce_param_value(value_str, param_type)
+        except (TypeError, ValueError, OverflowError):
             return value_str
     
     @classmethod

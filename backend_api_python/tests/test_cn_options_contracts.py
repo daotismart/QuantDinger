@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -77,10 +79,18 @@ class TestParseListedOptions:
         assert is_cn_futures_option("SR611MSP4700") is False
 
     def test_etf_numeric_codes(self):
-        from app.markets.cn_options import is_etf_option_code
+        from app.markets.cn_futures import resolve_market_category
+        from app.markets.cn_options import extract_etf_option_code, is_etf_option_code
 
         assert is_etf_option_code("10010971") is True
+        assert is_etf_option_code("90007051") is True
+        assert is_etf_option_code("20260918") is False
         assert parse_cn_option_instrument("10010971") is None
+        assert extract_etf_option_code("CNIndexOptions:10010971") == "10010971"
+        assert extract_etf_option_code("50ETF购9月2750 [10010971]") == "10010971"
+        assert extract_etf_option_code("到期20260918") is None
+        assert resolve_market_category("10010971") == "CNIndexOptions"
+        assert parse_cn_option_symbol("50ETF购9月2750 [10010971]")["symbol"] == "10010971"
 
     def test_new_product_roots(self):
         assert {"AD", "OP", "BZ", "PD", "PT", "PL", "PR", "ZC"} <= set(CN_FUTURE_PRODUCTS)
@@ -142,6 +152,9 @@ class TestCtpCatalogNormalize:
         assert item["symbol"] == "M2609-C-2800"
         assert item["instrument_id"] == "m2609-C-2800"
         assert item["exchange"] == "DCE"
+        assert item["strike"] == 2800.0
+        assert item["call_put"] == "C"
+        assert item["expire_date"] == "2026-09-14"
 
     def test_skips_delisted(self):
         assert normalize_ctp_option_row(self._row(**{"合约状态": 0})) is None
@@ -172,12 +185,52 @@ class TestCtpCatalogNormalize:
                     "品种ID": "ETF_O",
                     "商品类别": 1,
                     "标的合约": "510050",
+                    "执行价": 2.75,
+                    "看涨看跌": "C",
+                    "到期日": "20260923",
+                    "合约乘数": 10000,
                 }
             )
         )
         assert item["market"] == "CNIndexOptions"
         assert item["symbol"] == "10010971"
         assert item["kind"] == "etf"
+        assert item["underlying"] == "510050"
+        assert item["exchange"] == "SSE"
+        assert item["strike"] == 2.75
+        assert item["call_put"] == "C"
+        assert item["expire_date"] == "2026-09-23"
+        assert item["expire_source"] == "ctp"
+
+    def test_etf_numeric_new_ctp_columns(self):
+        item = normalize_ctp_option_row(
+            {
+                "合约ID": "90007051",
+                "合约名称": "深证100ETF购9月3100",
+                "交易所ID": "SZSE",
+                "品种ID": "ETF_O",
+                "商品类别": "1",
+                "合约状态": "1",
+                "标的合约ID": "159901",
+                "最小变动价位": 0.0001,
+                "合约乘数": 10000,
+            }
+        )
+        assert item is not None
+        assert item["exchange"] == "SZSE"
+        assert item["underlying"] == "159901"
+        assert item["kind"] == "etf"
+        assert item["call_put"] == "C"
+        assert item["strike"] == 3100.0
+        assert item["expire_date"] is not None
+        assert item["expire_source"] == "inferred_name"
+
+    def test_infer_etf_expire_fourth_wednesday(self):
+        from app.markets.cn_options import fourth_wednesday, infer_etf_option_expire_date
+
+        assert fourth_wednesday(2026, 9).isoformat() == "2026-09-23"
+        assert infer_etf_option_expire_date("50ETF购9月2650", as_of=date(2026, 9, 1)) == "2026-09-23"
+        assert infer_etf_option_expire_date("50ETF沽12月2700", as_of=date(2026, 9, 1)) == "2026-12-23"
 
     def test_listed_option_catalog_from_frame(self):
         frame = pd.DataFrame(
@@ -279,6 +332,16 @@ class TestOptionHistory:
         assert resolve_history_symbol("IO2509-C-4000") == ("io2509C4000", "option")
         assert resolve_history_symbol("cu2609C100000") == ("cu2609C100000", "option")
 
+    def test_resolve_etf_option_uses_numeric_code(self):
+        assert resolve_history_symbol("10010971") == ("10010971", "etf_option")
+        assert resolve_history_symbol("90007051") == ("90007051", "etf_option")
+
+    def test_is_cn_derivative_includes_etf_options(self):
+        from app.markets.cn_futures import is_cn_derivative, is_cn_futures_option
+
+        assert is_cn_futures_option("10010971") is True
+        assert is_cn_derivative("10010971") is True
+
     def test_option_daily_prefers_sina_then_underlying(self, monkeypatch):
         monkeypatch.setenv("CN_FUTURES_MARKET_DATA_PROVIDER", "akshare")
         src = CnFuturesDataSource()
@@ -303,3 +366,28 @@ class TestOptionHistory:
         rows = src.get_history("m2509-C-2800", "1D")
         assert len(rows) == 2
         assert rows[-1]["close"] == 12.0
+
+    def test_etf_option_daily_uses_sse_sina(self, monkeypatch):
+        monkeypatch.setenv("CN_FUTURES_MARKET_DATA_PROVIDER", "akshare")
+        src = CnFuturesDataSource()
+        option_frame = pd.DataFrame(
+            [
+                {"日期": "2026-01-05", "开盘": 0.39, "最高": 0.45, "最低": 0.38, "收盘": 0.44, "成交量": 100},
+                {"日期": "2026-01-06", "开盘": 0.41, "最高": 0.42, "最低": 0.40, "收盘": 0.41, "成交量": 110},
+            ]
+        )
+
+        class FakeAk:
+            @staticmethod
+            def option_sse_daily_sina(symbol="10010971"):
+                assert symbol == "10010971"
+                return option_frame
+
+            @staticmethod
+            def option_commodity_hist_sina(symbol="m2509C2800"):
+                raise AssertionError("commodity option API should not be used for ETF codes")
+
+        monkeypatch.setattr(src, "_import_akshare", lambda: FakeAk)
+        rows = src.get_history("10010971", "1D")
+        assert len(rows) == 2
+        assert rows[-1]["close"] == 0.41

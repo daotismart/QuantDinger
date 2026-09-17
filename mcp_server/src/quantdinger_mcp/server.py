@@ -35,11 +35,15 @@ MCP_TOOL_NAMES = (
     "search_symbols",
     "get_klines",
     "get_price",
+    "search_option_chain",
+    "estimate_option_combo",
+    "get_iv_rank",
     "list_strategies",
     "get_strategy",
     "runtime_overview",
     "stop_strategy",
     "place_quick_order",
+    "place_option_combo",
     "emergency_stop_trading",
     "list_jobs",
     "get_job",
@@ -336,6 +340,66 @@ def get_price(market: str, symbol: str) -> Any:
 
 
 @mcp.tool()
+def search_option_chain(
+    underlying: str,
+    dte_min: int | None = None,
+    dte_max: int | None = None,
+    delta_min: float | None = None,
+    delta_max: float | None = None,
+    side: str = "",
+    target_dte: int | None = None,
+    target_delta: float | None = None,
+    kind: str = "etf",
+    limit: int = 40,
+) -> Any:
+    """Select listed option legs by underlying, DTE, and delta."""
+    params: dict[str, Any] = {
+        "underlying": underlying,
+        "kind": kind or "etf",
+        "limit": max(1, min(200, int(limit))),
+    }
+    if dte_min is not None:
+        params["dte_min"] = int(dte_min)
+    if dte_max is not None:
+        params["dte_max"] = int(dte_max)
+    if delta_min is not None:
+        params["delta_min"] = float(delta_min)
+    if delta_max is not None:
+        params["delta_max"] = float(delta_max)
+    if side:
+        params["side"] = side
+    if target_dte is not None:
+        params["target_dte"] = int(target_dte)
+    if target_delta is not None:
+        params["target_delta"] = float(target_delta)
+    return _get("/api/agent/v1/options/chain", params=params)
+
+
+@mcp.tool()
+def estimate_option_combo(legs: list[dict[str, Any]], underlying: str = "", spot: float | None = None) -> Any:
+    """Estimate combo greeks and conservative SSE/SZSE-style margin."""
+    payload: dict[str, Any] = {"legs": legs}
+    if underlying:
+        payload["underlying"] = underlying
+    if spot is not None:
+        payload["spot"] = float(spot)
+    return _post("/api/agent/v1/options/combo/estimate", json=payload)
+
+
+@mcp.tool()
+def get_iv_rank(symbol: str, lookback: int = 252, window: int = 20) -> Any:
+    """IV Rank / Percentile proxied by realized vol of the underlying."""
+    return _get(
+        "/api/agent/v1/options/iv-rank",
+        params={
+            "symbol": symbol,
+            "lookback": max(20, min(1000, int(lookback))),
+            "window": max(5, min(60, int(window))),
+        },
+    )
+
+
+@mcp.tool()
 def list_strategies(limit: int = 50) -> Any:
     """List the tenant's strategies (compact projection)."""
     limit = max(1, min(200, int(limit)))
@@ -443,6 +507,35 @@ def place_quick_order(
         payload["sl_price"] = float(sl_price)
     headers = _idempotency_headers(idempotency_key)
     return _post("/api/agent/v1/quick-trade/orders", json=payload, headers=headers)
+
+
+@mcp.tool()
+def place_option_combo(
+    legs: list[dict[str, Any]],
+    idempotency_key: str = "",
+    confirm_order: bool = False,
+    underlying: str = "",
+) -> Any:
+    """Place a 2-4 leg option combo. Paper fills are atomic; live combo is not enabled."""
+    if not confirm_order:
+        return {
+            "error": True,
+            "status": 400,
+            "body": {
+                "message": (
+                    "Combo order placement changes account state. Re-call with "
+                    "confirm_order=true after explicit user approval."
+                ),
+            },
+        }
+    payload: dict[str, Any] = {"legs": legs}
+    if underlying:
+        payload["underlying"] = underlying
+    return _post(
+        "/api/agent/v1/options/combo/order",
+        json=payload,
+        headers=_idempotency_headers(idempotency_key),
+    )
 
 
 @mcp.tool()

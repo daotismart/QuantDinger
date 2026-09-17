@@ -216,6 +216,49 @@ class StrategyRuntimeContext:
     def order_target_percent(self, symbol: object, percent: object, **kwargs: Any) -> str | None:
         return self._queue(symbol, "target_percent", percent, kwargs)
 
+    def order_combo(self, legs: object = None, **kwargs: Any) -> dict[str, Any]:
+        """Queue 2-4 option legs together so they fill in the same bar.
+
+        Each leg is ``{symbol, side, qty}`` (or a signed ``qty``). Validation
+        happens before any intent is appended; a later failure rolls back the
+        whole group.
+        """
+        from app.services.options_desk.combo import ComboError, parse_combo_legs
+
+        payload = legs if legs is not None else kwargs.get("legs")
+        try:
+            parsed = parse_combo_legs(payload)
+        except ComboError as exc:
+            raise StrategyV2ContractError(f"strategyV2.apiCallInvalid:order_combo:{exc.code}") from exc
+        combo_id = str(kwargs.get("combo_id") or kwargs.get("client_order_id") or "").strip()
+        if not combo_id:
+            timestamp = (
+                pd.Timestamp(self.current_dt).isoformat()
+                if self.current_dt is not None
+                else "discovery"
+            )
+            combo_id = f"combo:{timestamp}:{self._order_sequence + 1}"
+        combo_id = combo_id[:80]
+        before_orders = len(self._orders)
+        order_ids: list[str | None] = []
+        try:
+            for item in parsed:
+                signed = float(item["qty_signed"])
+                leg_kwargs = dict(kwargs)
+                leg_kwargs.pop("legs", None)
+                leg_kwargs["reason"] = str(kwargs.get("reason") or f"combo:{combo_id}")
+                leg_kwargs["client_order_id"] = f"{combo_id}:L{item['index']}"[:100]
+                order_ids.append(self._queue(item["symbol"], "quantity", signed, leg_kwargs))
+        except Exception:
+            self._orders = self._orders[:before_orders]
+            raise
+        return {
+            "combo_id": combo_id,
+            "order_ids": order_ids,
+            "legs": len(parsed),
+            "atomic": "same_bar",
+        }
+
     def get_order_status(self, client_order_id: object) -> dict[str, Any]:
         reference = str(client_order_id or "").strip()
         return dict(self._order_statuses.get(reference) or {
@@ -886,7 +929,9 @@ class MultiAssetSimulationBroker:
                     ))
                 elif order.kind == "value":
                     remaining_value = math.copysign(
-                        max(0.0, abs(requested_delta) - abs(delta)) * sizing_price,
+                        max(0.0, abs(requested_delta) - abs(delta))
+                        * sizing_price
+                        * self._contract_multiplier(order.symbol),
                         requested_delta,
                     )
                     deferred.append(replace(
@@ -1020,8 +1065,37 @@ class MultiAssetSimulationBroker:
         return self._round_to_lot(feasible, lot_size), reason
 
     @staticmethod
+    def _contract_multiplier(symbol: str) -> float:
+        """Contract multiplier for options notional. Quantity itself stays in lots."""
+        raw = str(symbol or "")
+        market = raw.split(":", 1)[0] if ":" in raw else ""
+        if market not in {"CNIndexOptions", "CNFuturesOptions"}:
+            return 1.0
+        code = raw.split(":", 1)[-1]
+        try:
+            from app.markets.cn_futures import get_future_product
+
+            product = get_future_product(code)
+            return float(product.option_multiplier or product.multiplier or 1.0) or 1.0
+        except Exception:
+            try:
+                from app.markets.cn_options import extract_etf_option_code
+
+                if extract_etf_option_code(code):
+                    return 10000.0
+            except Exception:
+                pass
+            return 1.0
+
+    @staticmethod
     def _lot_size(symbol: str, bar: Mapping[str, Any] | None) -> float:
         explicit = float((bar or {}).get("lot_size") or 0.0)
+        market = str(symbol).split(":", 1)[0] if ":" in str(symbol) else ""
+        if market in {"CNIndexOptions", "CNFuturesOptions"}:
+            # CTP 合约乘数 (100 / 10000) is not a board lot. Options trade in 1-lot units.
+            if explicit >= 100:
+                return 1.0
+            return explicit if explicit > 0 else 1.0
         if explicit > 0:
             return explicit
         return 1e-8 if str(symbol).startswith("Crypto:") else 1.0
@@ -1257,19 +1331,22 @@ class MultiAssetSimulationBroker:
 
     def _target_quantity(self, order: OrderIntent, current: Position, price: float, equity: float) -> float:
         notional_multiplier = self.leverage
+        price_unit = max(float(price), 0.0) * self._contract_multiplier(order.symbol)
         if order.kind == "quantity":
             return current.amount + order.value
+        if price_unit <= 0:
+            raise StrategyV2ContractError("strategyV2.invalidOrderPrice")
         if order.kind == "value":
-            return current.amount + order.value * notional_multiplier / price
+            return current.amount + order.value * notional_multiplier / price_unit
         if order.kind == "target_quantity":
             return order.value
         if order.kind == "target_value":
-            return order.value * notional_multiplier / price
+            return order.value * notional_multiplier / price_unit
         if order.kind == "target_percent":
             target_value = equity * order.value * notional_multiplier
             if target_value > 0:
                 target_value /= (1.0 + self.slippage) * (1.0 + self.commission)
-            return target_value / price
+            return target_value / price_unit
         raise StrategyV2ContractError(f"strategyV2.orderKindUnsupported:{order.kind}")
 
     def _gross_value(self, *, exclude: str = "") -> float:
@@ -1493,6 +1570,9 @@ class StrategyV2BacktestRunner:
         runtime_params = dict(params or {})
         runtime_params.setdefault("commission", self.broker.commission)
         runtime_params.setdefault("slippage", self.broker.slippage)
+        from app.services.param_values import merge_declared_params
+
+        runtime_params = merge_declared_params(code, runtime_params)
         self.context = StrategyRuntimeContext(
             portal=self.portal,
             portfolio=self.broker.portfolio,
@@ -1618,6 +1698,7 @@ class StrategyV2BacktestRunner:
             "order_target": ctx.order_target,
             "order_target_value": ctx.order_target_value,
             "order_target_percent": ctx.order_target_percent,
+            "order_combo": ctx.order_combo,
             "set_default_protection": ctx.set_default_protection,
             "get_position": ctx.get_position,
             "get_positions": ctx.get_positions,
@@ -2000,7 +2081,13 @@ class StrategyV2LiveSession:
         self._universe_resolver = universe_resolver
         self.portal = MultiAssetDataPortal(frames, universe_resolver=universe_resolver)
         self.portfolio = PortfolioState(initial_capital, initial_capital, total_value=initial_capital)
-        self.context = StrategyRuntimeContext(portal=self.portal, portfolio=self.portfolio, params=params)
+        from app.services.param_values import merge_declared_params
+
+        self.context = StrategyRuntimeContext(
+            portal=self.portal,
+            portfolio=self.portfolio,
+            params=merge_declared_params(code, dict(params or {})),
+        )
         self.persist_strategy_state = (
             _truthy(self.program.namespace.get("PERSIST_RUNTIME_STATE"))
             or _truthy(self.context.params.get("persist_runtime_state"))
@@ -2365,6 +2452,7 @@ class StrategyV2LiveSession:
             "order_target": ctx.order_target,
             "order_target_value": ctx.order_target_value,
             "order_target_percent": ctx.order_target_percent,
+            "order_combo": ctx.order_combo,
             "set_default_protection": ctx.set_default_protection,
             "get_position": ctx.get_position,
             "get_positions": ctx.get_positions,

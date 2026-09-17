@@ -124,3 +124,97 @@ Indicator page route: `#/indicator-ide` (legacy `#/indicator-analysis` redirects
 
 Crypto OHLCV from this host currently times out without `PROXY_URL` (Binance/OKX
 unreachable). USStock / CNFutures kline still work.
+
+## CN futures history backfill
+
+Catalog targets: continuous roots (`RB0`, `IF0`, …) across CFFEX / SHFE / DCE /
+CZCE / INE / GFEX (`CNFutures` + `CNIndexFutures`), ~77 symbols.
+
+Script (inside `quantdinger-backend`):
+
+```bash
+python scripts/ingest_cn_futures_history.py --persist \
+  --timeframes 1D,1W \
+  -o /tmp/cn_futures_ingest_daily.json
+
+# Intraday: stitch nearby months; --no-resume refreshes symbols that already
+# have many 1m bars but a stale max(bar_time).
+python scripts/ingest_cn_futures_history.py --persist \
+  --timeframes 1m,5m,15m,30m,1H \
+  --stitch-months 12 --no-resume --watch-intraday \
+  -o /tmp/cn_futures_ingest_minute.json
+```
+
+Host-side run pattern (do **not** recreate `quantdinger-backend` while this
+`docker exec` is live):
+
+```bash
+cd /database/ai/QuantDinger
+nohup docker exec -e QD_PROCESS_ROLE=celery \
+  -e CN_FUTURES_INGEST_PERSIST=1 \
+  -e CN_FUTURES_MARKET_DATA_PROVIDER=akshare \
+  -e CN_FUTURES_MINUTE_STITCH_MONTHS=12 \
+  quantdinger-backend \
+  python scripts/ingest_cn_futures_history.py --persist \
+    --timeframes 1m,5m,15m,30m,1H \
+    --stitch-months 12 --no-resume --watch-intraday \
+    -o /tmp/cn_futures_ingest_minute.json \
+  > ops/cn_futures_ingest_minute_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+```
+
+Status as of 2026-08-20:
+
+- Daily/weekly phase completed (`ok=77`, large upsert into `qd_market_bars`).
+- Minute phase re-started with `--no-resume` after an earlier run was killed by
+  a backend recreate; logs under `ops/cn_futures_ingest_minute_*.log`.
+- Derived TFs (`5m`/`15m`/`30m`/`1H`) come from stitched `1m` when requested
+  together.
+
+Coverage check:
+
+```bash
+docker exec quantdinger-db psql -U quantdinger -d quantdinger -c \
+  "SELECT market, timeframe, COUNT(DISTINCT symbol), MAX(bar_time)
+   FROM qd_market_bars
+   WHERE market IN ('CNFutures','CNIndexFutures')
+   GROUP BY 1,2 ORDER BY 1,2;"
+```
+
+## CN ETF options history ingest
+
+Listed SSE/SZSE ETF option contracts plus the underlying ETF (and benchmark index) daily/weekly bars.
+
+**Primary production path is host crontab**, not Celery Beat. The host keeps `CELERY_CONCURRENCY=1`; a full options ingest would starve other maintenance if it ran on the worker.
+
+Script inside `quantdinger-backend`:
+
+```bash
+python scripts/ingest_cn_etf_options_history.py --persist \
+  --timeframes 1D,1W \
+  -o /tmp/cn_etf_options_ingest.json
+```
+
+Host cron (Asia/Shanghai, weekdays 16:40). Copy `scripts/ops/cron-cn-etf-options-ingest.sh` onto the host and install:
+
+```bash
+chmod +x /database/ai/QuantDinger/scripts/ops/cron-cn-etf-options-ingest.sh
+crontab -l | grep -v cron-cn-etf-options-ingest.sh | crontab -
+(crontab -l 2>/dev/null; echo '40 16 * * 1-5 TZ=Asia/Shanghai /database/ai/QuantDinger/scripts/ops/cron-cn-etf-options-ingest.sh') | crontab -
+```
+
+Logs: `/database/ai/QuantDinger/ops/cn_etf_options_ingest_*.log`. Overlapping runs are skipped via `flock`.
+
+Do **not** recreate `quantdinger-backend` while an ingest `docker exec` is live.
+
+Optional Celery Beat backup (disabled by default): set `CN_ETF_OPTIONS_INGEST_ENABLED=true` on the worker. Keep host cron as the source of truth to avoid double-load.
+
+Coverage check:
+
+```bash
+docker exec quantdinger-db psql -U quantdinger -d quantdinger -c \
+  "SELECT market, timeframe, COUNT(DISTINCT symbol), MAX(bar_time)
+   FROM qd_market_bars
+   WHERE market IN ('CNIndexOptions','CNStock')
+     AND (symbol ~ '^[0-9]{8}$' OR symbol IN ('510050.SH','510300.SH','510500.SH'))
+   GROUP BY 1,2 ORDER BY 1,2;"
+```

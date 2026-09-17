@@ -5,12 +5,10 @@
 # ========================
 # Frontend
 # ========================
-# Frontend source lives in the private QuantDinger-Vue repo. The published
-# `ghcr.io/<owner>/quantdinger-frontend` image is consumed via docker-compose
-# by default. For local source iteration, clone QuantDinger-Vue into the
-# `/QuantDinger-Vue/` slot below and run `docker compose up --build`; that
-# path is referenced by docker-compose.yml's frontend `build.context`
-# directive. Nothing under these paths should ever be committed here.
+# Frontend source lives in https://github.com/daotismart/QuantDinger-Vue.
+# The published GHCR frontend image is still pulled by default Compose.
+# For local source iteration, clone that repo into ./QuantDinger-Vue/
+# and use docker-compose.build.yml. Do not commit Vue source here.
 /quantdinger_vue/
 /QuantDinger-Vue-src/
 /QuantDinger-Vue/

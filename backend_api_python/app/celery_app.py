@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 
 from celery import Celery, Task
+from celery.schedules import crontab
+
 from app.config.redis_urls import celery_broker_url, celery_result_backend_url
 
 
@@ -57,6 +59,7 @@ celery_app.conf.update(
         "quantdinger.tasks.cleanup_runtime_metadata": {"queue": "maintenance"},
         "quantdinger.tasks.market_data_historical_maint": {"queue": "maintenance"},
         "quantdinger.tasks.market_data_retention_maint": {"queue": "maintenance"},
+        "quantdinger.tasks.cn_etf_options_history_ingest": {"queue": "maintenance"},
     },
     beat_schedule={
         "reflection-cycle": {
@@ -86,6 +89,14 @@ celery_app.conf.update(
         "market-data-retention-maint": {
             "task": "quantdinger.tasks.market_data_retention_maint",
             "schedule": max(3600, int(os.getenv("MARKET_DATA_MAINT_RETENTION_INTERVAL_SEC", "86400"))),
+        },
+        "cn-etf-options-history-ingest": {
+            "task": "quantdinger.tasks.cn_etf_options_history_ingest",
+            "schedule": crontab(
+                minute=int(os.getenv("CN_ETF_OPTIONS_INGEST_MINUTE", "40") or 40),
+                hour=int(os.getenv("CN_ETF_OPTIONS_INGEST_HOUR", "16") or 16),
+                day_of_week=os.getenv("CN_ETF_OPTIONS_INGEST_DAYS", "mon-fri"),
+            ),
         },
     },
 )

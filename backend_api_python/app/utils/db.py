@@ -108,6 +108,10 @@ def _resolve_strategy_templates_sql_path() -> Path:
     return Path(__file__).resolve().parent.parent.parent / 'migrations' / 'strategy_v2_templates.sql'
 
 
+def _resolve_advanced_packs_sql_path() -> Path:
+    return Path(__file__).resolve().parent.parent.parent / 'migrations' / 'strategy_v2_advanced_packs_50.sql'
+
+
 def _resolve_us_stock_fundamentals_sql_path() -> Path:
     return Path(__file__).resolve().parent.parent.parent / 'migrations' / 'us_stock_portfolio_fundamentals_seed.sql'
 
@@ -139,6 +143,9 @@ def _apply_init_sql(logger, *, strict: bool = False):
         templates_sql = _resolve_strategy_templates_sql_path()
         if templates_sql.exists():
             sql_parts.append(templates_sql.read_text(encoding='utf-8'))
+        advanced_packs_sql = _resolve_advanced_packs_sql_path()
+        if advanced_packs_sql.exists():
+            sql_parts.append(advanced_packs_sql.read_text(encoding='utf-8'))
         fundamentals_sql = _resolve_us_stock_fundamentals_sql_path()
         if fundamentals_sql.exists():
             sql_parts.append(fundamentals_sql.read_text(encoding='utf-8'))
@@ -155,6 +162,8 @@ def _apply_init_sql(logger, *, strict: bool = False):
             total_size += symbols_sql.stat().st_size
         if templates_sql.exists():
             total_size += templates_sql.stat().st_size
+        if advanced_packs_sql.exists():
+            total_size += advanced_packs_sql.stat().st_size
         if fundamentals_sql.exists():
             total_size += fundamentals_sql.stat().st_size
         logger.info("Applied migrations seed SQL (%d bytes)", total_size)

@@ -87,6 +87,17 @@ N-scope signal-alert endpoints under `/notifications/signal-alerts` reuse the ex
 
 `GET /runtime/overview` returns compact tenant runtime state. Quick orders require T scope and an `Idempotency-Key`. Live execution additionally requires a live-capable token, server live-trading enablement, a credential reference, client-side explicit confirmation, and compliance with the token's `max_order_notional` and `max_daily_notional` caps.
 
+## Options desk
+
+Listed option workflows use `/api/agent/v1/options/*`:
+
+- `GET /options/chain?underlying=510050&dte_min=20&dte_max=45&target_delta=0.25` ranks ETF (or other listed) contracts by DTE and Black-Scholes/Black-76 delta. Missing implied vol falls back to realized vol of the underlying. When CTP omits 到期日, expiry is inferred from the contract month (SSE/SZSE 4th Wednesday) and returned as `expire_source=inferred_name`.
+- `POST /options/combo/estimate` returns combo greeks plus a conservative SSE/SZSE-style margin estimate (`defined_risk_width` for verticals/iron condors, otherwise short-option obligation).
+- `POST /options/combo/order` records 2-4 paper legs atomically (one transaction, all filled or none). Live CTP combo instructions are not wired and return `501`.
+- `GET /options/iv-rank?symbol=510050` returns IV Rank / IV Percentile **proxied by 20-day realized vol**.
+
+Strategy API V2 can submit the same 2-4 legs in one bar with `order_combo(legs)`.
+
 The emergency stop at `/quick-trade/kill-switch` requires `confirm=true`. It attempts to cancel open agent-originated live orders, cancels open paper orders, revokes all active T-scope tokens for the tenant, and returns any exchange cancellation failures for mandatory human review.
 
 Rate limiting is shared through Redis across API workers and enforces both token and tenant quotas. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; `429` responses also include `Retry-After`.

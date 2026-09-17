@@ -39,6 +39,8 @@ class SymbolMasterRow:
     instrument_id: str = ""
     settle_currency: str = ""
     asset_class: str = ""
+    is_hot: bool = False
+    sort_order: int = 0
 
 
 STATIC_MARKET_ROWS = [
@@ -609,6 +611,64 @@ def fetch_cn_index_options_symbols() -> List[SymbolMasterRow]:
     return _unique_rows(rows)
 
 
+def fetch_etf_option_underlying_symbols() -> List[SymbolMasterRow]:
+    """Return CNStock rows for ETFs that back listed SSE/SZSE options."""
+    from app.services.cn_options_chain import listed_etf_underlying_catalog
+
+    rows: List[SymbolMasterRow] = []
+    try:
+        for item in listed_etf_underlying_catalog():
+            symbol = str(item.get("symbol") or "").strip()
+            name = str(item.get("name") or symbol).strip()
+            if not symbol or not name:
+                continue
+            rows.append(
+                SymbolMasterRow(
+                    market="CNStock",
+                    symbol=symbol[:50],
+                    name=name[:255],
+                    exchange=str(item.get("exchange") or "CN"),
+                    currency="CNY",
+                    market_type="spot",
+                    asset_class="etf",
+                    is_hot=True,
+                    sort_order=100,
+                )
+            )
+    except Exception as exc:
+        logger.warning("ETF option underlying catalog unavailable: %s", exc)
+    return _unique_rows(rows)
+
+
+def fetch_etf_option_index_symbols() -> List[SymbolMasterRow]:
+    """Return CNStock rows for spot indices benchmarked by ETF option underlyings."""
+    from app.services.cn_options_chain import listed_etf_index_catalog
+
+    rows: List[SymbolMasterRow] = []
+    try:
+        for item in listed_etf_index_catalog():
+            symbol = str(item.get("symbol") or "").strip()
+            name = str(item.get("name") or symbol).strip()
+            if not symbol or not name:
+                continue
+            rows.append(
+                SymbolMasterRow(
+                    market="CNStock",
+                    symbol=symbol[:50],
+                    name=name[:255],
+                    exchange=str(item.get("exchange") or "CN"),
+                    currency="CNY",
+                    market_type="index",
+                    asset_class="index",
+                    is_hot=True,
+                    sort_order=110,
+                )
+            )
+    except Exception as exc:
+        logger.warning("ETF option index catalog unavailable: %s", exc)
+    return _unique_rows(rows)
+
+
 def fetch_moex_symbols() -> List[SymbolMasterRow]:
     """Fetch MOEX TQBR shares, with a static blue-chip fallback."""
     rows = _static_rows("MOEX")
@@ -682,18 +742,21 @@ def upsert_symbol_master(rows: Sequence[SymbolMasterRow]) -> int:
                 INSERT INTO qd_market_symbols
                     (market, symbol, name, exchange, currency, market_type, instrument_id, settle_currency, asset_class,
                      is_active, is_hot, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT (market, symbol, exchange, market_type, instrument_id) DO UPDATE
                   SET name = EXCLUDED.name,
                       exchange = COALESCE(NULLIF(EXCLUDED.exchange, ''), qd_market_symbols.exchange),
                       currency = COALESCE(NULLIF(EXCLUDED.currency, ''), qd_market_symbols.currency),
                       settle_currency = COALESCE(NULLIF(EXCLUDED.settle_currency, ''), qd_market_symbols.settle_currency),
                       asset_class = EXCLUDED.asset_class,
-                      is_active = 1
+                      is_active = 1,
+                      is_hot = CASE WHEN EXCLUDED.is_hot = 1 THEN 1 ELSE qd_market_symbols.is_hot END,
+                      sort_order = CASE WHEN EXCLUDED.sort_order > 0 THEN EXCLUDED.sort_order ELSE qd_market_symbols.sort_order END
                 """,
                 (
                     row.market, row.symbol, row.name, row.exchange, row.currency,
                     row.market_type, row.instrument_id, row.settle_currency, asset_class,
+                    1 if row.is_hot else 0, int(row.sort_order or 0),
                 ),
             )
             count += 1

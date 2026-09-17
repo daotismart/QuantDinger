@@ -135,6 +135,224 @@ def upsert_watch_specs(specs: Sequence[WatchSpec]) -> int:
     return written
 
 
+def query_kline_bars(
+    market: str,
+    symbol: str,
+    timeframe: str,
+    limit: int,
+    *,
+    before_time: Optional[int] = None,
+    after_time: Optional[int] = None,
+    exchange_id: str = "",
+    market_type: str = "",
+) -> List[Dict[str, Any]]:
+    """Return ascending OHLCV rows compatible with DataSourceFactory.get_kline."""
+    clauses = [
+        "market = ?",
+        "symbol = ?",
+        "timeframe = ?",
+        "exchange_id = ?",
+        "market_type = ?",
+    ]
+    params: List[Any] = [
+        market,
+        symbol,
+        timeframe,
+        exchange_id or "",
+        market_type or "",
+    ]
+    if after_time is not None:
+        clauses.append("bar_time >= ?")
+        params.append(int(after_time))
+    if before_time is not None:
+        clauses.append("bar_time < ?")
+        params.append(int(before_time))
+    params.append(max(1, int(limit)))
+    sql = f"""
+        SELECT bar_time AS time, open, high, low, close, volume, source, quality_flags
+          FROM qd_market_bars
+         WHERE {' AND '.join(clauses)}
+         ORDER BY bar_time DESC
+         LIMIT ?
+    """
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall() or []
+        except Exception as exc:
+            logger.debug("query_kline_bars failed: %s", exc)
+            return []
+        finally:
+            cur.close()
+    out = []
+    for row in reversed(rows):
+        out.append(
+            {
+                "time": int(row["time"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row["volume"] or 0),
+                "source": str(row.get("source") or ""),
+                "quality_flags": row.get("quality_flags") or [],
+            }
+        )
+    return out
+
+
+def resolve_bar_scope(
+    market: str,
+    symbol: str,
+    timeframe: str,
+) -> tuple[str, str]:
+    """Pick the most recently updated (exchange_id, market_type) for a series."""
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT exchange_id, market_type, COUNT(*) AS n, MAX(bar_time) AS max_time
+                  FROM qd_market_bars
+                 WHERE market = ? AND symbol = ? AND timeframe = ?
+                 GROUP BY exchange_id, market_type
+                 ORDER BY max_time DESC NULLS LAST, n DESC
+                 LIMIT 1
+                """,
+                (market, symbol, timeframe),
+            )
+            row = cur.fetchone()
+            if not row:
+                return "", ""
+            return str(row["exchange_id"] or ""), str(row["market_type"] or "")
+        except Exception as exc:
+            logger.debug("resolve_bar_scope failed: %s", exc)
+            return "", ""
+        finally:
+            cur.close()
+
+
+def total_bar_count() -> int:
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute("SELECT COUNT(*) AS n FROM qd_market_bars")
+            row = cur.fetchone()
+            return int(row["n"] if row is not None else 0)
+        except Exception as exc:
+            logger.debug("total_bar_count failed: %s", exc)
+            return 0
+        finally:
+            cur.close()
+
+
+def bar_inventory_summary(*, limit: int = 50) -> List[Dict[str, Any]]:
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT market, symbol, timeframe, exchange_id, market_type,
+                       COUNT(*) AS bar_count,
+                       MIN(bar_time) AS min_time,
+                       MAX(bar_time) AS max_time,
+                       MAX(updated_at) AS last_updated
+                  FROM qd_market_bars
+                 GROUP BY market, symbol, timeframe, exchange_id, market_type
+                 ORDER BY bar_count DESC
+                 LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            )
+            rows = cur.fetchall() or []
+        except Exception as exc:
+            logger.debug("bar_inventory_summary failed: %s", exc)
+            return []
+        finally:
+            cur.close()
+    out = []
+    for row in rows:
+        item = dict(row)
+        for key in ("min_time", "max_time"):
+            if item.get(key) is not None:
+                item[key] = int(item[key])
+        last = item.get("last_updated")
+        if hasattr(last, "isoformat"):
+            item["last_updated"] = last.isoformat()
+        out.append(item)
+    return out
+
+
+def quality_flag_summary(*, limit: int = 100) -> List[Dict[str, Any]]:
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT market, symbol, timeframe, source,
+                       COUNT(*) AS bar_count,
+                       quality_flags
+                  FROM qd_market_bars
+                 GROUP BY market, symbol, timeframe, source, quality_flags
+                 ORDER BY bar_count DESC
+                 LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            )
+            rows = cur.fetchall() or []
+        except Exception as exc:
+            logger.debug("quality_flag_summary failed: %s", exc)
+            return []
+        finally:
+            cur.close()
+    return [dict(row) for row in rows]
+
+
+def list_watch_rows(*, include_disabled: bool = True) -> List[Dict[str, Any]]:
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            sql = """
+                SELECT w.id, w.market, w.symbol, w.timeframe, w.exchange_id, w.market_type,
+                       w.enabled, w.lookback_bars, w.notes, w.updated_at,
+                       COALESCE(b.bar_count, 0) AS bar_count,
+                       b.max_time
+                  FROM qd_market_data_watch w
+             LEFT JOIN (
+                    SELECT market, symbol, timeframe, exchange_id, market_type,
+                           COUNT(*) AS bar_count, MAX(bar_time) AS max_time
+                      FROM qd_market_bars
+                     GROUP BY market, symbol, timeframe, exchange_id, market_type
+                   ) b
+                    ON b.market = w.market
+                   AND b.symbol = w.symbol
+                   AND b.timeframe = w.timeframe
+                   AND b.exchange_id = w.exchange_id
+                   AND b.market_type = w.market_type
+            """
+            if not include_disabled:
+                sql += " WHERE w.enabled = TRUE"
+            sql += " ORDER BY w.id"
+            cur.execute(sql)
+            rows = cur.fetchall() or []
+        except Exception as exc:
+            logger.debug("list_watch_rows failed: %s", exc)
+            return []
+        finally:
+            cur.close()
+    out = []
+    for row in rows:
+        item = dict(row)
+        updated = item.get("updated_at")
+        if hasattr(updated, "isoformat"):
+            item["updated_at"] = updated.isoformat()
+        if item.get("max_time") is not None:
+            item["max_time"] = int(item["max_time"])
+        out.append(item)
+    return out
+
+
 def load_bars(
     spec: WatchSpec,
     *,

@@ -255,6 +255,7 @@ class DataSourceFactory:
         after_time: Optional[int] = None,
         exchange_id: Optional[str] = None,
         market_type: Optional[str] = None,
+        upstream_only: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         获取K线数据的便捷方法
@@ -268,20 +269,52 @@ class DataSourceFactory:
             after_time: 可选，Unix 秒，K 线 time 需 >= 此值（回测左边界）
             exchange_id: 加密货币运行中策略 — 与策略绑定的交易所 (binance/okx/...)
             market_type: 加密货币运行中策略 — spot 或 swap
+            upstream_only: 维护/回填任务专用，跳过本地 qd_market_bars 读取
             
         Returns:
             K线数据列表
         """
         m = cls.normalize_market(market or "")
+        local_rows: List[Dict[str, Any]] = []
+        local_sufficient = False
+        if not upstream_only:
+            try:
+                from app.data_sources.local_bar import try_local_kline
+
+                local_rows, local_sufficient = try_local_kline(
+                    m,
+                    symbol,
+                    timeframe,
+                    limit,
+                    before_time=before_time,
+                    after_time=after_time,
+                    exchange_id=exchange_id,
+                    market_type=market_type,
+                )
+                if local_sufficient and local_rows:
+                    return local_rows
+            except Exception as exc:
+                cls._log_limited(
+                    "warning",
+                    f"local-bar:{m}:{symbol}:{timeframe}",
+                    "Local bar read failed for %s:%s - %s",
+                    m,
+                    symbol,
+                    str(exc),
+                )
         try:
             assert_fd_available(f"market-data kline {m}:{symbol}")
             source = cls._resolve_source(m, exchange_id=exchange_id, market_type=market_type)
             klines = source.get_kline(symbol, timeframe, limit, before_time, after_time)
-            
             klines.sort(key=lambda x: x['time'])
-            
+            if not upstream_only and local_rows:
+                from app.data_sources.local_bar import merge_kline_results
+
+                return merge_kline_results(local_rows, klines, limit=limit)
             return klines
         except ResourceExhaustedError as e:
+            if local_rows:
+                return local_rows
             cls._log_limited(
                 "error",
                 f"fd-cooldown:kline:{m}:{symbol}",
@@ -292,6 +325,8 @@ class DataSourceFactory:
             )
             return []
         except Exception as e:
+            if local_rows:
+                return local_rows
             if is_fd_exhaustion(e):
                 mark_fd_exhausted(e)
             cls._log_limited(
