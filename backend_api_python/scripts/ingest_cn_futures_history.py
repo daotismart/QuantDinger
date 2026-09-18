@@ -5,6 +5,7 @@ Examples:
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --dry-run
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1D,1W
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --timeframes 1m,5m,15m,30m,1H --stitch-months 12
+  PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --derive-only --timeframes 3m,5m,15m,30m,1H,4H
   PYTHONPATH=. python scripts/ingest_cn_futures_history.py --persist --symbols RB0,IF0,AU0
 
 Production (inside backend container):
@@ -46,6 +47,9 @@ def main() -> int:
     parser.add_argument("--no-watch", action="store_true", help="Do not register daily/weekly watchlist rows")
     parser.add_argument("--watch-intraday", action="store_true", help="Also register 1m/5m/... watchlist rows")
     parser.add_argument("--no-resume", action="store_true", help="Re-fetch symbols that already have minute bars")
+    parser.add_argument("--derive-only", action="store_true", help="Rebuild 3m/5m/15m/30m/1H/4H from stored 1m bars (no Sina fetch)")
+    parser.add_argument("--resume-min-bars", type=int, default=int(os.getenv("CN_FUTURES_INGEST_RESUME_MIN_BARS", "200") or 200),
+                        help="Skip 1m fetch when at least this many 1m bars already exist")
     parser.add_argument("-o", "--output", default="", help="Write JSON summary to this path")
     args, _unknown = parser.parse_known_args()
 
@@ -66,6 +70,8 @@ def main() -> int:
         watch_intraday=bool(args.watch_intraday),
         stitch_months=max(1, int(args.stitch_months)),
         resume=not bool(args.no_resume),
+        resume_min_bars=max(1, int(args.resume_min_bars)),
+        derive_only=bool(args.derive_only),
     )
     text = json.dumps(summary, ensure_ascii=False, indent=2)
     if args.output:

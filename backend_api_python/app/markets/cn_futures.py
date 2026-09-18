@@ -149,7 +149,7 @@ _PRODUCTS: Tuple[CnFutureProduct, ...] = (
     _p("AU", "Gold", "SHFE", 1000, 0.02, margin=0.08, has_options=True, night=True, base_price=560),
     _p("AG", "Silver", "SHFE", 15, 1, margin=0.10, has_options=True, night=True, base_price=7500),
     _p("RB", "Rebar", "SHFE", 10, 1, margin=0.09, has_options=True, night=True, base_price=3400),
-    _p("HC", "Hot-rolled Coil", "SHFE", 10, 1, margin=0.09, night=True, base_price=3400),
+    _p("HC", "Hot-rolled Coil", "SHFE", 10, 1, margin=0.09, has_options=True, night=True, base_price=3400),
     _p("SS", "Stainless Steel", "SHFE", 5, 5, margin=0.10, night=True, base_price=14000),
     _p("BU", "Bitumen", "SHFE", 10, 1, margin=0.10, has_options=True, night=True, base_price=3600),
     _p("RU", "Natural Rubber", "SHFE", 10, 5, margin=0.10, has_options=True, night=True, base_price=15000),
@@ -204,7 +204,7 @@ _PRODUCTS: Tuple[CnFutureProduct, ...] = (
     # ----- INE -----
     _p("SC", "Crude Oil", "INE", 1000, 0.1, margin=0.10, has_options=True, night=True, base_price=580),
     _p("NR", "TSR20 Rubber", "INE", 10, 5, margin=0.09, has_options=True, night=True, base_price=13000),
-    _p("LU", "Low-sulfur Fuel Oil", "INE", 10, 1, margin=0.10, night=True, base_price=3800),
+    _p("LU", "Low-sulfur Fuel Oil", "INE", 10, 1, margin=0.10, has_options=True, night=True, base_price=3800),
     _p("BC", "Bonded Copper", "INE", 5, 10, margin=0.10, has_options=True, night=True, base_price=75000),
     _p("EC", "Container Shipping", "INE", 50, 0.1, margin=0.14, base_price=1500),
     # ----- GFEX -----
