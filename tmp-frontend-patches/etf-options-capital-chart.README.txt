@@ -1,0 +1,6 @@
+QuantDinger-Vue push is denied from this environment.
+Apply on QuantDinger-Vue branch cursor/etf-options-capital-chart-c137:
+
+  git apply ../tmp-frontend-patches/etf-options-capital-chart.patch
+
+Companion backend branch: cursor/etf-options-capital-chart-c137

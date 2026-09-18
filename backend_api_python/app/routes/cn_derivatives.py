@@ -128,7 +128,7 @@ def chart_history():
         return jsonify({"code": 0, "msg": "root is required", "data": None}), 400
     if not chart_key:
         return jsonify({"code": 0, "msg": "chart is required", "data": None}), 400
-    try:
+        try:
         days_i = int(days)
     except Exception:
         days_i = 30
@@ -137,6 +137,18 @@ def chart_history():
     except Exception:
         bars_i = None
     try:
+        if chart_key in {"options.ivRank", "options.iv_rank"}:
+            from app.services.cn_derivatives_iv_rank import build_options_iv_rank_history
+
+            data = build_options_iv_rank_history(
+                root,
+                interval=interval,
+                bars=bars_i if bars_i is not None else 60,
+                month=month,
+                scope="etf" if _is_etf_scope() else "futures",
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
+
         # ETF GEX playback: minute/day/week slices from ClickHouse option chains
         if _is_etf_scope() and chart_key in {"options.gex", "options.gexDist", "gex"}:
             from app.services.gex_history import build_gex_playback_history
@@ -147,6 +159,40 @@ def chart_history():
                 bars=bars_i if bars_i is not None else 60,
             )
             return jsonify({"code": 1, "msg": "ok", "data": data})
+
+        # ETF options capital history (premium/margin/value ratios)
+        if _is_etf_scope() and chart_key in {
+            "options.capital",
+            "etf.optionsCapital",
+            "options.premiumMargin",
+        }:
+            from app.services.cn_derivatives_etf_capital import build_etf_options_capital_history
+
+            data = build_etf_options_capital_history(
+                root,
+                chart_key=chart_key,
+                interval=interval,
+                bars=bars_i if bars_i is not None else 60,
+                month=month,
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
+
+        # ETF options surface history (IV smile / OI / TV yield / Max Pain)
+        if _is_etf_scope():
+            from app.services.gex_history import (
+                build_etf_options_surface_history,
+                is_etf_surface_history_chart,
+            )
+
+            if is_etf_surface_history_chart(chart_key):
+                data = build_etf_options_surface_history(
+                    root,
+                    chart_key=chart_key,
+                    interval=interval,
+                    bars=bars_i if bars_i is not None else 60,
+                    month=month,
+                )
+                return jsonify({"code": 1, "msg": "ok", "data": data})
 
         # ETF fund metrics history (price/volume/amount/scale/fee/profit)
         if _is_etf_scope() and chart_key in {

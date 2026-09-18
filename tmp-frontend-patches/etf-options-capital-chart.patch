@@ -1,0 +1,212 @@
+diff --git a/src/locales/lang/en-US.js b/src/locales/lang/en-US.js
+index f052faa..ac65374 100644
+--- a/src/locales/lang/en-US.js
++++ b/src/locales/lang/en-US.js
+@@ -7322,6 +7322,14 @@ export default {
+   "marketComposite.futures.options.currentPrice": "Current price",
+   "marketComposite.futures.options.gexDist": "GEX distribution (GEX / price / flip / walls / pin)",
+   "marketComposite.futures.options.timeValueYield": "Option time-value annualized yield",
++  "marketComposite.futures.options.capitalCurve": "Premium / margin & value ratios",
++  "marketComposite.futures.options.premiumTotal": "Total premium",
++  "marketComposite.futures.options.marginTotal": "Total margin",
++  "marketComposite.futures.options.premiumMarginRatio": "Premium / margin",
++  "marketComposite.futures.options.timeValuePremiumRatio": "Time value / premium",
++  "marketComposite.futures.options.intrinsicPremiumRatio": "Intrinsic / premium",
++  "marketComposite.futures.options.capitalAmountAxis": "Amount",
++  "marketComposite.futures.options.capitalRatioAxis": "Ratio",
+   "marketComposite.futures.options.strike": "Strike",
+   "marketComposite.futures.options.tvYieldAxis": "Time-value yield",
+   "marketComposite.futures.options.ivSmile": "IV smile",
+diff --git a/src/locales/lang/zh-CN.js b/src/locales/lang/zh-CN.js
+index 4f04e20..e40f116 100644
+--- a/src/locales/lang/zh-CN.js
++++ b/src/locales/lang/zh-CN.js
+@@ -7623,6 +7623,14 @@ export default {
+   "marketComposite.futures.options.currentPrice": "当前价",
+   "marketComposite.futures.options.gexDist": "GEX 分布（GEX 值 / Price / Flip / Walls / Pin）",
+   "marketComposite.futures.options.timeValueYield": "期权时间价值年化收益率",
++  "marketComposite.futures.options.capitalCurve": "权利金 / 保证金及价值比率",
++  "marketComposite.futures.options.premiumTotal": "权利金总额",
++  "marketComposite.futures.options.marginTotal": "保证金总额",
++  "marketComposite.futures.options.premiumMarginRatio": "权利金/保证金",
++  "marketComposite.futures.options.timeValuePremiumRatio": "时间价值/权利金",
++  "marketComposite.futures.options.intrinsicPremiumRatio": "内在价值/权利金",
++  "marketComposite.futures.options.capitalAmountAxis": "金额",
++  "marketComposite.futures.options.capitalRatioAxis": "比率",
+   "marketComposite.futures.options.strike": "行权价",
+   "marketComposite.futures.options.tvYieldAxis": "时间价值年化收益率",
+   "marketComposite.futures.options.ivSmile": "IV Smile 结构",
+diff --git a/src/views/market-composite-analysis/etf-derivatives.vue b/src/views/market-composite-analysis/etf-derivatives.vue
+index 8719ee4..c7546b9 100644
+--- a/src/views/market-composite-analysis/etf-derivatives.vue
++++ b/src/views/market-composite-analysis/etf-derivatives.vue
+@@ -232,6 +232,13 @@
+               </div>
+               <div ref="tvYieldChart" class="fda-chart fda-chart-tall" />
+             </div>
++            <div class="fda-chart-box fda-chart-box-wide">
++              <div class="fda-chart-head">
++                <h3>{{ $t('marketComposite.futures.options.capitalCurve') }}</h3>
++                <a-button size="small" @click="openHistory('options.capital')">{{ $t('marketComposite.futures.history') }}</a-button>
++              </div>
++              <div ref="capitalCurveChart" class="fda-chart fda-chart-tall" />
++            </div>
+             <div class="fda-chart-box">
+               <div class="fda-chart-head">
+                 <h3>{{ $t('marketComposite.futures.options.ivSmile') }}</h3>
+@@ -260,7 +267,7 @@
+       @cancel="closeHistory"
+     >
+       <div class="fda-history-toolbar">
+-        <template v-if="isGexHistory">
++        <template v-if="isPlaybackHistory">
+           <span>回看条数</span>
+           <a-radio-group v-model="historyBars" button-style="solid" size="small" @change="loadHistory">
+             <a-radio-button :value="30">30</a-radio-button>
+@@ -382,6 +389,12 @@ export default {
+     isGexHistory () {
+       return this.historyKey === 'options.gex'
+     },
++    isCapitalHistory () {
++      return this.historyKey === 'options.capital'
++    },
++    isPlaybackHistory () {
++      return this.isGexHistory || this.isCapitalHistory
++    },
+     isEtfMetricsHistory () {
+       return String(this.historyKey || '').startsWith('etf.')
+     },
+@@ -1198,6 +1211,11 @@ export default {
+         }, true)
+       }
+ 
++      const capital = this.ensureChart('capitalCurveChart')
++      if (capital) {
++        this.renderCapitalCurveChart(capital, this.optionsData.capital_curve)
++      }
++
+       const pain = this.ensureChart('painChart')
+       if (pain) {
+         const series = []
+@@ -1215,6 +1233,91 @@ export default {
+         }, true)
+       }
+     },
++    renderCapitalCurveChart (chart, capitalCurve, xKey = 'month') {
++      if (!chart) return
++      const points = (capitalCurve && capitalCurve.points) || []
++      const labels = points.map(p => p[xKey] || p.date || p.ts || '')
++      const splitLine = { lineStyle: { color: this.chartGrid, type: 'dashed' } }
++      chart.setOption({
++        ...this.baseChartOption(),
++        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
++        grid: { left: 56, right: 56, top: 48, bottom: 40 },
++        tooltip: {
++          trigger: 'axis',
++          confine: true,
++          formatter: (params) => {
++            const rows = Array.isArray(params) ? params : [params]
++            if (!rows.length) return ''
++            const head = rows[0].axisValueLabel || rows[0].name || ''
++            const lines = rows.map((row) => {
++              const val = row.data
++              const isRatio = String(row.seriesName || '').includes('/')
++              const text = val == null || val === ''
++                ? '-'
++                : (isRatio ? `${(Number(val) * 100).toFixed(2)}%` : this.fmtCompact(val))
++              return `${row.marker}${row.seriesName}: ${text}`
++            })
++            return [head].concat(lines).join('<br/>')
++          }
++        },
++        xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
++        yAxis: [
++          {
++            type: 'value',
++            name: this.$t('marketComposite.futures.options.capitalAmountAxis'),
++            scale: true,
++            splitLine
++          },
++          {
++            type: 'value',
++            name: this.$t('marketComposite.futures.options.capitalRatioAxis'),
++            scale: true,
++            axisLabel: { formatter: v => `${(Number(v) * 100).toFixed(0)}%` },
++            splitLine: { show: false }
++          }
++        ],
++        series: [
++          {
++            name: this.$t('marketComposite.futures.options.premiumTotal'),
++            type: 'line',
++            showSymbol: false,
++            data: points.map(p => p.premium_total),
++            itemStyle: { color: '#1677ff' }
++          },
++          {
++            name: this.$t('marketComposite.futures.options.marginTotal'),
++            type: 'line',
++            showSymbol: false,
++            data: points.map(p => p.margin_total),
++            itemStyle: { color: '#fa8c16' }
++          },
++          {
++            name: this.$t('marketComposite.futures.options.premiumMarginRatio'),
++            type: 'line',
++            yAxisIndex: 1,
++            showSymbol: false,
++            data: points.map(p => p.premium_margin_ratio),
++            itemStyle: { color: '#722ed1' }
++          },
++          {
++            name: this.$t('marketComposite.futures.options.timeValuePremiumRatio'),
++            type: 'line',
++            yAxisIndex: 1,
++            showSymbol: false,
++            data: points.map(p => p.time_value_premium_ratio),
++            itemStyle: { color: '#13c2c2' }
++          },
++          {
++            name: this.$t('marketComposite.futures.options.intrinsicPremiumRatio'),
++            type: 'line',
++            yAxisIndex: 1,
++            showSymbol: false,
++            data: points.map(p => p.intrinsic_premium_ratio),
++            itemStyle: { color: '#eb2f96' }
++          }
++        ]
++      }, true)
++    },
+     openHistory (chartKey) {
+       this.historyKey = chartKey
+       const titleMap = {
+@@ -1224,7 +1327,8 @@ export default {
+         'etf.amount': this.$t('marketComposite.etf.metrics.volumeAmountTrend'),
+         'etf.scale': this.$t('marketComposite.etf.metrics.scaleTrend'),
+         'etf.fee': this.$t('marketComposite.etf.metrics.feeProfitTrend'),
+-        'etf.profit': this.$t('marketComposite.etf.metrics.feeProfitTrend')
++        'etf.profit': this.$t('marketComposite.etf.metrics.feeProfitTrend'),
++        'options.capital': this.$t('marketComposite.futures.options.capitalCurve')
+       }
+       this.historyTitle = `${this.$t('marketComposite.futures.history')} · ${titleMap[chartKey] || chartKey}`
+       this.historySlices = []
+@@ -1261,7 +1365,7 @@ export default {
+           month: this.selectedMonth || 'all',
+           ...this.etfScopeParams()
+         }
+-        if (this.isGexHistory) {
++        if (this.isPlaybackHistory) {
+           params.bars = this.historyBars
+           params.interval = this.historyInterval
+           params.frequency = this.historyInterval
+@@ -1551,6 +1655,10 @@ export default {
+           this.renderEtfHistoryModal(chart, points)
+           return
+         }
++        if (this.isCapitalHistory) {
++          this.renderCapitalCurveChart(chart, { points }, 'date')
++          return
++        }
+         chart.setOption({
+           ...this.baseChartOption(),
+           legend: { top: 0, textStyle: { color: this.chartText } },

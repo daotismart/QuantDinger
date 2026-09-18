@@ -1,0 +1,6 @@
+"marketComposite.futures.options.gexDist": "净GEX 分布（净GEX / Price / Flip / Walls / Pin）",
+"marketComposite.futures.options.gexCallPutDist": "GEX分布（Call / Put 月份堆积）",
+"marketComposite.futures.options.ivRank": "IV Rank",
+"marketComposite.futures.options.ivPercentile": "IV Percentile",
+"marketComposite.futures.options.atmIv": "近月 ATM IV",
+"marketComposite.futures.options.hvProxy": "20日已实现波动"
