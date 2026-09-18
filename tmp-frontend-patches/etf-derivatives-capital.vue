@@ -1104,9 +1104,7 @@ export default {
       return {
         strikes,
         series: [
-          { name: 'Call GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: (points || []).map(p => p.call_gex), itemStyle: { color: '#52c41a', opacity: 0.55 } },
-          { name: 'Put GEX', type: 'bar', stack: 'gex', barMaxWidth: 18, data: (points || []).map(p => p.put_gex), itemStyle: { color: '#ff4d4f', opacity: 0.55 } },
-          { name: 'Net GEX', type: 'line', data: (points || []).map(p => p.net_gex), itemStyle: { color: '#fa8c16' }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
+          { name: 'Net GEX', type: 'bar', barMaxWidth: 18, data: (points || []).map(p => p.net_gex), itemStyle: { color: '#fa8c16', opacity: 0.78 }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
         ]
       }
     },
