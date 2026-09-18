@@ -23,7 +23,48 @@ def _get_db_connection():
         return None
 
 
-def get_hot_symbols(market: str, limit: int = 10) -> List[Dict]:
+def _normalize_asset_class(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def _row_to_dict(row: dict) -> Dict:
+    exchange = str(row.get("exchange") or "").strip()
+    currency = str(row.get("currency") or row.get("settle_currency") or "").strip().upper()
+    return {
+        "market": row["market"],
+        "symbol": row["symbol"],
+        "name": row.get("name") or "",
+        "exchange": exchange,
+        "exchange_id": exchange,
+        "market_type": str(row.get("market_type") or "spot").strip(),
+        "instrument_id": str(row.get("instrument_id") or "").strip(),
+        "settle_currency": currency,
+        "asset_class": _normalize_asset_class(row.get("asset_class")),
+    }
+
+
+def _asset_class_clause(asset_class: str, etf_only: bool) -> tuple[str, list]:
+    """Return SQL fragment and params for optional catalog filters."""
+    clauses: list[str] = []
+    params: list = []
+    asset_class = _normalize_asset_class(asset_class)
+    if asset_class:
+        clauses.append("asset_class = ?")
+        params.append(asset_class)
+    if etf_only:
+        clauses.append("symbol ~ '^[0-9]{8}$'")
+    if not clauses:
+        return "", []
+    return " AND " + " AND ".join(clauses), params
+
+
+def get_hot_symbols(
+    market: str,
+    limit: int = 10,
+    *,
+    asset_class: str = "",
+    etf_only: bool = False,
+) -> List[Dict]:
     """
     Get hot symbols for a market.
     
@@ -38,27 +79,39 @@ def get_hot_symbols(market: str, limit: int = 10) -> List[Dict]:
     if not market:
         return []
     
+    filter_sql, filter_params = _asset_class_clause(asset_class, etf_only)
+
     try:
         with _get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                """
-                SELECT market, symbol, name FROM qd_market_symbols
+                f"""
+                SELECT market, symbol, name, exchange, market_type, instrument_id,
+                       settle_currency, currency, asset_class
+                FROM qd_market_symbols
                 WHERE market = ? AND is_active = 1 AND is_hot = 1
+                {filter_sql}
                 ORDER BY sort_order DESC
                 LIMIT ?
                 """,
-                (market, max(limit, 0))
+                (market, *filter_params, max(limit, 0)),
             )
             rows = cur.fetchall() or []
             cur.close()
-            return [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            return [_row_to_dict(r) for r in rows]
     except Exception as e:
         logger.debug(f"get_hot_symbols from DB failed: {e}")
         return []
 
 
-def search_symbols(market: str, keyword: str, limit: int = 20) -> List[Dict]:
+def search_symbols(
+    market: str,
+    keyword: str,
+    limit: int = 20,
+    *,
+    asset_class: str = "",
+    etf_only: bool = False,
+) -> List[Dict]:
     """
     Search symbols by keyword.
     
@@ -77,30 +130,34 @@ def search_symbols(market: str, keyword: str, limit: int = 20) -> List[Dict]:
     
     pattern = f'%{kw}%'
     prefix_pattern = f'{kw}%'
-    
+    filter_sql, filter_params = _asset_class_clause(asset_class, etf_only)
+
     try:
         with _get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                """
-                SELECT market, symbol, name FROM qd_market_symbols
+                f"""
+                SELECT market, symbol, name, exchange, market_type, instrument_id,
+                       settle_currency, currency, asset_class
+                FROM qd_market_symbols
                 WHERE market = ? AND is_active = 1 AND UPPER(symbol) = UPPER(?)
+                {filter_sql}
                 LIMIT ?
                 """,
-                (market, kw, max(limit, 0))
+                (market, kw, *filter_params, max(limit, 0)),
             )
             exact_rows = cur.fetchall() or []
             if exact_rows:
                 cur.close()
-                return [
-                    {'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''}
-                    for r in exact_rows
-                ]
+                return [_row_to_dict(r) for r in exact_rows]
 
             cur.execute(
-                """
-                SELECT market, symbol, name FROM qd_market_symbols s
+                f"""
+                SELECT market, symbol, name, exchange, market_type, instrument_id,
+                       settle_currency, currency, asset_class
+                FROM qd_market_symbols s
                 WHERE market = ? AND is_active = 1
+                {filter_sql}
                   AND (
                     UPPER(symbol) LIKE UPPER(?)
                     OR UPPER(name) LIKE UPPER(?)
@@ -141,6 +198,7 @@ def search_symbols(market: str, keyword: str, limit: int = 20) -> List[Dict]:
                 """,
                 (
                     market,
+                    *filter_params,
                     pattern,
                     pattern,
                     pattern,
@@ -151,26 +209,37 @@ def search_symbols(market: str, keyword: str, limit: int = 20) -> List[Dict]:
                     kw,
                     prefix_pattern,
                     max(limit, 0),
-                )
+                ),
             )
             rows = cur.fetchall() or []
             cur.close()
-            return [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            return [_row_to_dict(r) for r in rows]
     except Exception as e:
         logger.debug(f"search_symbols from DB failed: {e}")
-        return _search_symbols_without_aliases(market, kw, limit)
+        return _search_symbols_without_aliases(market, kw, limit, asset_class=asset_class, etf_only=etf_only)
 
 
-def _search_symbols_without_aliases(market: str, keyword: str, limit: int) -> List[Dict]:
+def _search_symbols_without_aliases(
+    market: str,
+    keyword: str,
+    limit: int,
+    *,
+    asset_class: str = "",
+    etf_only: bool = False,
+) -> List[Dict]:
     pattern = f'%{keyword}%'
     prefix_pattern = f'{keyword}%'
+    filter_sql, filter_params = _asset_class_clause(asset_class, etf_only)
     try:
         with _get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                """
-                SELECT market, symbol, name FROM qd_market_symbols
+                f"""
+                SELECT market, symbol, name, exchange, market_type, instrument_id,
+                       settle_currency, currency, asset_class
+                FROM qd_market_symbols
                 WHERE market = ? AND is_active = 1
+                {filter_sql}
                   AND (UPPER(symbol) LIKE UPPER(?) OR UPPER(name) LIKE UPPER(?))
                 ORDER BY
                   CASE
@@ -187,6 +256,7 @@ def _search_symbols_without_aliases(market: str, keyword: str, limit: int) -> Li
                 """,
                 (
                     market,
+                    *filter_params,
                     pattern,
                     pattern,
                     keyword,
@@ -194,11 +264,11 @@ def _search_symbols_without_aliases(market: str, keyword: str, limit: int) -> Li
                     pattern,
                     prefix_pattern,
                     max(limit, 0),
-                )
+                ),
             )
             rows = cur.fetchall() or []
             cur.close()
-            return [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            return [_row_to_dict(r) for r in rows]
     except Exception as e:
         logger.debug(f"search_symbols fallback failed: {e}")
         return []
