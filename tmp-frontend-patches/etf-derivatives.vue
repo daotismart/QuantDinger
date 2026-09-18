@@ -1276,6 +1276,63 @@ export default {
       })
     },
 
+    formatStrikeMark (value) {
+      const n = Number(value)
+      if (!Number.isFinite(n)) return ''
+      const abs = Math.abs(n)
+      let s
+      if (abs >= 100) s = n.toFixed(0)
+      else if (abs >= 10) s = n.toFixed(1)
+      else s = n.toFixed(2)
+      return s.replace(/\.0+$/, '').replace(/(\.[0-9]*?)0+$/, '$1').replace(/\.$/, '')
+    },
+
+    buildStrikeMarkLineData (markDefs, strikes) {
+      // Group marks that snap to the same category so one vertical line can carry
+      // stacked labels with strike values (avoids clipping + missing numbers).
+      const groups = new Map()
+      markDefs.forEach((item) => {
+        if (item.value == null) return
+        const x = this.nearestStrikeLabel(strikes, item.value)
+        if (x == null) return
+        const key = String(x)
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key).push(item)
+      })
+      const out = []
+      let groupIdx = 0
+      groups.forEach((items, x) => {
+        const primary = items.find(i => i.name === 'Price') || items[0]
+        const lines = items.map((item) => {
+          const v = this.formatStrikeMark(item.value != null ? item.value : x)
+          return v ? `${item.name} ${v}` : item.name
+        })
+        out.push({
+          name: items.map(i => i.name).join('/'),
+          xAxis: String(x),
+          lineStyle: {
+            color: primary.color,
+            width: primary.name === 'Price' ? 2 : (primary.width || 1.5),
+            type: primary.name === 'Price' ? 'solid' : 'dashed'
+          },
+          label: {
+            show: true,
+            formatter: lines.join('\n'),
+            color: primary.color,
+            position: 'end',
+            distance: 8 + groupIdx * 4,
+            lineHeight: 14,
+            fontSize: 11,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            padding: [2, 4],
+            borderRadius: 2
+          }
+        })
+        groupIdx += 1
+      })
+      return out
+    },
+
     buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
       return createStackedNetGexSeries(monthSeries, points, palette, buildMarks)
     },
