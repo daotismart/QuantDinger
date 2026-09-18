@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -424,8 +425,14 @@ def _assemble_etf_options_panel(
             name=label,
         )
         fields = panel_fields_from_gex_indicator(indicator)
-        # Optional injectable raw compute (tests) can override legacy arrays only.
-        if compute_gex is not None and chain and spot:
+        # Tests may inject a stub compute_gex. Skip the second Black76 pass when
+        # the indicator already produced strike points.
+        if (
+            compute_gex is not None
+            and chain
+            and spot
+            and not fields.get("gex_distribution")
+        ):
             try:
                 raw = compute_gex(chain, underlying=spot, multiplier=mult, T=T) or {}
             except TypeError:
@@ -713,6 +720,33 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         _etf_options_cache_set(cache_key, panel, cache_ttl)
     panel["cache_hit"] = False
     return panel
+
+
+def warm_etf_options_panel_cache(codes: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Build `month=all` panels so Redis holds a warm copy for the ETF options page."""
+    from app.services.etf_options_clickhouse import ch_ping, etf_options_ch_enabled
+
+    if not etf_options_ch_enabled() or not ch_ping():
+        return {"skipped": True, "reason": "clickhouse_unavailable", "warmed": [], "count": 0}
+    raw = codes if codes is not None else os.getenv("ETF_OPTIONS_PANEL_WARM_CODES", "510050,510300,588000")
+    if isinstance(raw, str):
+        items = [part.strip() for part in raw.split(",")]
+    else:
+        items = [str(part).strip() for part in raw]
+    warmed: List[str] = []
+    errors: Dict[str, str] = {}
+    for item in items:
+        code6 = _etf_code6(item)
+        if not code6:
+            continue
+        try:
+            panel = build_etf_options_panel(code6, month="all")
+            if panel.get("month_series") or panel.get("cache_hit"):
+                warmed.append(code6)
+        except Exception as exc:
+            logger.warning("etf options panel warm failed code=%s: %s", code6, exc)
+            errors[code6] = str(exc)
+    return {"warmed": warmed, "errors": errors, "count": len(warmed)}
 
 
 def _aggregate_etf_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:

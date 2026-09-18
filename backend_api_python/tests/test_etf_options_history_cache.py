@@ -58,3 +58,29 @@ def test_cached_etf_options_history_skips_empty(monkeypatch):
     ch.cached_etf_options_history("etf_options_hist:v1:empty", builder)
     assert calls["n"] == 2
     assert store == {}
+
+
+def test_warm_etf_options_panel_cache_skips_invalid_codes(monkeypatch):
+    from app.services import cn_derivatives_etf as etf
+
+    calls = []
+
+    def _fake_panel(code, month="all"):
+        calls.append((code, month))
+        return {"month_series": [{"month": "202609"}]}
+
+    monkeypatch.setattr(etf, "build_etf_options_panel", _fake_panel)
+    monkeypatch.setattr("app.services.etf_options_clickhouse.etf_options_ch_enabled", lambda: True)
+    monkeypatch.setattr("app.services.etf_options_clickhouse.ch_ping", lambda: True)
+    out = etf.warm_etf_options_panel_cache(["510050.SH", "xx"])
+    assert out["warmed"] == ["510050"]
+    assert calls == [("510050", "all")]
+
+
+def test_warm_etf_options_panel_cache_skips_without_ch(monkeypatch):
+    from app.services import cn_derivatives_etf as etf
+
+    monkeypatch.setattr("app.services.etf_options_clickhouse.etf_options_ch_enabled", lambda: False)
+    monkeypatch.setattr(etf, "build_etf_options_panel", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not fetch")))
+    out = etf.warm_etf_options_panel_cache(["510050"])
+    assert out.get("skipped") is True

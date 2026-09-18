@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from app.services.etf_options_clickhouse import (
+    _atm_iv_series_sql,
     _month_key_from_expire,
     _playback_chain_sql,
     build_strike_chains_by_month,
@@ -95,3 +96,29 @@ def test_playback_chain_sql_skips_unused_tables():
     assert "opt_quotes_bar_1m" in gex_sql
     assert "opt_analytics_1m" in gex_sql
     assert "gamma" in gex_sql
+
+
+def test_atm_iv_series_sql_skips_quotes_and_aggregates():
+    sql = _atm_iv_series_sql("510050", "'2026-08-26 14:56:00'", month="all")
+    assert "opt_analytics_1m" in sql
+    assert "opt_quotes_bar_1m" not in sql
+    assert "argMin" in sql
+    assert "atm_iv" in sql
+
+
+def test_fetch_option_chain_rows_uses_latest_minute(monkeypatch):
+    captured = {}
+
+    def fake_query(sql, timeout=35.0):
+        captured["sql"] = sql
+        return (
+            ["contract_code", "contract_id", "strike", "cp", "expire_date", "close", "open_interest", "iv", "delta", "gamma", "vega", "theta", "underlying_price", "quote_ts"],
+            [],
+        )
+
+    monkeypatch.setattr("app.services.etf_options_clickhouse._ch_query", fake_query)
+    from app.services.etf_options_clickhouse import fetch_option_chain_rows
+
+    fetch_option_chain_rows("510300")
+    assert "WITH latest AS" in captured["sql"]
+    assert "argMax" not in captured["sql"]

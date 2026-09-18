@@ -189,6 +189,7 @@ def build_etf_options_iv_rank_history(
     from app.services.etf_options_clickhouse import (
         ch_ping,
         etf_options_ch_enabled,
+        fetch_near_month_atm_iv_series,
         fetch_option_chain_rows_at_timestamps,
         fetch_underlying_series,
         list_playback_timestamps,
@@ -252,36 +253,59 @@ def build_etf_options_iv_rank_history(
         timestamps = list_playback_timestamps(code6, interval=interval_n, bars=bars_n)
         if timestamps:
             underlyings = fetch_underlying_series(code6, timestamps)
-            by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps, fields="iv")
-            for ts in timestamps:
-                asof_dt = _parse_ts(ts) or datetime.now()
-                spot = float(underlyings.get(ts) or 0.0)
-                flat = by_ts.get(ts) or []
-                if spot <= 0:
-                    for row in flat:
-                        up = float(row.get("underlying_price") or 0.0)
-                        if up > 0:
-                            spot = up
-                            break
-                near_month, atm_iv = _near_month_atm_iv_from_flat(
-                    flat,
-                    underlying=spot,
-                    asof=asof_dt,
-                    month=month,
+            series, meta = fetch_near_month_atm_iv_series(code6, timestamps, month=month)
+            if series:
+                for ts in timestamps:
+                    item = series.get(ts) or {}
+                    spot = float(item.get("underlying") or underlyings.get(ts) or 0.0)
+                    klines.append(
+                        {
+                            "ts": ts,
+                            "label": ts,
+                            "date": ts[:10],
+                            "month": item.get("month"),
+                            "close": item.get("iv"),
+                            "underlying": spot or None,
+                        }
+                    )
+                note = (
+                    f"按 {interval_n} 取最近 {bars_n} 根近月 ATM IV"
+                    "（ClickHouse 聚合切片，不回放完整表面）。"
                 )
-                klines.append(
-                    {
-                        "ts": ts,
-                        "label": ts,
-                        "date": ts[:10],
-                        "month": near_month,
-                        "close": atm_iv,
-                        "underlying": spot or None,
-                    }
+            else:
+                by_ts, meta = fetch_option_chain_rows_at_timestamps(
+                    code6, timestamps, fields="iv"
                 )
-            note = (
-                f"按 {interval_n} 取最近 {bars_n} 根近月 ATM IV（ClickHouse 轻量切片，不回放完整表面）。"
-            )
+                for ts in timestamps:
+                    asof_dt = _parse_ts(ts) or datetime.now()
+                    spot = float(underlyings.get(ts) or 0.0)
+                    flat = by_ts.get(ts) or []
+                    if spot <= 0:
+                        for row in flat:
+                            up = float(row.get("underlying_price") or 0.0)
+                            if up > 0:
+                                spot = up
+                                break
+                    near_month, atm_iv = _near_month_atm_iv_from_flat(
+                        flat,
+                        underlying=spot,
+                        asof=asof_dt,
+                        month=month,
+                    )
+                    klines.append(
+                        {
+                            "ts": ts,
+                            "label": ts,
+                            "date": ts[:10],
+                            "month": near_month,
+                            "close": atm_iv,
+                            "underlying": spot or None,
+                        }
+                    )
+                note = (
+                    f"按 {interval_n} 取最近 {bars_n} 根近月 ATM IV"
+                    "（ClickHouse 轻量切片，不回放完整表面）。"
+                )
             if isinstance(meta, dict) and meta.get("error"):
                 note += f" meta_error={meta.get('error')}"
         else:

@@ -21,6 +21,7 @@ def test_celery_beat_owns_periodic_maintenance():
     assert schedule["market-catalog-sync"]["task"] == "quantdinger.tasks.market_catalog_sync"
     assert schedule["market-data-historical-maint"]["task"] == "quantdinger.tasks.market_data_historical_maint"
     assert schedule["market-data-retention-maint"]["task"] == "quantdinger.tasks.market_data_retention_maint"
+    assert schedule["etf-options-panel-warm"]["task"] == "quantdinger.tasks.etf_options_panel_warm"
     assert schedule["market-catalog-sync"]["schedule"] == 86400
 
 

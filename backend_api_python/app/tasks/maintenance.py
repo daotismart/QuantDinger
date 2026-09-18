@@ -133,3 +133,22 @@ def run_market_data_retention_maint(self):
 
     return run_retention_cycle(trigger="celery-beat")
 
+
+@celery_app.task(
+    bind=True,
+    name="quantdinger.tasks.etf_options_panel_warm",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=2,
+    soft_time_limit=120,
+    time_limit=150,
+)
+def warm_etf_options_panels(self):
+    del self
+    if not _enabled("ETF_OPTIONS_PANEL_WARM_ENABLED", "true"):
+        return {"skipped": True}
+    from app.services.cn_derivatives_etf import warm_etf_options_panel_cache
+
+    return warm_etf_options_panel_cache()
+
