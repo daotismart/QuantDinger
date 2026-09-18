@@ -251,6 +251,9 @@ def build_safe_builtins(extra_allowed: Optional[Set[str]] = None) -> Dict[str, A
         val = getattr(_builtins_mod, name, None)
         if val is not None:
             safe[name] = val
+    if 'round' in safe:
+        from app.services.param_values import safe_round
+        safe['round'] = safe_round
     safe['__import__'] = _make_safe_import()
     return safe
 
