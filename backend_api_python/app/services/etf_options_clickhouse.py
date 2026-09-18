@@ -57,6 +57,84 @@ def etf_options_panel_cache_ttl() -> int:
         return 60
 
 
+def etf_options_history_cache_ttl() -> int:
+    """TTL seconds for ETF options /history payloads. 0 disables the cache."""
+    try:
+        return max(0, int(os.getenv("ETF_OPTIONS_HISTORY_CACHE_TTL", "120") or 120))
+    except ValueError:
+        return 120
+
+
+def etf_options_history_cache_key(
+    *,
+    code6: str,
+    chart: str,
+    interval: str,
+    bars: int,
+    month: str = "all",
+) -> str:
+    code = "".join(ch for ch in str(code6 or "") if ch.isdigit())[:6]
+    chart_n = str(chart or "").strip() or "unknown"
+    month_n = str(month or "all").strip().lower() or "all"
+    return (
+        f"etf_options_hist:v1:{code}:{chart_n}:"
+        f"{normalize_playback_interval(interval)}:{normalize_playback_bars(bars)}:{month_n}"
+    )
+
+
+def _history_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    try:
+        from app.utils.cache import CacheManager
+
+        cached = CacheManager().get(key)
+        return cached if isinstance(cached, dict) else None
+    except Exception as exc:
+        logger.debug("etf options history cache get failed: %s", exc)
+        return None
+
+
+def _history_cache_set(key: str, value: Dict[str, Any], ttl: int) -> None:
+    if ttl <= 0:
+        return
+    try:
+        from app.utils.cache import CacheManager
+
+        CacheManager().set(key, value, ttl=ttl)
+    except Exception as exc:
+        logger.debug("etf options history cache set failed: %s", exc)
+
+
+def _history_cacheable(payload: Dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("slices") or payload.get("points") or payload.get("levels_series"):
+        return True
+    if payload.get("near_month_iv_klines") or payload.get("near_month_max_pain_series"):
+        return True
+    return False
+
+
+def cached_etf_options_history(cache_key: str, builder) -> Dict[str, Any]:
+    """Return cached ETF options history when fresh; otherwise run ``builder``."""
+    ttl = etf_options_history_cache_ttl()
+    if ttl > 0:
+        cached = _history_cache_get(cache_key)
+        if cached and _history_cacheable(cached):
+            out = dict(cached)
+            out["cache_hit"] = True
+            return out
+    data = builder()
+    if not isinstance(data, dict):
+        return data
+    out = dict(data)
+    out["cache_hit"] = False
+    if ttl > 0 and _history_cacheable(out):
+        store = dict(out)
+        store.pop("cache_hit", None)
+        _history_cache_set(cache_key, store, ttl)
+    return out
+
+
 def _to_float(value: Any) -> float:
     try:
         if value is None or value == "":
@@ -379,6 +457,20 @@ def fetch_option_chain_rows_via_view(
     return rows, meta
 
 
+def _rows_quote_fresh(rows: List[Dict[str, Any]]) -> bool:
+    latest: Optional[datetime] = None
+    for row in rows or []:
+        dt = _parse_dt(row.get("quote_ts"))
+        if dt is None:
+            continue
+        if latest is None or dt > latest:
+            latest = dt
+    if latest is None:
+        return False
+    age_h = abs((datetime.now() - latest).total_seconds()) / 3600.0
+    return age_h <= etf_options_ch_max_age_hours()
+
+
 def try_load_etf_option_chains(code6: str) -> Optional[Dict[str, Any]]:
     """High-level helper: months + chains + underlying from ClickHouse, or None."""
     if not etf_options_ch_enabled():
@@ -386,14 +478,14 @@ def try_load_etf_option_chains(code6: str) -> Optional[Dict[str, Any]]:
     if not ch_ping():
         logger.info("etf_options CH ping failed url=%s", etf_options_ch_url())
         return None
-    if not is_quote_data_fresh(code6):
-        logger.info("etf_options CH data stale for %s", code6)
-        return None
 
     flat_rows, meta = fetch_option_chain_rows_via_view(code6)
     if not flat_rows:
         flat_rows, meta = fetch_option_chain_rows(code6)
     if not flat_rows:
+        return None
+    if not _rows_quote_fresh(flat_rows):
+        logger.info("etf_options CH data stale for %s", code6)
         return None
 
     chains_by_month = build_strike_chains_by_month(flat_rows)
@@ -657,25 +749,38 @@ def fetch_underlying_series(
     return out
 
 
-def fetch_option_chain_rows_at_timestamps(
-    code6: str,
-    timestamps: List[str],
-) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
-    """Bulk-load flat option rows for each playback timestamp.
+_PLAYBACK_FIELD_MODES = {"full", "gex", "iv", "quotes"}
 
-    Uses exact-minute joins against quotes/analytics at the playback stamps,
-    and contracts for the matching trade_date (or nearest prior listing day).
-    """
-    code6 = str(code6 or "").strip()
-    meta: Dict[str, Any] = {"source": "clickhouse_playback", "timestamps": len(timestamps)}
-    if not code6 or not timestamps:
-        return {}, meta
 
-    ts_sql = _sql_ts_list(timestamps)
-    # ClickHouse disallows correlated subqueries that reference outer columns
-    # in JOIN ON; map each stamp to the nearest prior trade_date via join.
-    sql = f"""
-    WITH
+def normalize_playback_fields(value: Any) -> str:
+    raw = str(value or "full").strip().lower()
+    return raw if raw in _PLAYBACK_FIELD_MODES else "full"
+
+
+def playback_fields_for_chart(chart_key: str) -> str:
+    """Pick the cheapest ClickHouse join profile for a /history chart."""
+    chart = str(chart_key or "").strip()
+    if chart in {"options.iv", "options.ivRank", "options.iv_rank"}:
+        return "iv"
+    if chart in {
+        "options.oi",
+        "options.tv",
+        "options.maxPain",
+        "options.max_pain",
+        "options.capital",
+        "etf.optionsCapital",
+        "options.premiumMargin",
+    }:
+        return "quotes"
+    if chart in {"options.gex", "options.gexDist", "gex", "options.gexCallPut"}:
+        return "gex"
+    return "full"
+
+
+def _playback_stamp_ctes(code6: str, ts_sql: str) -> str:
+    # ClickHouse 24.8 rejects inequality JOIN ON (INVALID_JOIN_ON_EXPRESSION).
+    # Use CROSS JOIN + WHERE, which this host already runs for playback.
+    return f"""
       stamps AS (
         SELECT toDateTime(arrayJoin([{ts_sql}]), 'Asia/Shanghai') AS ts_minute
       ),
@@ -706,19 +811,28 @@ def fetch_option_chain_rows_at_timestamps(
          AND c.trade_date = st.trade_date
         WHERE c.contract_id IS NOT NULL AND c.contract_id != ''
       )
-    SELECT
-      ct.ts_minute AS ts_minute,
-      ct.contract_code AS contract_code,
-      ct.contract_id AS contract_id,
-      ct.strike AS strike,
-      ct.cp AS cp,
-      ct.expire_date AS expire_date,
-      q.close AS close,
-      q.open_interest AS open_interest,
-      a.iv AS iv,
-      a.gamma AS gamma,
-      a.underlying_price AS underlying_price
-    FROM contracts ct
+    """
+
+
+def _playback_chain_sql(code6: str, ts_sql: str, fields: str) -> str:
+    """Build the playback JOIN. ``fields`` skips unused quote/analytics tables."""
+    mode = normalize_playback_fields(fields)
+    need_quotes = mode in {"full", "gex", "quotes"}
+    need_analytics = mode in {"full", "gex", "iv"}
+    analytics_inner = mode == "iv"
+
+    select_close = "CAST(NULL AS Nullable(Float64)) AS close"
+    select_oi = "CAST(NULL AS Nullable(Float64)) AS open_interest"
+    select_iv = "CAST(NULL AS Nullable(Float64)) AS iv"
+    select_gamma = "CAST(NULL AS Nullable(Float64)) AS gamma"
+    select_und = "CAST(NULL AS Nullable(Float64)) AS underlying_price"
+    quotes_join = ""
+    analytics_join = ""
+
+    if need_quotes:
+        select_close = "q.close AS close"
+        select_oi = "q.open_interest AS open_interest"
+        quotes_join = f"""
     INNER JOIN (
       SELECT
         ts_minute,
@@ -730,20 +844,78 @@ def fetch_option_chain_rows_at_timestamps(
         AND ts_minute IN ({ts_sql})
     ) q ON q.ts_minute = ct.ts_minute
        AND q.jid = toString(ct.contract_id)
-    LEFT JOIN (
+"""
+    if need_analytics:
+        select_iv = "a.iv AS iv"
+        select_und = "a.underlying_price AS underlying_price"
+        analytics_cols = "iv, underlying_price"
+        if mode in {"full", "gex"}:
+            select_gamma = "a.gamma AS gamma"
+            analytics_cols = "iv, gamma, underlying_price"
+        join_type = "INNER" if analytics_inner else "LEFT"
+        analytics_join = f"""
+    {join_type} JOIN (
       SELECT
         ts_minute,
         toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
-        iv,
-        gamma,
-        underlying_price
+        {analytics_cols}
       FROM opt_analytics_1m
       WHERE underlying_code = '{code6}'
         AND ts_minute IN ({ts_sql})
     ) a ON a.ts_minute = ct.ts_minute
        AND a.jid = toString(ct.contract_id)
+"""
+
+    return f"""
+    WITH
+    {_playback_stamp_ctes(code6, ts_sql)}
+    SELECT
+      ct.ts_minute AS ts_minute,
+      ct.contract_code AS contract_code,
+      ct.contract_id AS contract_id,
+      ct.strike AS strike,
+      ct.cp AS cp,
+      ct.expire_date AS expire_date,
+      {select_close},
+      {select_oi},
+      {select_iv},
+      {select_gamma},
+      {select_und}
+    FROM contracts ct
+    {quotes_join}
+    {analytics_join}
     SETTINGS max_execution_time = 90
     """
+
+
+def fetch_option_chain_rows_at_timestamps(
+    code6: str,
+    timestamps: List[str],
+    *,
+    fields: str = "full",
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """Bulk-load flat option rows for each playback timestamp.
+
+    Uses exact-minute joins against quotes/analytics at the playback stamps,
+    and contracts for the matching trade_date (or nearest prior listing day).
+
+    ``fields``:
+      - ``full`` / ``gex``: quotes + analytics (gamma)
+      - ``iv``: analytics only (skip quotes)
+      - ``quotes``: quotes only (skip analytics)
+    """
+    code6 = str(code6 or "").strip()
+    mode = normalize_playback_fields(fields)
+    meta: Dict[str, Any] = {
+        "source": "clickhouse_playback",
+        "timestamps": len(timestamps),
+        "fields": mode,
+    }
+    if not code6 or not timestamps:
+        return {}, meta
+
+    ts_sql = _sql_ts_list(timestamps)
+    sql = _playback_chain_sql(code6, ts_sql, mode)
     t0 = time.perf_counter()
     try:
         cols, raw_rows = _ch_query(sql, timeout=100.0)
@@ -778,3 +950,113 @@ def fetch_option_chain_rows_at_timestamps(
     meta["row_count"] = sum(len(v) for v in by_ts.values())
     meta["stamp_count"] = len(by_ts)
     return by_ts, meta
+
+
+def _atm_iv_series_sql(code6: str, ts_sql: str, month: str = "all") -> str:
+    month_raw = str(month or "all").strip().lower()
+    month_filter = ""
+    if month_raw not in {"", "all", "*", "全部"}:
+        wanted = str(month or "").strip()[-6:]
+        month_filter = (
+            f"AND formatDateTime(toDate(ct.expire_date), '%Y%m') LIKE '%{wanted[-4:]}'"
+            if wanted
+            else ""
+        )
+    return f"""
+    WITH
+    {_playback_stamp_ctes(code6, ts_sql)},
+      joined AS (
+        SELECT
+          ct.ts_minute AS ts_minute,
+          ct.strike AS strike,
+          ct.expire_date AS expire_date,
+          a.iv AS iv,
+          a.underlying_price AS underlying_price
+        FROM contracts ct
+        INNER JOIN (
+          SELECT
+            ts_minute,
+            toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+            iv,
+            underlying_price
+          FROM opt_analytics_1m
+          WHERE underlying_code = '{code6}'
+            AND ts_minute IN ({ts_sql})
+        ) a ON a.ts_minute = ct.ts_minute
+           AND a.jid = toString(ct.contract_id)
+        WHERE a.iv > 0
+          AND a.underlying_price > 0
+          AND ct.expire_date >= toDate(ct.ts_minute)
+          {month_filter}
+      ),
+      near_exp AS (
+        SELECT ts_minute, min(expire_date) AS expire_date
+        FROM joined
+        GROUP BY ts_minute
+      ),
+      near_month AS (
+        SELECT j.*
+        FROM joined j
+        INNER JOIN near_exp e
+          ON j.ts_minute = e.ts_minute
+         AND j.expire_date = e.expire_date
+      ),
+      atm_strike AS (
+        SELECT
+          ts_minute,
+          argMin(strike, abs(strike - underlying_price)) AS strike
+        FROM near_month
+        GROUP BY ts_minute
+      )
+    SELECT
+      n.ts_minute AS ts_minute,
+      avg(n.iv) AS atm_iv,
+      any(n.underlying_price) AS underlying_price,
+      formatDateTime(toDate(n.expire_date), '%Y%m') AS month
+    FROM near_month n
+    INNER JOIN atm_strike s
+      ON n.ts_minute = s.ts_minute
+     AND n.strike = s.strike
+    GROUP BY n.ts_minute, n.expire_date
+    SETTINGS max_execution_time = 60
+    """
+
+
+def fetch_near_month_atm_iv_series(
+    code6: str,
+    timestamps: List[str],
+    *,
+    month: str = "all",
+) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
+    """One near-month ATM IV per timestamp (no full chain payload)."""
+    code6 = str(code6 or "").strip()
+    meta: Dict[str, Any] = {
+        "source": "clickhouse_atm_iv",
+        "timestamps": len(timestamps),
+    }
+    if not code6 or not timestamps:
+        return {}, meta
+    ts_sql = _sql_ts_list(timestamps)
+    sql = _atm_iv_series_sql(code6, ts_sql, month=month)
+    t0 = time.perf_counter()
+    try:
+        cols, raw_rows = _ch_query(sql, timeout=70.0)
+    except Exception as exc:
+        logger.warning("fetch_near_month_atm_iv_series failed code=%s: %s", code6, exc)
+        meta["error"] = str(exc)
+        return {}, meta
+    out: Dict[str, Dict[str, Any]] = {}
+    for raw in raw_rows:
+        item = dict(zip(cols, raw))
+        ts = str(item.get("ts_minute") or "").strip()[:19]
+        iv = _to_float(item.get("atm_iv"))
+        if not ts or iv <= 0:
+            continue
+        out[ts] = {
+            "iv": iv,
+            "month": str(item.get("month") or "") or None,
+            "underlying": _to_float(item.get("underlying_price")) or None,
+        }
+    meta["elapsed_s"] = round(time.perf_counter() - t0, 4)
+    meta["row_count"] = len(out)
+    return out, meta

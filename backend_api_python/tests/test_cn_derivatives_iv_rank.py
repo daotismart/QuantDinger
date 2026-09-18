@@ -32,19 +32,38 @@ def test_points_from_iv_klines():
 
 
 def test_etf_iv_rank_history_uses_near_month_klines(monkeypatch):
+    stamps = ["2026-08-01 15:00:00", "2026-08-02 15:00:00", "2026-08-03 15:00:00"]
+    ivs = [0.15, 0.25, 0.20]
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("IV Rank must not build the full ETF surface history")
+
+    monkeypatch.setattr("app.services.gex_history.build_etf_options_surface_history", _boom)
+    monkeypatch.setattr("app.services.etf_options_clickhouse.etf_options_ch_enabled", lambda: True)
+    monkeypatch.setattr("app.services.etf_options_clickhouse.ch_ping", lambda: True)
     monkeypatch.setattr(
-        "app.services.gex_history.build_etf_options_surface_history",
-        lambda root, **kwargs: {
-            "root": "510050",
-            "interval": "day",
-            "bars": 3,
-            "note": "ch",
-            "near_month_iv_klines": [
-                {"ts": "t1", "date": "2026-08-01", "label": "2026-08-01", "close": 0.15},
-                {"ts": "t2", "date": "2026-08-02", "label": "2026-08-02", "close": 0.25},
-                {"ts": "t3", "date": "2026-08-03", "label": "2026-08-03", "close": 0.20},
-            ],
-        },
+        "app.services.etf_options_clickhouse.list_playback_timestamps",
+        lambda *_args, **_kwargs: stamps,
+    )
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.fetch_underlying_series",
+        lambda *_args, **_kwargs: {ts: 4.5 for ts in stamps},
+    )
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.fetch_near_month_atm_iv_series",
+        lambda *_args, **_kwargs: (
+            {
+                ts: {"iv": iv, "month": "202609", "underlying": 4.5}
+                for ts, iv in zip(stamps, ivs)
+            },
+            {"source": "mock_atm"},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.fetch_option_chain_rows_at_timestamps",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ATM IV series should skip full chain fetch")
+        ),
     )
     data = ivr.build_etf_options_iv_rank_history("510050.SH", bars=3)
     assert data["chart_key"] == "options.ivRank"
@@ -53,6 +72,45 @@ def test_etf_iv_rank_history_uses_near_month_klines(monkeypatch):
     assert len(data["points"]) == 3
     assert data["snapshot"]["iv_rank"] is not None
     assert 0.0 <= data["points"][-1]["iv_rank"] <= 100.0
+    assert "轻量" in (data.get("note") or "") or "聚合" in (data.get("note") or "")
+
+
+def test_etf_iv_rank_falls_back_to_chain_rows(monkeypatch):
+    stamps = ["2026-08-01 15:00:00", "2026-08-02 15:00:00"]
+    by_ts = {
+        ts: [
+            {
+                "month": "202609",
+                "strike": 4.5,
+                "iv": 0.18,
+                "expire_date": "2026-09-23",
+                "underlying_price": 4.5,
+            }
+        ]
+        for ts in stamps
+    }
+    monkeypatch.setattr("app.services.gex_history.build_etf_options_surface_history", lambda *_a, **_k: {})
+    monkeypatch.setattr("app.services.etf_options_clickhouse.etf_options_ch_enabled", lambda: True)
+    monkeypatch.setattr("app.services.etf_options_clickhouse.ch_ping", lambda: True)
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.list_playback_timestamps",
+        lambda *_args, **_kwargs: stamps,
+    )
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.fetch_underlying_series",
+        lambda *_args, **_kwargs: {ts: 4.5 for ts in stamps},
+    )
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.fetch_near_month_atm_iv_series",
+        lambda *_args, **_kwargs: ({}, {"source": "empty"}),
+    )
+    monkeypatch.setattr(
+        "app.services.etf_options_clickhouse.fetch_option_chain_rows_at_timestamps",
+        lambda *_args, **_kwargs: (by_ts, {"source": "mock"}),
+    )
+    data = ivr.build_etf_options_iv_rank_history("510050", bars=3)
+    assert len(data["points"]) == 2
+    assert data["points"][0]["atm_iv"] == 0.18
 
 
 def test_futures_iv_rank_history_uses_realized_vol(monkeypatch):
