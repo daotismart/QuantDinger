@@ -269,11 +269,6 @@ def fetch_option_chain_rows(
         return [], meta
 
     sql = f"""
-    WITH latest AS (
-      SELECT max(ts_minute) AS ts
-      FROM opt_quotes_bar_1m
-      WHERE underlying_code = '{code6}'
-    )
     SELECT
       c.contract_code AS contract_code,
       c.contract_id AS contract_id,
@@ -288,7 +283,7 @@ def fetch_option_chain_rows(
       a.vega AS vega,
       a.theta AS theta,
       a.underlying_price AS underlying_price,
-      q.ts_minute AS quote_ts
+      q.ts AS quote_ts
     FROM (
       SELECT contract_code, contract_id, strike, cp, expire_date
       FROM opt_contracts_daily
@@ -298,14 +293,31 @@ def fetch_option_chain_rows(
         )
         AND contract_id IS NOT NULL AND contract_id != ''
     ) c
-    INNER JOIN opt_quotes_bar_1m q
-      ON q.underlying_code = '{code6}'
-     AND q.ts_minute = (SELECT ts FROM latest)
-     AND toString(ifNull(nullIf(q.contract_id, ''), q.contract_code)) = toString(c.contract_id)
-    LEFT JOIN opt_analytics_1m a
-      ON a.underlying_code = '{code6}'
-     AND a.ts_minute = (SELECT ts FROM latest)
-     AND toString(ifNull(nullIf(a.contract_id, ''), a.contract_code)) = toString(c.contract_id)
+    INNER JOIN (
+      SELECT
+        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+        argMax(close, ts_minute) AS close,
+        argMax(open_interest, ts_minute) AS open_interest,
+        max(ts_minute) AS ts
+      FROM opt_quotes_bar_1m
+      WHERE underlying_code = '{code6}'
+        AND ts_minute >= (now('Asia/Shanghai') - INTERVAL {int(lookback_days)} DAY)
+      GROUP BY jid
+    ) q ON toString(c.contract_id) = q.jid
+    LEFT JOIN (
+      SELECT
+        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+        argMax(iv, ts_minute) AS iv,
+        argMax(delta, ts_minute) AS delta,
+        argMax(gamma, ts_minute) AS gamma,
+        argMax(vega, ts_minute) AS vega,
+        argMax(theta, ts_minute) AS theta,
+        argMax(underlying_price, ts_minute) AS underlying_price
+      FROM opt_analytics_1m
+      WHERE underlying_code = '{code6}'
+        AND ts_minute >= (now('Asia/Shanghai') - INTERVAL {int(lookback_days)} DAY)
+      GROUP BY jid
+    ) a ON toString(c.contract_id) = a.jid
     SETTINGS max_execution_time = 30
     """
     t0 = time.perf_counter()
@@ -766,6 +778,8 @@ def playback_fields_for_chart(chart_key: str) -> str:
 
 
 def _playback_stamp_ctes(code6: str, ts_sql: str) -> str:
+    # ClickHouse 24.8 rejects inequality JOIN ON (INVALID_JOIN_ON_EXPRESSION).
+    # Use CROSS JOIN + WHERE, which this host already runs for playback.
     return f"""
       stamps AS (
         SELECT toDateTime(arrayJoin([{ts_sql}]), 'Asia/Shanghai') AS ts_minute
@@ -773,18 +787,14 @@ def _playback_stamp_ctes(code6: str, ts_sql: str) -> str:
       stamp_dates AS (
         SELECT ts_minute, toDate(ts_minute) AS d FROM stamps
       ),
-      trade_dates AS (
-        SELECT DISTINCT trade_date
-        FROM opt_contracts_daily
-        WHERE underlying_code = '{code6}'
-      ),
       stamp_trade AS (
         SELECT
           sd.ts_minute AS ts_minute,
-          max(td.trade_date) AS trade_date
+          max(c.trade_date) AS trade_date
         FROM stamp_dates sd
-        INNER JOIN trade_dates td
-          ON td.trade_date <= sd.d
+        CROSS JOIN opt_contracts_daily c
+        WHERE c.underlying_code = '{code6}'
+          AND c.trade_date <= sd.d
         GROUP BY sd.ts_minute
       ),
       contracts AS (
@@ -811,11 +821,11 @@ def _playback_chain_sql(code6: str, ts_sql: str, fields: str) -> str:
     need_analytics = mode in {"full", "gex", "iv"}
     analytics_inner = mode == "iv"
 
-    select_close = "CAST(NULL AS Float64) AS close"
-    select_oi = "CAST(NULL AS Float64) AS open_interest"
-    select_iv = "CAST(NULL AS Float64) AS iv"
-    select_gamma = "CAST(NULL AS Float64) AS gamma"
-    select_und = "CAST(NULL AS Float64) AS underlying_price"
+    select_close = "CAST(NULL AS Nullable(Float64)) AS close"
+    select_oi = "CAST(NULL AS Nullable(Float64)) AS open_interest"
+    select_iv = "CAST(NULL AS Nullable(Float64)) AS iv"
+    select_gamma = "CAST(NULL AS Nullable(Float64)) AS gamma"
+    select_und = "CAST(NULL AS Nullable(Float64)) AS underlying_price"
     quotes_join = ""
     analytics_join = ""
 

@@ -84,8 +84,7 @@ def test_playback_chain_sql_skips_unused_tables():
     iv_sql = _playback_chain_sql("510050", ts_sql, "iv")
     assert "opt_analytics_1m" in iv_sql
     assert "opt_quotes_bar_1m" not in iv_sql
-    assert "CROSS JOIN opt_contracts_daily" not in iv_sql
-    assert "trade_dates AS" in iv_sql
+    assert "CROSS JOIN opt_contracts_daily" in iv_sql
     assert "INNER JOIN" in iv_sql
 
     quotes_sql = _playback_chain_sql("510050", ts_sql, "quotes")
@@ -106,7 +105,7 @@ def test_atm_iv_series_sql_skips_quotes_and_aggregates():
     assert "atm_iv" in sql
 
 
-def test_fetch_option_chain_rows_uses_latest_minute(monkeypatch):
+def test_fetch_option_chain_rows_uses_lookback_argmax(monkeypatch):
     captured = {}
 
     def fake_query(sql, timeout=35.0):
@@ -120,5 +119,6 @@ def test_fetch_option_chain_rows_uses_latest_minute(monkeypatch):
     from app.services.etf_options_clickhouse import fetch_option_chain_rows
 
     fetch_option_chain_rows("510300")
-    assert "WITH latest AS" in captured["sql"]
-    assert "argMax" not in captured["sql"]
+    assert "argMax" in captured["sql"]
+    assert "INTERVAL" in captured["sql"]
+    assert "WITH latest AS" not in captured["sql"]
