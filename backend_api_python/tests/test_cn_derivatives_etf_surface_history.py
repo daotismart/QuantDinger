@@ -135,6 +135,70 @@ def test_build_near_month_iv_klines_ohlc():
     assert abs(c["low"] - 0.19) < 1e-9
 
 
+def test_build_near_month_iv_klines_close_only_uses_prev_close():
+    bounds = [
+        {"open_ts": "2026-08-25 14:56:00", "close_ts": "2026-08-25 14:56:00"},
+        {"open_ts": "2026-08-26 14:56:00", "close_ts": "2026-08-26 14:56:00"},
+    ]
+    by_ts = {
+        "2026-08-25 14:56:00": [
+            {"month": "202609", "strike": 4.5, "iv": 0.20, "expire_date": "2026-09-23"},
+        ],
+        "2026-08-26 14:56:00": [
+            {"month": "202609", "strike": 4.5, "iv": 0.24, "expire_date": "2026-09-23"},
+        ],
+    }
+    underlyings = {
+        "2026-08-25 14:56:00": 4.5,
+        "2026-08-26 14:56:00": 4.5,
+    }
+    candles = surface._build_near_month_iv_klines(bounds, by_ts, underlyings)
+    assert abs(candles[0]["open"] - 0.20) < 1e-9
+    assert abs(candles[0]["close"] - 0.20) < 1e-9
+    assert abs(candles[1]["open"] - 0.20) < 1e-9
+    assert abs(candles[1]["close"] - 0.24) < 1e-9
+
+
+def test_compute_surface_slice_uses_stored_iv(monkeypatch):
+    chain = [
+        {
+            "strike": 4.4,
+            "call_iv": 0.18,
+            "put_iv": 0.19,
+            "call_oi": 10,
+            "put_oi": 8,
+            "expire_date": "2026-09-23",
+        },
+        {
+            "strike": 4.5,
+            "call_iv": 0.20,
+            "put_iv": 0.21,
+            "call_oi": 12,
+            "put_oi": 9,
+            "expire_date": "2026-09-23",
+        },
+    ]
+    monkeypatch.setattr(surface, "build_strike_chains_by_month", lambda _rows: {"202609": chain})
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("stored analytics IV should skip Black76")
+
+    monkeypatch.setattr(surface, "compute_gex_raw", _boom)
+    out = surface._compute_surface_slice(
+        [],
+        underlying=4.45,
+        asof=datetime(2026, 8, 27),
+        multiplier=10000,
+        month="all",
+        need_iv=True,
+        need_oi=False,
+        need_tv=False,
+        need_max_pain=False,
+    )
+    assert {p["side"] for p in out["iv_smile"]} == {"call", "put"}
+    assert len(out["iv_smile"]) == 4
+
+
 def test_surface_history_includes_near_month_iv_klines_on_fallback(monkeypatch):
     monkeypatch.setattr(surface, "etf_options_ch_enabled", lambda: False)
     monkeypatch.setattr(surface, "ch_ping", lambda: False)

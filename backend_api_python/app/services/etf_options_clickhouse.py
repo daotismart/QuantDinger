@@ -735,24 +735,87 @@ def fetch_underlying_series(
     return out
 
 
-def fetch_option_chain_rows_at_timestamps(
-    code6: str,
-    timestamps: List[str],
-) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
-    """Bulk-load flat option rows for each playback timestamp.
+_PLAYBACK_FIELD_MODES = {"full", "gex", "iv", "quotes"}
 
-    Uses exact-minute joins against quotes/analytics at the playback stamps,
-    and contracts for the matching trade_date (or nearest prior listing day).
-    """
-    code6 = str(code6 or "").strip()
-    meta: Dict[str, Any] = {"source": "clickhouse_playback", "timestamps": len(timestamps)}
-    if not code6 or not timestamps:
-        return {}, meta
 
-    ts_sql = _sql_ts_list(timestamps)
-    # ClickHouse disallows correlated subqueries that reference outer columns
-    # in JOIN ON; map each stamp to the nearest prior trade_date via join.
-    sql = f"""
+def normalize_playback_fields(value: Any) -> str:
+    raw = str(value or "full").strip().lower()
+    return raw if raw in _PLAYBACK_FIELD_MODES else "full"
+
+
+def playback_fields_for_chart(chart_key: str) -> str:
+    """Pick the cheapest ClickHouse join profile for a /history chart."""
+    chart = str(chart_key or "").strip()
+    if chart in {"options.iv", "options.ivRank", "options.iv_rank"}:
+        return "iv"
+    if chart in {
+        "options.oi",
+        "options.tv",
+        "options.maxPain",
+        "options.max_pain",
+        "options.capital",
+        "etf.optionsCapital",
+        "options.premiumMargin",
+    }:
+        return "quotes"
+    if chart in {"options.gex", "options.gexDist", "gex", "options.gexCallPut"}:
+        return "gex"
+    return "full"
+
+
+def _playback_chain_sql(code6: str, ts_sql: str, fields: str) -> str:
+    """Build the playback JOIN. ``fields`` skips unused quote/analytics tables."""
+    mode = normalize_playback_fields(fields)
+    need_quotes = mode in {"full", "gex", "quotes"}
+    need_analytics = mode in {"full", "gex", "iv"}
+    analytics_inner = mode == "iv"
+
+    select_close = "CAST(NULL AS Float64) AS close"
+    select_oi = "CAST(NULL AS Float64) AS open_interest"
+    select_iv = "CAST(NULL AS Float64) AS iv"
+    select_gamma = "CAST(NULL AS Float64) AS gamma"
+    select_und = "CAST(NULL AS Float64) AS underlying_price"
+    quotes_join = ""
+    analytics_join = ""
+
+    if need_quotes:
+        select_close = "q.close AS close"
+        select_oi = "q.open_interest AS open_interest"
+        quotes_join = f"""
+    INNER JOIN (
+      SELECT
+        ts_minute,
+        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+        close,
+        open_interest
+      FROM opt_quotes_bar_1m
+      WHERE underlying_code = '{code6}'
+        AND ts_minute IN ({ts_sql})
+    ) q ON q.ts_minute = ct.ts_minute
+       AND q.jid = toString(ct.contract_id)
+"""
+    if need_analytics:
+        select_iv = "a.iv AS iv"
+        select_und = "a.underlying_price AS underlying_price"
+        analytics_cols = "iv, underlying_price"
+        if mode in {"full", "gex"}:
+            select_gamma = "a.gamma AS gamma"
+            analytics_cols = "iv, gamma, underlying_price"
+        join_type = "INNER" if analytics_inner else "LEFT"
+        analytics_join = f"""
+    {join_type} JOIN (
+      SELECT
+        ts_minute,
+        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
+        {analytics_cols}
+      FROM opt_analytics_1m
+      WHERE underlying_code = '{code6}'
+        AND ts_minute IN ({ts_sql})
+    ) a ON a.ts_minute = ct.ts_minute
+       AND a.jid = toString(ct.contract_id)
+"""
+
+    return f"""
     WITH
       stamps AS (
         SELECT toDateTime(arrayJoin([{ts_sql}]), 'Asia/Shanghai') AS ts_minute
@@ -760,14 +823,18 @@ def fetch_option_chain_rows_at_timestamps(
       stamp_dates AS (
         SELECT ts_minute, toDate(ts_minute) AS d FROM stamps
       ),
+      trade_dates AS (
+        SELECT DISTINCT trade_date
+        FROM opt_contracts_daily
+        WHERE underlying_code = '{code6}'
+      ),
       stamp_trade AS (
         SELECT
           sd.ts_minute AS ts_minute,
-          max(c.trade_date) AS trade_date
+          max(td.trade_date) AS trade_date
         FROM stamp_dates sd
-        CROSS JOIN opt_contracts_daily c
-        WHERE c.underlying_code = '{code6}'
-          AND c.trade_date <= sd.d
+        INNER JOIN trade_dates td
+          ON td.trade_date <= sd.d
         GROUP BY sd.ts_minute
       ),
       contracts AS (
@@ -791,37 +858,46 @@ def fetch_option_chain_rows_at_timestamps(
       ct.strike AS strike,
       ct.cp AS cp,
       ct.expire_date AS expire_date,
-      q.close AS close,
-      q.open_interest AS open_interest,
-      a.iv AS iv,
-      a.gamma AS gamma,
-      a.underlying_price AS underlying_price
+      {select_close},
+      {select_oi},
+      {select_iv},
+      {select_gamma},
+      {select_und}
     FROM contracts ct
-    INNER JOIN (
-      SELECT
-        ts_minute,
-        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
-        close,
-        open_interest
-      FROM opt_quotes_bar_1m
-      WHERE underlying_code = '{code6}'
-        AND ts_minute IN ({ts_sql})
-    ) q ON q.ts_minute = ct.ts_minute
-       AND q.jid = toString(ct.contract_id)
-    LEFT JOIN (
-      SELECT
-        ts_minute,
-        toString(ifNull(nullIf(contract_id, ''), contract_code)) AS jid,
-        iv,
-        gamma,
-        underlying_price
-      FROM opt_analytics_1m
-      WHERE underlying_code = '{code6}'
-        AND ts_minute IN ({ts_sql})
-    ) a ON a.ts_minute = ct.ts_minute
-       AND a.jid = toString(ct.contract_id)
+    {quotes_join}
+    {analytics_join}
     SETTINGS max_execution_time = 90
     """
+
+
+def fetch_option_chain_rows_at_timestamps(
+    code6: str,
+    timestamps: List[str],
+    *,
+    fields: str = "full",
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """Bulk-load flat option rows for each playback timestamp.
+
+    Uses exact-minute joins against quotes/analytics at the playback stamps,
+    and contracts for the matching trade_date (or nearest prior listing day).
+
+    ``fields``:
+      - ``full`` / ``gex``: quotes + analytics (gamma)
+      - ``iv``: analytics only (skip quotes)
+      - ``quotes``: quotes only (skip analytics)
+    """
+    code6 = str(code6 or "").strip()
+    mode = normalize_playback_fields(fields)
+    meta: Dict[str, Any] = {
+        "source": "clickhouse_playback",
+        "timestamps": len(timestamps),
+        "fields": mode,
+    }
+    if not code6 or not timestamps:
+        return {}, meta
+
+    ts_sql = _sql_ts_list(timestamps)
+    sql = _playback_chain_sql(code6, ts_sql, mode)
     t0 = time.perf_counter()
     try:
         cols, raw_rows = _ch_query(sql, timeout=100.0)

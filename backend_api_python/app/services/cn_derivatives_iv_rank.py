@@ -252,7 +252,7 @@ def build_etf_options_iv_rank_history(
         timestamps = list_playback_timestamps(code6, interval=interval_n, bars=bars_n)
         if timestamps:
             underlyings = fetch_underlying_series(code6, timestamps)
-            by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps)
+            by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps, fields="iv")
             for ts in timestamps:
                 asof_dt = _parse_ts(ts) or datetime.now()
                 spot = float(underlyings.get(ts) or 0.0)

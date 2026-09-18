@@ -496,7 +496,7 @@ def build_etf_options_capital_history(
         empty["note"] = "no playback timestamps in ClickHouse for this underlying/interval"
         return empty
 
-    by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps)
+    by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps, fields="quotes")
     underlying_by_ts: Dict[str, float] = {}
     try:
         from app.services.etf_options_clickhouse import fetch_underlying_series

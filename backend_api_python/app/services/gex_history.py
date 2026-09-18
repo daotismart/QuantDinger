@@ -11,10 +11,10 @@ from app.services.etf_options_clickhouse import (
     etf_options_ch_enabled,
     fetch_option_chain_rows_at_timestamps,
     fetch_underlying_series,
-    list_playback_bucket_bounds,
     list_playback_timestamps,
     normalize_playback_bars,
     normalize_playback_interval,
+    playback_fields_for_chart,
 )
 from app.services.gex_indicator import (
     compute_gex_raw,
@@ -293,7 +293,7 @@ def build_gex_playback_history(
         return empty
 
     underlyings = fetch_underlying_series(code6, timestamps)
-    by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps)
+    by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps, fields="gex")
 
     slices: List[Dict[str, Any]] = []
     levels_series: List[Dict[str, Any]] = []
@@ -638,10 +638,13 @@ def _build_near_month_iv_klines(
             )
             continue
         close_v = float(close_iv if close_iv is not None else open_iv)
-        if open_iv is not None:
+        same_stamp = open_ts == close_ts
+        if (not same_stamp) and open_iv is not None:
             open_v = float(open_iv)
         elif prev_close is not None:
             open_v = float(prev_close)
+        elif open_iv is not None:
+            open_v = float(open_iv)
         else:
             open_v = close_v
         high_v = max(open_v, close_v)
@@ -705,6 +708,32 @@ def _surface_oi_distribution(chain: List[Dict[str, Any]]) -> List[Dict[str, Any]
     return points
 
 
+def _surface_iv_smile_from_chain(chain: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build an IV smile from stored analytics IV when present."""
+    smile: List[Dict[str, Any]] = []
+    for row in chain or []:
+        try:
+            strike = float(row.get("strike") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if strike <= 0:
+            continue
+        try:
+            call_iv = float(row.get("call_iv") or 0.0)
+        except (TypeError, ValueError):
+            call_iv = 0.0
+        try:
+            put_iv = float(row.get("put_iv") or 0.0)
+        except (TypeError, ValueError):
+            put_iv = 0.0
+        if call_iv > 0:
+            smile.append({"strike": strike, "iv": call_iv, "side": "call"})
+        if put_iv > 0:
+            smile.append({"strike": strike, "iv": put_iv, "side": "put"})
+    smile.sort(key=lambda item: (float(item["strike"]), str(item["side"])))
+    return smile
+
+
 def _surface_row_expire(row: Dict[str, Any]) -> Any:
     return (
         row.get("expire_date")
@@ -741,13 +770,16 @@ def _compute_surface_slice(
         t_years = _t_years(expire, asof)
         item: Dict[str, Any] = {"month": month_key, "T": t_years}
         if need_iv:
-            raw = compute_gex_raw(
-                chain,
-                underlying=underlying,
-                multiplier=multiplier,
-                T=t_years,
-            )
-            item["iv_smile"] = list(raw.get("iv_smile") or [])
+            smile = _surface_iv_smile_from_chain(chain)
+            if len(smile) < 4:
+                raw = compute_gex_raw(
+                    chain,
+                    underlying=underlying,
+                    multiplier=multiplier,
+                    T=t_years,
+                )
+                smile = list(raw.get("iv_smile") or []) or smile
+            item["iv_smile"] = smile
         if need_oi:
             oi_points = _surface_oi_distribution(chain)
             for point in oi_points:
@@ -1009,22 +1041,10 @@ def build_etf_options_surface_history(
         return empty
 
     bounds: List[Dict[str, str]] = []
+    timestamps = list_playback_timestamps(code6, interval=interval_n, bars=bars_n)
+    fetch_ts = list(timestamps)
     if want_iv_klines:
-        bounds = list_playback_bucket_bounds(code6, interval=interval_n, bars=bars_n)
-        timestamps = [
-            str(item.get("close_ts") or "").strip()[:19]
-            for item in bounds
-            if item.get("close_ts")
-        ]
-        open_ts = [
-            str(item.get("open_ts") or "").strip()[:19]
-            for item in bounds
-            if item.get("open_ts")
-        ]
-        fetch_ts = sorted({*timestamps, *open_ts})
-    else:
-        timestamps = list_playback_timestamps(code6, interval=interval_n, bars=bars_n)
-        fetch_ts = list(timestamps)
+        bounds = [{"open_ts": ts, "close_ts": ts, "label": ts} for ts in timestamps]
 
     if not timestamps:
         try:
@@ -1040,7 +1060,11 @@ def build_etf_options_surface_history(
         return empty
 
     underlyings = fetch_underlying_series(code6, fetch_ts)
-    by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, fetch_ts)
+    by_ts, meta = fetch_option_chain_rows_at_timestamps(
+        code6,
+        fetch_ts,
+        fields=playback_fields_for_chart(chart),
+    )
 
     slices: List[Dict[str, Any]] = []
     for ts in timestamps:
@@ -1119,7 +1143,7 @@ def build_etf_options_surface_history(
     )
     if want_iv_klines:
         filled = sum(1 for c in near_month_iv_klines if c.get("close") is not None)
-        note += f" 近月IV K线={filled}/{len(near_month_iv_klines)}。"
+        note += f" 近月IV K线={filled}/{len(near_month_iv_klines)}（开盘取上一根收盘 IV）。"
     if isinstance(meta, dict) and meta.get("error"):
         note += f" meta_error={meta.get('error')}"
 
