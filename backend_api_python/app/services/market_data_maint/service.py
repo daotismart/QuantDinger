@@ -61,7 +61,7 @@ def sync_watchlist_to_db(settings: Optional[MarketDataMaintSettings] = None) -> 
         return 0
 
 
-def run_historical_cycle(*, trigger: str = "manual") -> Dict[str, Any]:
+def run_historical_cycle(*, trigger: str = "manual", on_progress=None) -> Dict[str, Any]:
     settings = MarketDataMaintSettings.load()
     if not settings.enabled or not settings.historical_enabled:
         return {"skipped": True, "reason": "disabled"}
@@ -69,7 +69,12 @@ def run_historical_cycle(*, trigger: str = "manual") -> Dict[str, Any]:
     specs = collect_watch_specs(settings)
     if not specs:
         return {"skipped": True, "reason": "empty_watchlist"}
-    return run_historical_maintenance(specs, settings=settings, trigger=trigger)
+    return run_historical_maintenance(
+        specs,
+        settings=settings,
+        trigger=trigger,
+        on_progress=on_progress,
+    )
 
 
 def run_retention_cycle(*, trigger: str = "manual") -> Dict[str, Any]:
