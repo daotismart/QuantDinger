@@ -186,25 +186,125 @@ def build_etf_options_iv_rank_history(
     month: str = "all",
     lookback: int = _DEFAULT_LOOKBACK,
 ) -> Dict[str, Any]:
-    from app.services.gex_history import build_etf_options_surface_history
-
-    bars_n = max(7, int(bars or 60))
-    surface = build_etf_options_surface_history(
-        root,
-        chart_key="options.iv",
-        interval=interval,
-        bars=bars_n,
-        month=month,
+    from app.services.etf_options_clickhouse import (
+        ch_ping,
+        etf_options_ch_enabled,
+        fetch_option_chain_rows_at_timestamps,
+        fetch_underlying_series,
+        list_playback_timestamps,
+        normalize_playback_bars,
+        normalize_playback_interval,
     )
-    klines = list(surface.get("near_month_iv_klines") or [])
-    points = points_from_iv_values(klines, value_key="close", lookback=lookback, proxy="atm_iv")
-    note = str(surface.get("note") or "").strip()
+    from app.services.gex_history import (
+        _near_month_atm_iv_from_flat,
+        _near_month_atm_iv_from_smile,
+        _parse_ts,
+        _surface_code6,
+        _surface_live_fallback_slice,
+    )
+
+    code6 = _surface_code6(root)
+    interval_n = normalize_playback_interval(interval)
+    bars_n = normalize_playback_bars(bars)
     extra = "IV Rank 由近月 ATM 隐含波动率相对回看窗口最高/最低值计算。"
+    klines: List[Dict[str, Any]] = []
+    note = ""
+
+    def _klines_from_live() -> List[Dict[str, Any]]:
+        live = _surface_live_fallback_slice(code6, month)
+        atm = _near_month_atm_iv_from_smile(
+            list(live.get("iv_smile") or []),
+            float(live.get("underlying") or live.get("current_price") or 0.0),
+        )
+        month_key = None
+        ms = live.get("month_series") or []
+        if ms:
+            month_key = ms[0].get("month")
+            if atm is None:
+                atm = _near_month_atm_iv_from_smile(
+                    list(ms[0].get("iv_smile") or []),
+                    float(live.get("underlying") or live.get("current_price") or 0.0),
+                )
+        if atm is None:
+            return []
+        return [
+            {
+                "ts": live.get("ts"),
+                "label": live.get("label") or live.get("ts"),
+                "date": str(live.get("date") or (live.get("ts") or ""))[:10],
+                "month": month_key,
+                "close": atm,
+                "underlying": live.get("underlying") or live.get("current_price"),
+            }
+        ]
+
+    if not code6:
+        return _payload(
+            root=str(root or ""),
+            points=[],
+            interval=interval_n,
+            bars=bars_n,
+            note="missing underlying code",
+            proxy="atm_iv",
+        )
+
+    if etf_options_ch_enabled() and ch_ping():
+        timestamps = list_playback_timestamps(code6, interval=interval_n, bars=bars_n)
+        if timestamps:
+            underlyings = fetch_underlying_series(code6, timestamps)
+            by_ts, meta = fetch_option_chain_rows_at_timestamps(code6, timestamps)
+            for ts in timestamps:
+                asof_dt = _parse_ts(ts) or datetime.now()
+                spot = float(underlyings.get(ts) or 0.0)
+                flat = by_ts.get(ts) or []
+                if spot <= 0:
+                    for row in flat:
+                        up = float(row.get("underlying_price") or 0.0)
+                        if up > 0:
+                            spot = up
+                            break
+                near_month, atm_iv = _near_month_atm_iv_from_flat(
+                    flat,
+                    underlying=spot,
+                    asof=asof_dt,
+                    month=month,
+                )
+                klines.append(
+                    {
+                        "ts": ts,
+                        "label": ts,
+                        "date": ts[:10],
+                        "month": near_month,
+                        "close": atm_iv,
+                        "underlying": spot or None,
+                    }
+                )
+            note = (
+                f"按 {interval_n} 取最近 {bars_n} 根近月 ATM IV（ClickHouse 轻量切片，不回放完整表面）。"
+            )
+            if isinstance(meta, dict) and meta.get("error"):
+                note += f" meta_error={meta.get('error')}"
+        else:
+            note = "ClickHouse 无回放时间点，已回退为当前近月 ATM IV。"
+    else:
+        note = "ClickHouse 不可用，已回退为当前近月 ATM IV。"
+
+    if not any(row.get("close") for row in klines):
+        try:
+            klines = _klines_from_live()
+            if not note:
+                note = "已回退为当前近月 ATM IV。"
+        except Exception as exc:
+            logger.warning("ETF IV Rank live fallback failed root=%s: %s", root, exc)
+            if not note:
+                note = f"ETF IV Rank unavailable: {exc}"
+
+    points = points_from_iv_values(klines, value_key="close", lookback=lookback, proxy="atm_iv")
     return _payload(
-        root=str(surface.get("root") or root),
+        root=code6 or str(root or ""),
         points=points,
-        interval=str(surface.get("interval") or interval),
-        bars=int(surface.get("bars") or bars_n),
+        interval=interval_n,
+        bars=bars_n,
         note=f"{note} {extra}".strip(),
         proxy="atm_iv",
     )

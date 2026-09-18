@@ -431,6 +431,31 @@ def is_etf_surface_history_chart(chart_key: str) -> bool:
     return str(chart_key or "").strip() in _SURFACE_CHARTS
 
 
+def _normalize_surface_chart(chart_key: str) -> str:
+    chart = str(chart_key or "options.iv").strip() or "options.iv"
+    if chart == "options.max_pain":
+        return "options.maxPain"
+    return chart
+
+
+def surface_history_flags(chart_key: str) -> Dict[str, bool]:
+    """Which expensive fields a surface-history chart actually renders."""
+    chart = _normalize_surface_chart(chart_key)
+    need_iv = chart == "options.iv"
+    need_oi = chart == "options.oi"
+    need_tv = chart == "options.tv"
+    need_max_pain = chart == "options.maxPain"
+    if not (need_iv or need_oi or need_tv or need_max_pain):
+        need_iv = need_oi = need_tv = need_max_pain = True
+    return {
+        "need_iv": need_iv,
+        "need_oi": need_oi,
+        "need_tv": need_tv,
+        "need_max_pain": need_max_pain,
+        "need_iv_klines": need_iv,
+    }
+
+
 
 
 def _near_month_atm_iv_from_smile(
@@ -696,6 +721,10 @@ def _compute_surface_slice(
     asof: datetime,
     multiplier: float,
     month: str,
+    need_iv: bool = True,
+    need_oi: bool = True,
+    need_tv: bool = True,
+    need_max_pain: bool = True,
 ) -> Dict[str, Any]:
     from app.services.cn_derivatives_analytics import compute_max_pain
     from app.services.cn_derivatives_etf_capital import compute_etf_time_value_annualized_yield
@@ -710,72 +739,175 @@ def _compute_surface_slice(
             continue
         expire = next((_surface_row_expire(row) for row in chain if _surface_row_expire(row)), None)
         t_years = _t_years(expire, asof)
-        raw = compute_gex_raw(
-            chain,
-            underlying=underlying,
-            multiplier=multiplier,
-            T=t_years,
-        )
-        smile = list(raw.get("iv_smile") or [])
-        oi_points = _surface_oi_distribution(chain)
-        tv_yield = compute_etf_time_value_annualized_yield(
-            chain,
-            underlying=underlying,
-            multiplier=multiplier,
-            margin_rate=0.15,
-            T=t_years,
-            month=month_key,
-        )
-        max_pain = compute_max_pain(chain)
-        month_series.append(
-            {
-                "month": month_key,
-                "T": t_years,
-                "iv_smile": smile,
-                "gex_distribution": list(raw.get("points") or []),
-                "time_value_yield": tv_yield,
-                "max_pain": max_pain,
-            }
-        )
-        agg_chain.extend(chain)
-        for point in oi_points:
-            strike = float(point["strike"])
-            cur = oi_by_strike.get(strike)
-            if not cur:
-                oi_by_strike[strike] = {
-                    "strike": strike,
-                    "call_oi": float(point.get("call_oi") or 0.0),
-                    "put_oi": float(point.get("put_oi") or 0.0),
-                }
-            else:
-                cur["call_oi"] += float(point.get("call_oi") or 0.0)
-                cur["put_oi"] += float(point.get("put_oi") or 0.0)
+        item: Dict[str, Any] = {"month": month_key, "T": t_years}
+        if need_iv:
+            raw = compute_gex_raw(
+                chain,
+                underlying=underlying,
+                multiplier=multiplier,
+                T=t_years,
+            )
+            item["iv_smile"] = list(raw.get("iv_smile") or [])
+        if need_oi:
+            oi_points = _surface_oi_distribution(chain)
+            for point in oi_points:
+                strike = float(point["strike"])
+                cur = oi_by_strike.get(strike)
+                if not cur:
+                    oi_by_strike[strike] = {
+                        "strike": strike,
+                        "call_oi": float(point.get("call_oi") or 0.0),
+                        "put_oi": float(point.get("put_oi") or 0.0),
+                    }
+                else:
+                    cur["call_oi"] += float(point.get("call_oi") or 0.0)
+                    cur["put_oi"] += float(point.get("put_oi") or 0.0)
+        if need_tv:
+            item["time_value_yield"] = compute_etf_time_value_annualized_yield(
+                chain,
+                underlying=underlying,
+                multiplier=multiplier,
+                margin_rate=0.15,
+                T=t_years,
+                month=month_key,
+            )
+        if need_max_pain:
+            item["max_pain"] = compute_max_pain(chain)
+            agg_chain.extend(chain)
+        month_series.append(item)
 
     agg_oi: List[Dict[str, Any]] = []
-    for strike in sorted(oi_by_strike):
-        cur = oi_by_strike[strike]
-        call_oi = float(cur.get("call_oi") or 0.0)
-        put_oi = float(cur.get("put_oi") or 0.0)
-        agg_oi.append(
-            {
-                "strike": strike,
-                "call_oi": call_oi,
-                "put_oi": put_oi,
-                "total_oi": call_oi + put_oi,
-                "net_oi": call_oi - put_oi,
-            }
-        )
+    if need_oi:
+        for strike in sorted(oi_by_strike):
+            cur = oi_by_strike[strike]
+            call_oi = float(cur.get("call_oi") or 0.0)
+            put_oi = float(cur.get("put_oi") or 0.0)
+            agg_oi.append(
+                {
+                    "strike": strike,
+                    "call_oi": call_oi,
+                    "put_oi": put_oi,
+                    "total_oi": call_oi + put_oi,
+                    "net_oi": call_oi - put_oi,
+                }
+            )
 
     primary = month_series[0] if month_series else {}
+    max_pain = None
+    if need_max_pain:
+        max_pain = compute_max_pain(agg_chain) if agg_chain else primary.get("max_pain")
     return {
         "current_price": underlying,
         "underlying": underlying,
-        "iv_smile": primary.get("iv_smile") or [],
+        "iv_smile": primary.get("iv_smile") or [] if need_iv else [],
         "gex_distribution": agg_oi,
         "month_series": month_series,
-        "max_pain": compute_max_pain(agg_chain) if agg_chain else primary.get("max_pain"),
-        "time_value_yield": primary.get("time_value_yield") or {},
+        "max_pain": max_pain,
+        "time_value_yield": primary.get("time_value_yield") or {} if need_tv else {},
     }
+
+
+def _empty_surface_slice(ts: str, spot: Optional[float], flags: Dict[str, bool]) -> Dict[str, Any]:
+    row: Dict[str, Any] = {
+        "ts": ts,
+        "date": ts[:10],
+        "label": ts,
+        "underlying": spot or None,
+        "current_price": spot or None,
+    }
+    if flags.get("need_iv"):
+        row["iv_smile"] = []
+        row["month_series"] = []
+    if flags.get("need_oi"):
+        row["gex_distribution"] = []
+    if flags.get("need_tv"):
+        row["time_value_yield"] = {}
+        row["month_series"] = row.get("month_series") or []
+    if flags.get("need_max_pain"):
+        row["max_pain"] = None
+        row["month_series"] = row.get("month_series") or []
+    return row
+
+
+def _assemble_surface_slice(
+    ts: str,
+    spot: float,
+    payload: Dict[str, Any],
+    flags: Dict[str, bool],
+) -> Dict[str, Any]:
+    row: Dict[str, Any] = {
+        "ts": ts,
+        "date": ts[:10],
+        "label": ts,
+        "underlying": spot,
+        "current_price": spot,
+    }
+    if flags.get("need_iv"):
+        row["iv_smile"] = payload.get("iv_smile") or []
+        row["month_series"] = payload.get("month_series") or []
+    if flags.get("need_oi"):
+        row["gex_distribution"] = payload.get("gex_distribution") or []
+    if flags.get("need_tv"):
+        row["time_value_yield"] = payload.get("time_value_yield") or {}
+        row["month_series"] = payload.get("month_series") or []
+    if flags.get("need_max_pain"):
+        row["max_pain"] = payload.get("max_pain")
+        row["month_series"] = payload.get("month_series") or []
+    return row
+
+
+def _trim_live_fallback_slice(live: Dict[str, Any], flags: Dict[str, bool]) -> Dict[str, Any]:
+    row: Dict[str, Any] = {
+        "ts": live.get("ts"),
+        "date": live.get("date"),
+        "label": live.get("label"),
+        "current_price": live.get("current_price") or live.get("underlying"),
+        "underlying": live.get("underlying") or live.get("current_price"),
+        "month": live.get("month"),
+    }
+    month_series: List[Dict[str, Any]] = []
+    for item in live.get("month_series") or []:
+        trimmed: Dict[str, Any] = {"month": item.get("month"), "T": item.get("T")}
+        if flags.get("need_iv"):
+            trimmed["iv_smile"] = item.get("iv_smile") or []
+        if flags.get("need_tv"):
+            trimmed["time_value_yield"] = item.get("time_value_yield") or {}
+        if flags.get("need_max_pain"):
+            trimmed["max_pain"] = item.get("max_pain")
+        month_series.append(trimmed)
+    if flags.get("need_iv"):
+        row["iv_smile"] = live.get("iv_smile") or []
+        row["month_series"] = month_series
+    if flags.get("need_oi"):
+        row["gex_distribution"] = live.get("gex_distribution") or []
+    if flags.get("need_tv"):
+        row["time_value_yield"] = live.get("time_value_yield") or {}
+        row["month_series"] = month_series
+    if flags.get("need_max_pain"):
+        row["max_pain"] = live.get("max_pain")
+        row["month_series"] = month_series
+    return row
+
+
+def _near_month_max_pain_series(slices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for sl in slices or []:
+        month_series = sl.get("month_series") or []
+        first = month_series[0] if month_series else {}
+        mp = first.get("max_pain") if isinstance(first, dict) else None
+        if not isinstance(mp, dict):
+            mp = sl.get("max_pain") if isinstance(sl.get("max_pain"), dict) else {}
+        out.append(
+            {
+                "ts": sl.get("ts"),
+                "label": sl.get("label") or sl.get("ts"),
+                "date": sl.get("date") or str(sl.get("ts") or "")[:10],
+                "month": first.get("month") if isinstance(first, dict) else None,
+                "max_pain": mp.get("strike") if isinstance(mp, dict) else None,
+                "underlying": sl.get("underlying") or sl.get("current_price"),
+            }
+        )
+    return out
 
 
 def _surface_live_fallback_slice(code6: str, month: str) -> Dict[str, Any]:
@@ -809,11 +941,12 @@ def build_etf_options_surface_history(
 ) -> Dict[str, Any]:
     """Replay ETF option surfaces from ClickHouse for IV / OI / TV / Max Pain."""
     code6 = _surface_code6(root)
-    chart = str(chart_key or "options.iv").strip() or "options.iv"
+    chart = _normalize_surface_chart(chart_key)
+    flags = surface_history_flags(chart)
     interval_n = normalize_playback_interval(interval)
     bars_n = normalize_playback_bars(bars)
     asof = datetime.now().isoformat(timespec="seconds")
-    want_iv_klines = chart == "options.iv"
+    want_iv_klines = bool(flags.get("need_iv_klines"))
     empty: Dict[str, Any] = {
         "root": code6,
         "chart_key": chart,
@@ -862,13 +995,15 @@ def build_etf_options_surface_history(
     if not etf_options_ch_enabled() or not ch_ping():
         try:
             live = _surface_live_fallback_slice(code6, month)
-            empty["slices"] = [live]
+            empty["slices"] = [_trim_live_fallback_slice(live, flags)]
             empty["note"] = (
                 "ClickHouse 不可用，已回退为当前 ETF 期权截面；"
                 "恢复本地期权库后可按频率滑动回放 IV Smile / OI / 时间价值 / Max Pain。"
             )
             if want_iv_klines:
                 empty["near_month_iv_klines"] = _fallback_klines(live)
+            if flags.get("need_max_pain"):
+                empty["near_month_max_pain_series"] = _near_month_max_pain_series(empty["slices"])
         except Exception as exc:
             empty["note"] = f"ETF options history unavailable: {exc}"
         return empty
@@ -894,10 +1029,12 @@ def build_etf_options_surface_history(
     if not timestamps:
         try:
             live = _surface_live_fallback_slice(code6, month)
-            empty["slices"] = [live]
+            empty["slices"] = [_trim_live_fallback_slice(live, flags)]
             empty["note"] = "ClickHouse 无回放时间点，已回退为当前截面。"
             if want_iv_klines:
                 empty["near_month_iv_klines"] = _fallback_klines(live)
+            if flags.get("need_max_pain"):
+                empty["near_month_max_pain_series"] = _near_month_max_pain_series(empty["slices"])
         except Exception as exc:
             empty["note"] = f"no playback timestamps: {exc}"
         return empty
@@ -917,20 +1054,7 @@ def build_etf_options_surface_history(
                     spot = up
                     break
         if not flat or spot <= 0:
-            slices.append(
-                {
-                    "ts": ts,
-                    "date": ts[:10],
-                    "label": ts,
-                    "underlying": spot or None,
-                    "current_price": spot or None,
-                    "iv_smile": [],
-                    "gex_distribution": [],
-                    "month_series": [],
-                    "max_pain": None,
-                    "time_value_yield": {},
-                }
-            )
+            slices.append(_empty_surface_slice(ts, spot or None, flags))
             continue
         try:
             payload = _compute_surface_slice(
@@ -939,34 +1063,16 @@ def build_etf_options_surface_history(
                 asof=asof_dt,
                 multiplier=multiplier,
                 month=month,
+                need_iv=bool(flags.get("need_iv")),
+                need_oi=bool(flags.get("need_oi")),
+                need_tv=bool(flags.get("need_tv")),
+                need_max_pain=bool(flags.get("need_max_pain")),
             )
         except Exception as exc:
             logger.warning("ETF surface slice failed code=%s ts=%s: %s", code6, ts, exc)
-            slices.append(
-                {
-                    "ts": ts,
-                    "date": ts[:10],
-                    "label": ts,
-                    "underlying": spot,
-                    "current_price": spot,
-                    "iv_smile": [],
-                    "gex_distribution": [],
-                    "month_series": [],
-                    "max_pain": None,
-                    "time_value_yield": {},
-                }
-            )
+            slices.append(_empty_surface_slice(ts, spot, flags))
             continue
-        slices.append(
-            {
-                "ts": ts,
-                "date": ts[:10],
-                "label": ts,
-                "underlying": spot,
-                "current_price": spot,
-                **payload,
-            }
-        )
+        slices.append(_assemble_surface_slice(ts, spot, payload, flags))
 
     near_month_iv_klines: List[Dict[str, Any]] = []
     if want_iv_klines:
@@ -1002,10 +1108,14 @@ def build_etf_options_surface_history(
             candle["high"] = max(open_v, atm)
             candle["low"] = min(open_v, atm)
 
-    loaded = sum(1 for item in slices if item.get("month_series"))
+    loaded = sum(
+        1
+        for item in slices
+        if item.get("month_series") or item.get("gex_distribution") or item.get("iv_smile")
+    )
     note = (
-        f"按 {interval_n} 取最近 {bars_n} 根，用 ClickHouse 期权分钟切片回放 "
-        f"IV Smile / OI / 时间价值年化 / Max Pain；loaded={loaded}/{len(timestamps)}。"
+        f"按 {interval_n} 取最近 {bars_n} 根，用 ClickHouse 期权分钟切片回放 {chart}；"
+        f"loaded={loaded}/{len(timestamps)}。"
     )
     if want_iv_klines:
         filled = sum(1 for c in near_month_iv_klines if c.get("close") is not None)
@@ -1026,5 +1136,7 @@ def build_etf_options_surface_history(
     }
     if want_iv_klines:
         result["near_month_iv_klines"] = near_month_iv_klines
+    if flags.get("need_max_pain"):
+        result["near_month_max_pain_series"] = _near_month_max_pain_series(slices)
     return result
 

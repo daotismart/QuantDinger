@@ -57,6 +57,84 @@ def etf_options_panel_cache_ttl() -> int:
         return 60
 
 
+def etf_options_history_cache_ttl() -> int:
+    """TTL seconds for ETF options /history payloads. 0 disables the cache."""
+    try:
+        return max(0, int(os.getenv("ETF_OPTIONS_HISTORY_CACHE_TTL", "120") or 120))
+    except ValueError:
+        return 120
+
+
+def etf_options_history_cache_key(
+    *,
+    code6: str,
+    chart: str,
+    interval: str,
+    bars: int,
+    month: str = "all",
+) -> str:
+    code = "".join(ch for ch in str(code6 or "") if ch.isdigit())[:6]
+    chart_n = str(chart or "").strip() or "unknown"
+    month_n = str(month or "all").strip().lower() or "all"
+    return (
+        f"etf_options_hist:v1:{code}:{chart_n}:"
+        f"{normalize_playback_interval(interval)}:{normalize_playback_bars(bars)}:{month_n}"
+    )
+
+
+def _history_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    try:
+        from app.utils.cache import CacheManager
+
+        cached = CacheManager().get(key)
+        return cached if isinstance(cached, dict) else None
+    except Exception as exc:
+        logger.debug("etf options history cache get failed: %s", exc)
+        return None
+
+
+def _history_cache_set(key: str, value: Dict[str, Any], ttl: int) -> None:
+    if ttl <= 0:
+        return
+    try:
+        from app.utils.cache import CacheManager
+
+        CacheManager().set(key, value, ttl=ttl)
+    except Exception as exc:
+        logger.debug("etf options history cache set failed: %s", exc)
+
+
+def _history_cacheable(payload: Dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("slices") or payload.get("points") or payload.get("levels_series"):
+        return True
+    if payload.get("near_month_iv_klines") or payload.get("near_month_max_pain_series"):
+        return True
+    return False
+
+
+def cached_etf_options_history(cache_key: str, builder) -> Dict[str, Any]:
+    """Return cached ETF options history when fresh; otherwise run ``builder``."""
+    ttl = etf_options_history_cache_ttl()
+    if ttl > 0:
+        cached = _history_cache_get(cache_key)
+        if cached and _history_cacheable(cached):
+            out = dict(cached)
+            out["cache_hit"] = True
+            return out
+    data = builder()
+    if not isinstance(data, dict):
+        return data
+    out = dict(data)
+    out["cache_hit"] = False
+    if ttl > 0 and _history_cacheable(out):
+        store = dict(out)
+        store.pop("cache_hit", None)
+        _history_cache_set(cache_key, store, ttl)
+    return out
+
+
 def _to_float(value: Any) -> float:
     try:
         if value is None or value == "":

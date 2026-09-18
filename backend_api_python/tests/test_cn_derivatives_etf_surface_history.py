@@ -165,3 +165,119 @@ def test_surface_history_includes_near_month_iv_klines_on_fallback(monkeypatch):
     klines = hist.get("near_month_iv_klines") or []
     assert len(klines) == 1
     assert abs(klines[0]["close"] - 0.2) < 1e-9
+
+
+def test_surface_history_flags_are_chart_specific():
+    iv = surface.surface_history_flags("options.iv")
+    assert iv["need_iv"] and iv["need_iv_klines"]
+    assert not iv["need_oi"] and not iv["need_tv"] and not iv["need_max_pain"]
+    oi = surface.surface_history_flags("options.oi")
+    assert oi["need_oi"] and not oi["need_iv"] and not oi["need_max_pain"]
+    mp = surface.surface_history_flags("options.max_pain")
+    assert mp["need_max_pain"] and not mp["need_iv"] and not mp["need_tv"]
+
+
+def test_compute_surface_slice_oi_skips_iv_and_max_pain(monkeypatch):
+    chain = [
+        {
+            "strike": 4.4,
+            "call_mid": 0.18,
+            "put_mid": 0.05,
+            "call_oi": 100,
+            "put_oi": 80,
+            "expire_date": "2026-09-23",
+        }
+    ]
+    monkeypatch.setattr(surface, "build_strike_chains_by_month", lambda _rows: {"202609": chain})
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("OI slice should not compute IV / GEX raw")
+
+    monkeypatch.setattr(surface, "compute_gex_raw", _boom)
+    out = surface._compute_surface_slice(
+        [],
+        underlying=4.55,
+        asof=datetime(2026, 8, 27),
+        multiplier=10000,
+        month="all",
+        need_iv=False,
+        need_oi=True,
+        need_tv=False,
+        need_max_pain=False,
+    )
+    assert out["gex_distribution"]
+    assert out["iv_smile"] == []
+    assert out["max_pain"] is None
+    assert out["month_series"][0]["month"] == "202609"
+    assert "iv_smile" not in out["month_series"][0]
+    assert "max_pain" not in out["month_series"][0]
+
+
+def _fat_panel():
+    smile = [{"strike": 4.5, "iv": 0.2, "side": "call"}]
+    curve = [{"strike": 4.5, "pain": 12.0}, {"strike": 4.6, "pain": 9.0}]
+    return {
+        "current_price": 4.55,
+        "underlying": 4.55,
+        "iv_smile": smile,
+        "gex_distribution": [{"strike": 4.5, "call_oi": 10, "put_oi": 8, "total_oi": 18, "net_oi": 2}],
+        "month_series": [
+            {
+                "month": "202609",
+                "T": 0.08,
+                "iv_smile": smile,
+                "gex_distribution": [{"strike": 4.5, "net_gex": 1}],
+                "time_value_yield": {"call": [{"strike": 4.5, "yield": 0.1}], "put": []},
+                "max_pain": {"strike": 4.5, "pain": 9.0, "curve": curve},
+            }
+        ],
+        "max_pain": {"strike": 4.5, "pain": 9.0, "curve": curve},
+        "time_value_yield": {"call": [{"strike": 4.5, "yield": 0.1}], "put": []},
+        "month": "202609",
+    }
+
+
+def test_oi_history_trims_iv_and_max_pain(monkeypatch):
+    monkeypatch.setattr(surface, "etf_options_ch_enabled", lambda: False)
+    monkeypatch.setattr(surface, "ch_ping", lambda: False)
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf.build_etf_options_panel",
+        lambda code, month="all": _fat_panel(),
+    )
+    hist = surface.build_etf_options_surface_history(
+        "510300",
+        chart_key="options.oi",
+        interval="day",
+        bars=30,
+    )
+    sl = hist["slices"][0]
+    assert sl["gex_distribution"]
+    assert "iv_smile" not in sl
+    assert "max_pain" not in sl
+    assert "time_value_yield" not in sl
+    assert "month_series" not in sl or not sl.get("month_series")
+    assert not hist.get("near_month_max_pain_series")
+
+
+def test_maxpain_history_keeps_curve_and_series(monkeypatch):
+    monkeypatch.setattr(surface, "etf_options_ch_enabled", lambda: False)
+    monkeypatch.setattr(surface, "ch_ping", lambda: False)
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf.build_etf_options_panel",
+        lambda code, month="all": _fat_panel(),
+    )
+    hist = surface.build_etf_options_surface_history(
+        "510300",
+        chart_key="options.maxPain",
+        interval="day",
+        bars=30,
+    )
+    sl = hist["slices"][0]
+    assert sl["max_pain"]["curve"]
+    assert sl["month_series"][0]["max_pain"]["curve"]
+    assert "iv_smile" not in sl
+    assert "time_value_yield" not in sl
+    series = hist.get("near_month_max_pain_series") or []
+    assert len(series) == 1
+    assert series[0]["max_pain"] == 4.5
+    assert series[0]["month"] == "202609"
