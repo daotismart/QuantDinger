@@ -122,6 +122,28 @@ Current mitigation on the host:
 
 Indicator page route: `#/indicator-ide` (legacy `#/indicator-analysis` redirects there).
 
+### Strategy Management menu (recurring)
+
+The production `fe-compat` sidebar often collapses **Strategy** to IDE-only
+after an assets refresh. Restore with:
+
+```bash
+python3 /database/ai/QuantDinger/ops/hotfixes/strategy-manage-restore/restore_strategy_manage_menu.py
+# compose must mount strategy-manage.html (script adds it if missing)
+cd /database/ai/QuantDinger && docker compose \
+  -f docker-compose.yml -f docker-compose.production.yml \
+  -f docker-compose.hotfix.yml up -d --no-deps frontend
+```
+
+Required frontend volume (do **not** mount individual hashed JS chunks):
+
+```yaml
+- ./ops/hotfixes/fe-compat/strategy-manage.html:/usr/share/nginx/html/strategy-manage.html:ro
+```
+
+Re-run the restore script after any `ops/hotfixes/fe-compat/assets` replacement.
+The inventory API is `GET /api/strategies/inventory` (backend hotfix).
+
 Crypto OHLCV from this host currently times out without `PROXY_URL` (Binance/OKX
 unreachable). USStock / CNFutures kline still work.
 
