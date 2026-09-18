@@ -1,0 +1,2 @@
+"marketComposite.futures.options.gexDist": "净GEX 分布（净GEX / Price / Flip / Walls / Pin）",
+"marketComposite.futures.options.gexCallPutDist": "GEX分布（Call / Put 月份堆积）",

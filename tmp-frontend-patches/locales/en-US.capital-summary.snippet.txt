@@ -1,0 +1,6 @@
+marketComposite.futures.options.totalMargin: Total margin
+7328:  "marketComposite.futures.options.marginShortTotal": "Short margin",
+7329:  "marketComposite.futures.options.marginTotal": "Short margin",
+7330:  "marketComposite.futures.options.totalMargin": "Total margin",
+7331:  "marketComposite.futures.options.timeValueTotal": "Time value",
+7332:  "marketComposite.futures.options.intrinsicTotal": "Intrinsic value",

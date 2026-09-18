@@ -1,0 +1,2 @@
+"marketComposite.futures.options.gexDist": "Net GEX distribution (net GEX / price / flip / walls / pin)",
+"marketComposite.futures.options.gexCallPutDist": "GEX distribution (call / put by expiry)",
