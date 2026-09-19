@@ -1,0 +1,12 @@
+Index tab shows benchmark-index analysis (point, volume, constituents, weighted PE/margin).
+It does NOT attach linked-ETF fund metrics (AUM / fees / IOPV).
+
+Backend
+  GET /api/cn-derivatives/spot?scope=etf&picker_kind=spot_index&root=000016.SH
+  build_spot_index_panel attaches spot.index via enrich_index_metrics (CSI constituents).
+  History: chart=index.metrics|index.price|index.volume → build_index_metrics_history.
+
+Frontend (QuantDinger-Vue)
+  src/views/market-composite-analysis/etf-derivatives.vue
+  src/locales/lang/zh-CN.js  (locales/zh-CN.index-etf-analysis.snippet.txt)
+  src/locales/lang/en-US.js  (locales/en-US.index-etf-analysis.snippet.txt)

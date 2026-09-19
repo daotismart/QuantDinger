@@ -86,6 +86,56 @@ def test_fill_holding_market_values_from_scale_and_weight():
     assert out["constituent_market_value_sum"] == 150.0
 
 
+def test_enrich_index_metrics_uses_index_constituents(monkeypatch):
+    monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
+    monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(
+        metrics,
+        "_load_index_constituent_rows",
+        lambda code: [
+            {"code": "600519", "name": "贵州茅台", "weight_pct": 10.0, "market_value": None},
+            {"code": "601318", "name": "中国平安", "weight_pct": 5.0, "market_value": None},
+        ],
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_enrich_constituent_snapshots",
+        lambda codes, **kwargs: {
+            "600519": {"net_profit": 100.0, "pe_ratio": 20.0, "profit_margin": 25.0, "market_cap": 1e12},
+            "601318": {"net_profit": 50.0, "pe_ratio": 10.0, "profit_margin": 15.0, "market_cap": 5e11},
+        },
+    )
+    out = metrics.enrich_index_metrics("000016.SH")
+    assert out["holdings_count"] == 2
+    assert out["holdings"][0]["market_value"] == 1e12
+    assert out["constituent_market_cap_sum"] == 1.5e12
+    assert out["avg_pe"] == 16.67
+    assert "total_fee_pct" not in out
+    assert "scale" not in out
+
+
+def test_build_index_metrics_history_shape(monkeypatch):
+    monkeypatch.setattr(
+        metrics,
+        "enrich_index_metrics",
+        lambda symbol: {"avg_pe": 11.0, "holdings_count": 50, "constituent_profit_sum": 9.0, "constituent_profit_coverage": 50},
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_query_index_ohlcv",
+        lambda symbol, *, days: [
+            {"date": "2026-09-16", "price": 2800.0, "volume": 10},
+            {"date": "2026-09-17", "price": 2860.0, "volume": 12},
+        ],
+    )
+    data = metrics.build_index_metrics_history("000016.SH", chart_key="index.price", days=30)
+    assert data["root"] == "000016.SH"
+    assert len(data["points"]) == 2
+    assert data["points"][-1]["price"] == 2860.0
+    assert data["points"][-1]["avg_pe"] == 11.0
+    assert "点位" in data["note"]
+
+
 def test_estimate_etf_amount_uses_lot_volume():
     # Local/EM 成交量单位是手（100 股）。
     assert metrics.estimate_etf_amount(2.975, 4851416) == 2.975 * 4851416 * 100

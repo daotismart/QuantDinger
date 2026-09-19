@@ -167,7 +167,35 @@ def _etf_product_payload(code6: str) -> Dict[str, Any]:
     )
 
 
-def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
+def linked_etf_codes_for_index(index_symbol: str) -> List[str]:
+    """ETF underlyings whose benchmark matches ``index_symbol`` (000016.SH → 510050)."""
+    from app.markets.cn_options import ETF_BENCHMARK_INDEX, cn_symbol_with_board
+
+    want = str(index_symbol or "").strip().upper()
+    if not want:
+        return []
+    want6 = _etf_code6(want)
+    out: List[str] = []
+    for code6, bench in ETF_BENCHMARK_INDEX.items():
+        try:
+            code, board, _name = bench
+        except Exception:
+            continue
+        sym = cn_symbol_with_board(code, board)
+        if sym == want or str(code or "").strip() == want6:
+            out.append(code6)
+    return out
+
+
+def _resolve_linked_etf_code(index_symbol: str, etf_code: str = "") -> str:
+    explicit = _etf_code6(etf_code)
+    if explicit:
+        return explicit
+    codes = linked_etf_codes_for_index(index_symbol)
+    return codes[0] if codes else ""
+
+
+def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]:
     """Spot benchmark index panel for the ETF composite index tab."""
     from app.services.cn_derivatives_analytics import _ak, _safe_float
 
@@ -184,11 +212,70 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
             if live and float(live.get("price") or 0.0) > 0:
                 index_row = live
     price = float((index_row or {}).get("price") or 0.0)
+    volume = None
+    try:
+        volume = float((index_row or {}).get("volume") or 0.0) or None
+    except (TypeError, ValueError):
+        volume = None
     analysis: List[str] = []
     if price > 0:
         analysis.append(f"{name} 最新点位 {price:.2f}。")
     else:
         analysis.append("暂无指数现货行情，请稍后重试。")
+
+    index_metrics: Dict[str, Any] = {}
+    try:
+        from app.services.cn_derivatives_etf_metrics import enrich_index_metrics
+
+        enriched = _call_with_timeout(
+            lambda: enrich_index_metrics(sym),
+            _ENRICH_TIMEOUT_SEC,
+            default=None,
+        )
+        if isinstance(enriched, dict):
+            index_metrics = enriched
+    except Exception as exc:
+        logger.warning("enrich_index_metrics %s failed: %s", sym, exc)
+
+    if volume:
+        analysis.append(f"成交量 {volume:,.0f}。")
+    if index_metrics.get("holdings_count"):
+        analysis.append(f"指数成份 {int(index_metrics['holdings_count'])} 只。")
+    if index_metrics.get("constituent_market_cap_sum") is not None:
+        cov = int(index_metrics.get("market_cap_coverage") or 0)
+        total = int(index_metrics.get("holdings_count") or 0)
+        analysis.append(
+            f"成份股总市值合计约 {float(index_metrics['constituent_market_cap_sum']):,.0f} 元"
+            f"（覆盖 {cov}/{total} 只）。"
+        )
+    if index_metrics.get("constituent_profit_sum") is not None:
+        cov = int(index_metrics.get("constituent_profit_coverage") or 0)
+        total = int(index_metrics.get("holdings_count") or 0)
+        analysis.append(
+            f"成份股最新财报净利润合计约 {float(index_metrics['constituent_profit_sum']):,.0f} 元"
+            f"（覆盖 {cov}/{total} 只）。"
+        )
+    if index_metrics.get("avg_pe") is not None:
+        analysis.append(
+            f"成份加权平均 PE 约 {float(index_metrics['avg_pe']):.2f}"
+            f"（覆盖 {int(index_metrics.get('pe_coverage') or 0)} 只）。"
+        )
+    if index_metrics.get("avg_profit_margin") is not None:
+        analysis.append(
+            f"成份加权平均利润率约 {float(index_metrics['avg_profit_margin']):.2f}%"
+            f"（覆盖 {int(index_metrics.get('margin_coverage') or 0)} 只）。"
+        )
+
+    index_out = dict(index_row or {"code": sym, "name": name, "price": price})
+    index_out["name"] = name
+    index_out["code"] = sym
+    index_out["price"] = price
+    if volume is not None:
+        index_out["volume"] = volume
+    for key, value in index_metrics.items():
+        if key in {"code"}:
+            continue
+        index_out[key] = value
 
     return {
         "root": sym,
@@ -201,11 +288,11 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
             stock_symbol=sym,
         ),
         "spot": {
-            "index": index_row or {"code": sym, "name": name, "price": price},
+            "index": index_out,
             "index_symbol": sym,
         },
         "spot_price": price,
-        "continuous": {"price": price, "volume": 0, "open_interest": 0},
+        "continuous": {"price": price, "volume": volume or 0, "open_interest": 0},
         "analysis": analysis,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
@@ -254,11 +341,12 @@ def build_etf_scope_spot_panel(
     *,
     picker_kind: str = "",
     market: str = "",
+    etf_code: str = "",
 ) -> Dict[str, Any]:
     kind = str(picker_kind or "").strip().lower()
     root_s = str(root or "").strip()
     if kind == "spot_index":
-        return build_spot_index_panel(root_s)
+        return build_spot_index_panel(root_s, etf_code=etf_code)
     if kind == "us_hk_etf":
         return build_us_hk_etf_panel(market or "USStock", root_s)
     if kind == "cn_etf" or "." in root_s:
@@ -940,6 +1028,7 @@ def _index_row_from_local_bars(index_symbol: str) -> Optional[Dict[str, Any]]:
         "code": sym,
         "name": _cn_display_name(sym, sym),
         "price": bar["price"],
+        "volume": bar.get("volume"),
         "source": "qd_market_bars",
     }
 

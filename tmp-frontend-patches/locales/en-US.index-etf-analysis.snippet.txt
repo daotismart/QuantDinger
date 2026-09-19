@@ -1,0 +1,7 @@
+"marketComposite.etf.indexAnalysis": "Index analysis",
+"marketComposite.etf.hints.index": "Benchmark index point, volume, constituents, and weighted valuations for the selected ETF (not fund-level ETF metrics).",
+"marketComposite.etf.metrics.indexPoint": "Index point",
+"marketComposite.etf.metrics.indexPriceTrend": "Index point trend",
+"marketComposite.etf.metrics.indexVolumeTrend": "Index volume trend",
+"marketComposite.etf.metrics.constituentCount": "Constituents",
+"marketComposite.etf.metrics.constituentCountUnit": " names"

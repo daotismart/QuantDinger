@@ -1218,3 +1218,194 @@ def build_etf_metrics_history(
         "note": " ".join(notes),
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
+
+
+def enrich_index_metrics(index_symbol: str) -> Dict[str, Any]:
+    """Benchmark-index constituent metrics (not the linked ETF)."""
+    code6 = _code6(index_symbol)
+    empty: Dict[str, Any] = {
+        "code": code6,
+        "holdings_count": 0,
+        "holdings_quarter": "",
+        "holdings": [],
+        "holdings_sample": [],
+        "constituent_profit_sum": None,
+        "constituent_profit_weighted": None,
+        "constituent_profit_coverage": 0,
+        "constituent_market_cap_sum": None,
+        "market_cap_coverage": 0,
+        "avg_pe": None,
+        "avg_profit_margin": None,
+        "pe_coverage": 0,
+        "margin_coverage": 0,
+        "source": "index_stock_cons_weight_csindex",
+    }
+    if not code6:
+        return empty
+
+    cache_key = f"index:metrics_bundle:v1:{code6}"
+    cached = _cache_get(cache_key)
+    if isinstance(cached, dict) and (cached.get("holdings_count") or 0) > 0:
+        return dict(cached)
+
+    rows = _load_index_constituent_rows(code6)
+    if not rows:
+        return empty
+
+    snapshots = _enrich_constituent_snapshots([r.get("code") for r in rows], timeout=12.0)
+    merged = _merge_holdings_metrics(rows, snapshots)
+    holdings = []
+    for item in merged.get("holdings") or []:
+        row = dict(item)
+        if row.get("market_value") is None and row.get("market_cap") is not None:
+            row["market_value"] = row.get("market_cap")
+        holdings.append(row)
+    out = {
+        "code": code6,
+        "holdings_count": len(holdings),
+        "holdings_quarter": str((rows[0] or {}).get("quarter") or ""),
+        "holdings": holdings,
+        "holdings_sample": holdings[:10],
+        "constituent_profit_sum": merged.get("constituent_profit_sum"),
+        "constituent_profit_weighted": merged.get("constituent_profit_weighted"),
+        "constituent_profit_coverage": merged.get("constituent_profit_coverage"),
+        "constituent_market_cap_sum": merged.get("constituent_market_cap_sum"),
+        "market_cap_coverage": merged.get("market_cap_coverage"),
+        "avg_pe": merged.get("avg_pe"),
+        "avg_profit_margin": merged.get("avg_profit_margin"),
+        "pe_coverage": merged.get("pe_coverage"),
+        "margin_coverage": merged.get("margin_coverage"),
+        "source": "index_stock_cons_weight_csindex",
+        "metrics_asof": datetime.now().isoformat(timespec="seconds"),
+    }
+    _cache_set(cache_key, out, 900 if holdings else 120)
+    return out
+
+
+def _query_index_ohlcv(symbol: str, *, days: int) -> List[Dict[str, Any]]:
+    """Daily OHLCV for a CN index symbol such as ``000016.SH``."""
+    from app.utils.db import get_db_connection
+
+    raw = str(symbol or "").strip().upper()
+    if not raw:
+        return []
+    candidates = [raw]
+    code6 = _code6(raw)
+    if code6 and "." not in raw:
+        candidates.append(f"{code6}.SH")
+        candidates.append(f"{code6}.SZ")
+    limit = max(7, min(int(days or 180), 800))
+    points: List[Dict[str, Any]] = []
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            for sym in candidates:
+                cur.execute(
+                    "SELECT close, volume, open, high, low, bar_time FROM qd_market_bars "
+                    "WHERE market = %s AND symbol = %s AND timeframe = %s "
+                    "ORDER BY bar_time DESC LIMIT %s",
+                    ("CNStock", sym, "1D", limit),
+                )
+                rows = cur.fetchall() or []
+                if not rows:
+                    continue
+                for row in reversed(list(rows)):
+                    if isinstance(row, dict):
+                        close = row.get("close")
+                        volume = row.get("volume")
+                        opn = row.get("open")
+                        high = row.get("high")
+                        low = row.get("low")
+                        ts = row.get("bar_time")
+                    else:
+                        close, volume, opn, high, low, ts = row[0], row[1], row[2], row[3], row[4], row[5]
+                    price = _safe_float(close)
+                    points.append(
+                        {
+                            "date": _bar_date(ts),
+                            "price": price,
+                            "open": _safe_float(opn),
+                            "high": _safe_float(high),
+                            "low": _safe_float(low),
+                            "volume": _safe_float(volume),
+                        }
+                    )
+                if points:
+                    break
+    except Exception as exc:
+        logger.debug("local index ohlcv %s failed: %s", raw, exc)
+        return []
+    return [p for p in points if p.get("date") and p.get("price") is not None]
+
+
+def build_index_metrics_history(
+    symbol: str,
+    *,
+    chart_key: str = "index.metrics",
+    days: int = 180,
+    frequency: str = "day",
+) -> Dict[str, Any]:
+    """Index point / volume history plus latest constituent snapshot metrics."""
+    code6 = _code6(symbol)
+    days_i = max(7, min(int(days or 180), 800))
+    freq = str(frequency or "day").strip().lower()
+    if freq in {"w", "1w", "week", "weekly"}:
+        freq = "week"
+    elif freq in {"m", "1m", "month", "monthly"}:
+        freq = "month"
+    else:
+        freq = "day"
+
+    ohlcv = _query_index_ohlcv(symbol, days=days_i)
+    try:
+        metrics = enrich_index_metrics(symbol)
+    except Exception as exc:
+        logger.warning("index metrics history enrich failed %s: %s", symbol, exc)
+        metrics = {}
+    pe = _safe_float(metrics.get("avg_pe"))
+    margin = _safe_float(metrics.get("avg_profit_margin"))
+    profit_sum = _safe_float(metrics.get("constituent_profit_sum"))
+    cap_sum = _safe_float(metrics.get("constituent_market_cap_sum"))
+
+    points: List[Dict[str, Any]] = []
+    for row in ohlcv:
+        points.append(
+            {
+                "date": row.get("date"),
+                "price": row.get("price"),
+                "volume": row.get("volume"),
+                "avg_pe": pe,
+                "avg_profit_margin": margin,
+                "constituent_profit_sum": profit_sum,
+                "constituent_market_cap_sum": cap_sum,
+            }
+        )
+    if freq in {"week", "month"} and points:
+        points = _resample_metric_points(points, freq)
+
+    notes = ["点位/成交量来自本地日线（qd_market_bars）。"]
+    if pe is not None:
+        notes.append(f"成份加权 PE 约 {pe:.2f}（水平参考）。")
+    if profit_sum is not None:
+        cov = int(metrics.get("constituent_profit_coverage") or 0)
+        total = int(metrics.get("holdings_count") or 0)
+        notes.append(f"成份净利润合计覆盖 {cov}/{total} 只。")
+
+    return {
+        "root": str(symbol or "").strip().upper() or code6,
+        "chart_key": chart_key or "index.metrics",
+        "mode": "daily",
+        "frequency": freq,
+        "days": days_i,
+        "points": points,
+        "metrics": {
+            "avg_pe": pe,
+            "avg_profit_margin": margin,
+            "constituent_profit_sum": profit_sum,
+            "constituent_market_cap_sum": cap_sum,
+            "holdings_count": metrics.get("holdings_count"),
+            "holdings_quarter": metrics.get("holdings_quarter"),
+        },
+        "note": " ".join(notes),
+        "asof": datetime.now().isoformat(timespec="seconds"),
+    }
