@@ -70,10 +70,18 @@ def spot_panel():
         if _is_etf_scope():
             picker_kind = (request.args.get("picker_kind") or request.args.get("pickerKind") or "").strip()
             market = (request.args.get("market") or "").strip()
+            etf_code = (
+                request.args.get("etf")
+                or request.args.get("etf_code")
+                or request.args.get("etfCode")
+                or request.args.get("underlying")
+                or ""
+            ).strip()
             data = build_etf_scope_spot_panel(
                 root,
                 picker_kind=picker_kind,
                 market=market,
+                etf_code=etf_code,
             )
         else:
             data = build_spot_panel(root)

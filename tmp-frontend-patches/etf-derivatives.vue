@@ -116,6 +116,58 @@
             <strong>{{ selectedFuturesRoot }}</strong>
           </div>
         </div>
+        <div v-if="hasLinkedEtfAnalysis" class="fda-section fda-etf-on-index">
+          <h3>{{ $t('marketComposite.etf.linkedAnalysis') }}</h3>
+          <div class="fda-metrics">
+            <div class="fda-metric" v-for="item in etfMetricCards" :key="'idx-etf-' + item.key">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.display }}</strong>
+            </div>
+          </div>
+          <div class="fda-charts fda-charts-etf">
+            <div class="fda-chart-box">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.etf.metrics.priceTrend') }}</h3>
+                <a-button size="small" @click="openHistory('etf.price')">{{ $t('marketComposite.futures.history') }}</a-button>
+              </div>
+              <div ref="etfPriceChart" class="fda-chart" />
+            </div>
+            <div class="fda-chart-box">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.etf.metrics.volumeAmountTrend') }}</h3>
+                <a-button size="small" @click="openHistory('etf.volume')">{{ $t('marketComposite.futures.history') }}</a-button>
+              </div>
+              <div ref="etfVolumeChart" class="fda-chart" />
+            </div>
+            <div class="fda-chart-box">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.etf.metrics.scaleTrend') }}</h3>
+                <a-button size="small" @click="openHistory('etf.scale')">{{ $t('marketComposite.futures.history') }}</a-button>
+              </div>
+              <div ref="etfScaleChart" class="fda-chart" />
+            </div>
+            <div class="fda-chart-box">
+              <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.etf.metrics.feeProfitTrend') }}</h3>
+                <a-button size="small" @click="openHistory('etf.metrics')">{{ $t('marketComposite.futures.history') }}</a-button>
+              </div>
+              <div ref="etfFeeProfitChart" class="fda-chart" />
+            </div>
+          </div>
+          <p v-if="etfMetricsNote" class="fda-muted fda-etf-note">{{ etfMetricsNote }}</p>
+          <div v-if="etfHoldings.length" class="fda-section fda-constituents">
+            <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
+            <p v-if="etfHoldingsMeta" class="fda-muted">{{ etfHoldingsMeta }}</p>
+            <a-table
+              class="fda-table"
+              size="small"
+              :pagination="etfHoldingsPagination"
+              :columns="etfConstituentColumns"
+              :data-source="etfHoldings"
+              row-key="code"
+            />
+          </div>
+        </div>
         <div class="fda-section">
           <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
           <ul class="fda-analysis">
@@ -482,6 +534,10 @@ export default {
     etfSpot () {
       return (this.spotData && this.spotData.spot && this.spotData.spot.etf) || {}
     },
+    hasLinkedEtfAnalysis () {
+      const etf = this.etfSpot
+      return !!(etf && (etf.price || etf.scale || etf.holdings_count || (etf.holdings && etf.holdings.length)))
+    },
     etfHoldings () {
       const etf = this.etfSpot
       return etf.holdings || etf.holdings_sample || []
@@ -520,7 +576,7 @@ export default {
         : '-'
       return [
         { key: 'scale', label: this.$t('marketComposite.etf.metrics.scale'), display: this.fmtMoney(etf.scale) },
-        { key: 'price', label: this.$t('marketComposite.etf.metrics.price'), display: this.fmt(this.spotData && this.spotData.spot_price, 4) },
+        { key: 'price', label: this.$t('marketComposite.etf.metrics.price'), display: this.fmt(etf.price != null ? etf.price : (this.spotData && this.spotData.spot_price), 4) },
         { key: 'volume', label: this.$t('marketComposite.etf.metrics.volume'), display: this.fmtCompact(etf.volume) },
         { key: 'amount', label: this.$t('marketComposite.etf.metrics.amount'), display: this.fmtMoney(etf.amount) },
         { key: 'fee', label: this.$t('marketComposite.etf.metrics.fee'), display: feeDisplay },
@@ -918,9 +974,11 @@ export default {
           const res = await getSpotPanel(indexSymbol, {
             scope: 'etf',
             picker_kind: 'spot_index',
-            market: 'CNStock'
+            market: 'CNStock',
+            etf: this.selectedUnderlyingCode
           })
           this.spotData = (res && res.data) || null
+          await this.loadEtfMetricsHistory()
         } else {
           // Fallback: ETF spot panel still carries the embedded index quote.
           await this.loadSpot()

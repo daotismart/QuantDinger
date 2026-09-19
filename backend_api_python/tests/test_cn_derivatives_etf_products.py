@@ -127,3 +127,43 @@ def test_etf_spot_panel_uses_local_bars_when_sina_hangs(monkeypatch):
     assert time.monotonic() - started < 3.0
     assert panel["spot_price"] == 2.881
     assert panel["spot"]["etf"]["source"] == "qd_market_bars"
+
+
+def test_linked_etf_codes_for_index():
+    assert etf_mod.linked_etf_codes_for_index("000016.SH") == ["510050"]
+    assert "510300" in etf_mod.linked_etf_codes_for_index("000300.SH")
+    assert etf_mod.linked_etf_codes_for_index("399006.SZ") == ["159915"]
+    assert etf_mod._resolve_linked_etf_code("000688.SH", "588080") == "588080"
+    assert etf_mod._resolve_linked_etf_code("000688.SH", "") == "588000"
+
+
+def test_spot_index_panel_attaches_linked_etf_analysis(monkeypatch):
+    monkeypatch.setattr(
+        etf_mod,
+        "_index_row_from_local_bars",
+        lambda symbol: {"code": symbol, "name": "上证50指数", "price": 2860.77},
+    )
+    monkeypatch.setattr(
+        etf_mod,
+        "build_etf_spot_panel",
+        lambda code: {
+            "root": "510050",
+            "spot": {
+                "etf": {
+                    "code": "510050",
+                    "name": "上证50ETF",
+                    "price": 2.98,
+                    "scale": 2.3e10,
+                    "avg_pe": 35.0,
+                    "holdings_count": 50,
+                }
+            },
+            "analysis": ["上证50ETF 最新价 2.9800。", "运作费率约 0.20%/年。"],
+        },
+    )
+    panel = etf_mod.build_spot_index_panel("000016.SH", etf_code="510050")
+    assert panel["spot_price"] == 2860.77
+    assert panel["spot"]["etf"]["scale"] == 2.3e10
+    assert panel["spot"]["etf_code"] == "510050"
+    assert any("上证50ETF" in line for line in panel["analysis"])
+    assert any("2.9800" in line or "运作费率" in line for line in panel["analysis"])

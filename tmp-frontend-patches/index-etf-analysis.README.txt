@@ -1,0 +1,11 @@
+Index tab shows the linked ETF analysis block (metrics, charts, holdings).
+
+Backend
+  GET /api/cn-derivatives/spot?scope=etf&picker_kind=spot_index&root=000016.SH&etf=510050
+  build_spot_index_panel attaches spot.etf + ETF analysis lines.
+  If etf= is omitted, the first benchmark match is used (000016.SH → 510050).
+
+Frontend (QuantDinger-Vue)
+  src/views/market-composite-analysis/etf-derivatives.vue
+  src/locales/lang/zh-CN.js  (locales/zh-CN.index-etf-analysis.snippet.txt)
+  src/locales/lang/en-US.js  (locales/en-US.index-etf-analysis.snippet.txt)
