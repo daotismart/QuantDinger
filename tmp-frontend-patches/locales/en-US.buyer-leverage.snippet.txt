@@ -1,2 +1,2 @@
-"marketComposite.futures.options.buyerRealLeverage": "Buyer real leverage",
-"marketComposite.futures.options.buyerLeverageAxis": "Real leverage",
+"marketComposite.futures.options.buyerRealLeverage": "Buyer unit real leverage",
+"marketComposite.futures.options.buyerLeverageAxis": "Unit real leverage",

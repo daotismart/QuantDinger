@@ -136,12 +136,29 @@ def test_compute_buyer_real_leverage_uses_delta_over_premium():
             "call_delta": 0.20,
             "put_delta": -0.70,
         },
+        {
+            # Deep ITM call with no time value: dropped from unit-leverage series.
+            "strike": 2.0,
+            "call_mid": 1.0,
+            "put_mid": 0.01,
+            "call_delta": 0.99,
+            "put_delta": -0.05,
+        },
     ]
     out = capital.compute_buyer_real_leverage(chain, underlying=3.0, T=30 / 365.0, month="202609")
     assert [p["strike"] for p in out["call"]] == [3.0, 3.2]
-    assert abs(out["call"][0]["leverage"] - (0.50 * 3.0 / 0.15)) < 1e-9
-    assert abs(out["put"][0]["leverage"] - (0.40 * 3.0 / 0.10)) < 1e-9
-    assert abs(out["call"][1]["leverage"] - (0.20 * 3.0 / 0.05)) < 1e-9
+    atm_call = out["call"][0]
+    atm_put = next(p for p in out["put"] if p["strike"] == 3.0)
+    # ATM call: TV = 0.15 − 0, unit = (0.50×3/0.15) / 0.15
+    assert abs(atm_call["leverage"] - ((0.50 * 3.0 / 0.15) / 0.15)) < 1e-9
+    assert abs(atm_call["raw_leverage"] - (0.50 * 3.0 / 0.15)) < 1e-9
+    assert abs(atm_call["time_value"] - 0.15) < 1e-9
+    # ATM put: TV = 0.10
+    assert abs(atm_put["leverage"] - ((0.40 * 3.0 / 0.10) / 0.10)) < 1e-9
+    # OTM call: TV = 0.05
+    assert abs(out["call"][1]["leverage"] - ((0.20 * 3.0 / 0.05) / 0.05)) < 1e-9
+    # ITM call at 2.0: premium == intrinsic → omitted
+    assert 2.0 not in [p["strike"] for p in out["call"]]
 
 
 def test_compute_buyer_real_leverage_falls_back_to_black76():

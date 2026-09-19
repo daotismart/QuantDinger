@@ -346,10 +346,13 @@ def compute_buyer_real_leverage(
     T: float,
     month: str,
 ) -> Dict[str, Any]:
-    """Buyer effective leverage (omega) by strike for one expiry.
+    """Buyer unit real leverage by strike for one expiry.
 
-    ``leverage = |Δ| × S / premium``. Delta prefers a stored ``*_delta``,
-    otherwise Black-76 using stored IV or IV implied from the option price.
+    Real leverage ``ω = |Δ| × S / premium``. Unit real leverage is
+    ``ω / time_value`` where time value is ``premium − intrinsic`` (same
+    signed口径 as the TV-yield chart). Points with non-positive time
+    value are omitted. Delta prefers a stored ``*_delta``, otherwise
+    Black-76 using stored IV or IV implied from the option price.
     """
     from app.services.gex_indicator import black76_greeks, implied_vol_black76
 
@@ -374,6 +377,10 @@ def compute_buyer_real_leverage(
             px = _option_price(row, side)
             if px <= 1e-8:
                 continue
+            intrinsic = max(spot - k, 0.0) if is_call else max(k - spot, 0.0)
+            time_value = px - intrinsic
+            if time_value <= 1e-8:
+                continue
             stored_delta = row.get(f"{side}_delta")
             if stored_delta is None and not is_call:
                 stored_delta = row.get("put_delta")
@@ -388,10 +395,13 @@ def compute_buyer_real_leverage(
                 delta = _safe_float(greeks.get("delta"))
             if abs(delta) <= 1e-12:
                 continue
-            leverage = abs(delta) * spot / px
+            raw_leverage = abs(delta) * spot / px
+            leverage = raw_leverage / time_value
             point = {
                 "strike": k,
                 "leverage": leverage,
+                "raw_leverage": raw_leverage,
+                "time_value": time_value,
                 "delta": delta,
                 "premium": px,
                 "side": side,
@@ -409,7 +419,7 @@ def compute_buyer_real_leverage(
         "T": t_years,
         "call": call_points,
         "put": put_points,
-        "note": "买方真实杠杆 = |Δ| × 标的价格 / 权利金",
+        "note": "买方单位真实杠杆 = (|Δ| × 标的价格 / 权利金) / 时间价值",
     }
 
 

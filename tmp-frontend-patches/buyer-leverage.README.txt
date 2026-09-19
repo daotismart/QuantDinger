@@ -1,9 +1,10 @@
-Buyer real leverage chart (买方真实杠杆)
+Buyer unit real leverage chart (买方单位真实杠杆)
 
 Backend
   GET /api/cn-derivatives/history?chart=options.buyerLeverage
   Panel field: buyer_leverage / month_series[].buyer_leverage
-  Formula: |Δ| × underlying / premium
+  Formula: (|Δ| × underlying / premium) / time_value
+  time_value = premium − intrinsic (same口径 as the TV-yield chart)
 
 Frontend (QuantDinger-Vue) — apply on a Vue branch:
   src/views/market-composite-analysis/etf-derivatives.vue

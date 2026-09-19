@@ -1,2 +1,2 @@
-"marketComposite.futures.options.buyerRealLeverage": "买方真实杠杆",
-"marketComposite.futures.options.buyerLeverageAxis": "真实杠杆",
+"marketComposite.futures.options.buyerRealLeverage": "买方单位真实杠杆",
+"marketComposite.futures.options.buyerLeverageAxis": "单位真实杠杆",
