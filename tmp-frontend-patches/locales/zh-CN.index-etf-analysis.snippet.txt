@@ -1,1 +1,7 @@
-"marketComposite.etf.linkedAnalysis": "对应 ETF 分析"
+"marketComposite.etf.indexAnalysis": "指数分析",
+"marketComposite.etf.hints.index": "展示所选 ETF 对应基准指数的点位、成交量、成份股及加权估值（不是 ETF 基金数据）。",
+"marketComposite.etf.metrics.indexPoint": "指数点位",
+"marketComposite.etf.metrics.indexPriceTrend": "指数点位趋势",
+"marketComposite.etf.metrics.indexVolumeTrend": "指数成交量趋势",
+"marketComposite.etf.metrics.constituentCount": "成份数量",
+"marketComposite.etf.metrics.constituentCountUnit": " 只"

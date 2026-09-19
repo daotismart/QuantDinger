@@ -278,6 +278,21 @@ def chart_history():
             )
             return jsonify({"code": 1, "msg": "ok", "data": data})
 
+        if _is_etf_scope() and chart_key in {
+            "index.metrics",
+            "index.price",
+            "index.volume",
+        }:
+            from app.services.cn_derivatives_etf_metrics import build_index_metrics_history
+
+            data = build_index_metrics_history(
+                root,
+                chart_key=chart_key,
+                days=days_i,
+                frequency=frequency,
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
+
         data = build_chart_history(
             root,
             chart_key=chart_key,

@@ -137,33 +137,37 @@ def test_linked_etf_codes_for_index():
     assert etf_mod._resolve_linked_etf_code("000688.SH", "") == "588000"
 
 
-def test_spot_index_panel_attaches_linked_etf_analysis(monkeypatch):
+def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     monkeypatch.setattr(
         etf_mod,
         "_index_row_from_local_bars",
-        lambda symbol: {"code": symbol, "name": "上证50指数", "price": 2860.77},
+        lambda symbol: {"code": symbol, "name": "上证50指数", "price": 2860.77, "volume": 123},
     )
+    monkeypatch.setattr(etf_mod, "_ENRICH_TIMEOUT_SEC", 2.0)
     monkeypatch.setattr(
-        etf_mod,
-        "build_etf_spot_panel",
-        lambda code: {
-            "root": "510050",
-            "spot": {
-                "etf": {
-                    "code": "510050",
-                    "name": "上证50ETF",
-                    "price": 2.98,
-                    "scale": 2.3e10,
-                    "avg_pe": 35.0,
-                    "holdings_count": 50,
-                }
-            },
-            "analysis": ["上证50ETF 最新价 2.9800。", "运作费率约 0.20%/年。"],
+        "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
+        lambda symbol: {
+            "holdings_count": 50,
+            "avg_pe": 12.5,
+            "avg_profit_margin": 16.2,
+            "constituent_market_cap_sum": 9e12,
+            "constituent_profit_sum": 1.2e12,
+            "constituent_profit_coverage": 50,
+            "market_cap_coverage": 50,
+            "pe_coverage": 49,
+            "margin_coverage": 50,
+            "holdings": [{"code": "600519", "name": "贵州茅台", "weight_pct": 8.5, "pe_ratio": 19.3}],
         },
     )
-    panel = etf_mod.build_spot_index_panel("000016.SH", etf_code="510050")
+    panel = etf_mod.build_spot_index_panel("000016.SH")
     assert panel["spot_price"] == 2860.77
-    assert panel["spot"]["etf"]["scale"] == 2.3e10
-    assert panel["spot"]["etf_code"] == "510050"
-    assert any("上证50ETF" in line for line in panel["analysis"])
-    assert any("2.9800" in line or "运作费率" in line for line in panel["analysis"])
+    assert "etf" not in (panel.get("spot") or {})
+    idx = panel["spot"]["index"]
+    assert idx["avg_pe"] == 12.5
+    assert idx["holdings_count"] == 50
+    assert idx["holdings"][0]["code"] == "600519"
+    text = "".join(panel["analysis"])
+    assert "上证50指数" in text
+    assert "12.50" in text
+    assert "50ETF" not in text
+    assert "运作费率" not in text

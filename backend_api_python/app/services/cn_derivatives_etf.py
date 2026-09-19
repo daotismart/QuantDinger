@@ -212,25 +212,70 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
             if live and float(live.get("price") or 0.0) > 0:
                 index_row = live
     price = float((index_row or {}).get("price") or 0.0)
+    volume = None
+    try:
+        volume = float((index_row or {}).get("volume") or 0.0) or None
+    except (TypeError, ValueError):
+        volume = None
     analysis: List[str] = []
     if price > 0:
         analysis.append(f"{name} 最新点位 {price:.2f}。")
     else:
         analysis.append("暂无指数现货行情，请稍后重试。")
 
-    linked = _resolve_linked_etf_code(sym, etf_code)
-    etf_row: Optional[Dict[str, Any]] = None
-    if linked:
-        try:
-            etf_panel = build_etf_spot_panel(linked)
-        except Exception as exc:
-            logger.warning("index panel linked ETF %s failed: %s", linked, exc)
-            etf_panel = None
-        if isinstance(etf_panel, dict):
-            etf_row = ((etf_panel.get("spot") or {}).get("etf") or None)
-            for line in etf_panel.get("analysis") or []:
-                if line and line not in analysis:
-                    analysis.append(line)
+    index_metrics: Dict[str, Any] = {}
+    try:
+        from app.services.cn_derivatives_etf_metrics import enrich_index_metrics
+
+        enriched = _call_with_timeout(
+            lambda: enrich_index_metrics(sym),
+            _ENRICH_TIMEOUT_SEC,
+            default=None,
+        )
+        if isinstance(enriched, dict):
+            index_metrics = enriched
+    except Exception as exc:
+        logger.warning("enrich_index_metrics %s failed: %s", sym, exc)
+
+    if volume:
+        analysis.append(f"成交量 {volume:,.0f}。")
+    if index_metrics.get("holdings_count"):
+        analysis.append(f"指数成份 {int(index_metrics['holdings_count'])} 只。")
+    if index_metrics.get("constituent_market_cap_sum") is not None:
+        cov = int(index_metrics.get("market_cap_coverage") or 0)
+        total = int(index_metrics.get("holdings_count") or 0)
+        analysis.append(
+            f"成份股总市值合计约 {float(index_metrics['constituent_market_cap_sum']):,.0f} 元"
+            f"（覆盖 {cov}/{total} 只）。"
+        )
+    if index_metrics.get("constituent_profit_sum") is not None:
+        cov = int(index_metrics.get("constituent_profit_coverage") or 0)
+        total = int(index_metrics.get("holdings_count") or 0)
+        analysis.append(
+            f"成份股最新财报净利润合计约 {float(index_metrics['constituent_profit_sum']):,.0f} 元"
+            f"（覆盖 {cov}/{total} 只）。"
+        )
+    if index_metrics.get("avg_pe") is not None:
+        analysis.append(
+            f"成份加权平均 PE 约 {float(index_metrics['avg_pe']):.2f}"
+            f"（覆盖 {int(index_metrics.get('pe_coverage') or 0)} 只）。"
+        )
+    if index_metrics.get("avg_profit_margin") is not None:
+        analysis.append(
+            f"成份加权平均利润率约 {float(index_metrics['avg_profit_margin']):.2f}%"
+            f"（覆盖 {int(index_metrics.get('margin_coverage') or 0)} 只）。"
+        )
+
+    index_out = dict(index_row or {"code": sym, "name": name, "price": price})
+    index_out["name"] = name
+    index_out["code"] = sym
+    index_out["price"] = price
+    if volume is not None:
+        index_out["volume"] = volume
+    for key, value in index_metrics.items():
+        if key in {"code"}:
+            continue
+        index_out[key] = value
 
     return {
         "root": sym,
@@ -243,13 +288,11 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
             stock_symbol=sym,
         ),
         "spot": {
-            "index": index_row or {"code": sym, "name": name, "price": price},
+            "index": index_out,
             "index_symbol": sym,
-            "etf": etf_row,
-            "etf_code": linked or None,
         },
         "spot_price": price,
-        "continuous": {"price": price, "volume": 0, "open_interest": 0},
+        "continuous": {"price": price, "volume": volume or 0, "open_interest": 0},
         "analysis": analysis,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
@@ -985,6 +1028,7 @@ def _index_row_from_local_bars(index_symbol: str) -> Optional[Dict[str, Any]]:
         "code": sym,
         "name": _cn_display_name(sym, sym),
         "price": bar["price"],
+        "volume": bar.get("volume"),
         "source": "qd_market_bars",
     }
 
