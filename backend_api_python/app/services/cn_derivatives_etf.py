@@ -473,6 +473,7 @@ def _assemble_etf_options_panel(
             underlying=underlying,
             T=T,
             month=m,
+            multiplier=mult,
         )
         capital_metrics = compute_option_capital_metrics(
             chain,

@@ -816,6 +816,7 @@ def _compute_surface_slice(
                 underlying=underlying,
                 T=t_years,
                 month=month_key,
+                multiplier=multiplier,
             )
         if need_max_pain:
             item["max_pain"] = compute_max_pain(chain)

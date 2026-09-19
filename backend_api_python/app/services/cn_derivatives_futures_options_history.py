@@ -202,6 +202,7 @@ def _recompute_month_slice(
             underlying=float(underlying or 0.0),
             T=T,
             month=month,
+            multiplier=multiplier,
         )
         month_series.append(
             {

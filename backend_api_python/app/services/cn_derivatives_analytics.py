@@ -964,6 +964,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             underlying=float(underlying or 0.0),
             T=T,
             month=m,
+            multiplier=mult,
         )
         month_series.append(
             {

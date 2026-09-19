@@ -345,32 +345,34 @@ def compute_buyer_real_leverage(
     underlying: float,
     T: float,
     month: str,
+    multiplier: float = _DEFAULT_MULT,
 ) -> Dict[str, Any]:
     """Buyer unit real leverage by strike for one expiry.
 
     Real leverage ``ω = |Δ| × S / premium``. Unit real leverage is
-    ``ω / daily_tv_decay`` where ``daily_tv_decay = time_value / days``
-    and time value is ``premium − intrinsic`` (same signed口径 as the
-    TV-yield chart). ``days`` is the remaining calendar days from ``T``.
-    Points with non-positive time value or daily decay are omitted.
-    Delta prefers a stored ``*_delta``, otherwise Black-76 using stored
-    IV or IV implied from the option price.
+    ``ω / |cash_theta|`` where cash theta is one-contract daily theta
+    in yuan: unit Black-76 ``θ × multiplier``. Stored ``*_theta`` is
+    treated as the same per-unit daily theta as ``black76_greeks``.
+    Delta prefers a stored ``*_delta``, otherwise Black-76. Points with
+    missing greeks or near-zero cash theta are omitted.
     """
     from app.services.gex_indicator import black76_greeks, implied_vol_black76
 
     spot = _safe_float(underlying)
     t_years = max(_safe_float(T), 1.0 / 365.0)
     days = _days_to_expiry_from_T(t_years)
+    mult = _safe_float(multiplier, _DEFAULT_MULT) or _DEFAULT_MULT
     call_points: List[Dict[str, Any]] = []
     put_points: List[Dict[str, Any]] = []
-    if spot <= 0:
+    if spot <= 0 or mult <= 0:
         return {
             "month": month,
             "T": t_years,
             "days_to_expiry": days,
+            "multiplier": mult,
             "call": [],
             "put": [],
-            "note": "invalid underlying",
+            "note": "invalid underlying/multiplier",
         }
 
     for row in chain or []:
@@ -381,35 +383,38 @@ def compute_buyer_real_leverage(
             px = _option_price(row, side)
             if px <= 1e-8:
                 continue
-            intrinsic = max(spot - k, 0.0) if is_call else max(k - spot, 0.0)
-            time_value = px - intrinsic
-            if time_value <= 1e-8:
-                continue
-            daily_tv_decay = time_value / float(days)
-            if daily_tv_decay <= 1e-8:
-                continue
             stored_delta = row.get(f"{side}_delta")
-            if stored_delta is None and not is_call:
-                stored_delta = row.get("put_delta")
+            stored_theta = row.get(f"{side}_theta")
             delta = _safe_float(stored_delta) if stored_delta not in (None, "") else 0.0
+            theta = _safe_float(stored_theta) if stored_theta not in (None, "") else 0.0
             used_stored_delta = stored_delta not in (None, "") and abs(delta) > 1e-12
-            if not used_stored_delta:
+            used_stored_theta = stored_theta not in (None, "") and abs(theta) > 1e-16
+            greeks = None
+            if not used_stored_delta or not used_stored_theta:
                 stored_iv = _safe_float(row.get(f"{side}_iv"))
                 iv = stored_iv if stored_iv > 0 else (implied_vol_black76(px, spot, k, t_years, is_call) or 0.0)
                 if iv <= 0:
                     continue
                 greeks = black76_greeks(spot, k, t_years, iv, is_call)
-                delta = _safe_float(greeks.get("delta"))
+                if not used_stored_delta:
+                    delta = _safe_float(greeks.get("delta"))
+                if not used_stored_theta:
+                    theta = _safe_float(greeks.get("theta"))
             if abs(delta) <= 1e-12:
                 continue
+            cash_theta = theta * mult
+            if abs(cash_theta) <= 1e-8:
+                continue
             raw_leverage = abs(delta) * spot / px
-            leverage = raw_leverage / daily_tv_decay
+            leverage = raw_leverage / abs(cash_theta)
+            intrinsic = max(spot - k, 0.0) if is_call else max(k - spot, 0.0)
             point = {
                 "strike": k,
                 "leverage": leverage,
                 "raw_leverage": raw_leverage,
-                "time_value": time_value,
-                "daily_tv_decay": daily_tv_decay,
+                "cash_theta": cash_theta,
+                "theta": theta,
+                "time_value": px - intrinsic,
                 "days_to_expiry": days,
                 "delta": delta,
                 "premium": px,
@@ -427,9 +432,10 @@ def compute_buyer_real_leverage(
         "month": month,
         "T": t_years,
         "days_to_expiry": days,
+        "multiplier": mult,
         "call": call_points,
         "put": put_points,
-        "note": "买方单位真实杠杆 = (|Δ| × 标的价格 / 权利金) / (时间价值/剩余自然日)",
+        "note": "买方单位真实杠杆 = (|Δ| × 标的价格 / 权利金) / |一张现金Theta|，现金Theta=θ×合约乘数",
     }
 
 
