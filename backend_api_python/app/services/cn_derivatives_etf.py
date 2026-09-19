@@ -167,7 +167,35 @@ def _etf_product_payload(code6: str) -> Dict[str, Any]:
     )
 
 
-def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
+def linked_etf_codes_for_index(index_symbol: str) -> List[str]:
+    """ETF underlyings whose benchmark matches ``index_symbol`` (000016.SH → 510050)."""
+    from app.markets.cn_options import ETF_BENCHMARK_INDEX, cn_symbol_with_board
+
+    want = str(index_symbol or "").strip().upper()
+    if not want:
+        return []
+    want6 = _etf_code6(want)
+    out: List[str] = []
+    for code6, bench in ETF_BENCHMARK_INDEX.items():
+        try:
+            code, board, _name = bench
+        except Exception:
+            continue
+        sym = cn_symbol_with_board(code, board)
+        if sym == want or str(code or "").strip() == want6:
+            out.append(code6)
+    return out
+
+
+def _resolve_linked_etf_code(index_symbol: str, etf_code: str = "") -> str:
+    explicit = _etf_code6(etf_code)
+    if explicit:
+        return explicit
+    codes = linked_etf_codes_for_index(index_symbol)
+    return codes[0] if codes else ""
+
+
+def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]:
     """Spot benchmark index panel for the ETF composite index tab."""
     from app.services.cn_derivatives_analytics import _ak, _safe_float
 
@@ -190,6 +218,20 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
     else:
         analysis.append("暂无指数现货行情，请稍后重试。")
 
+    linked = _resolve_linked_etf_code(sym, etf_code)
+    etf_row: Optional[Dict[str, Any]] = None
+    if linked:
+        try:
+            etf_panel = build_etf_spot_panel(linked)
+        except Exception as exc:
+            logger.warning("index panel linked ETF %s failed: %s", linked, exc)
+            etf_panel = None
+        if isinstance(etf_panel, dict):
+            etf_row = ((etf_panel.get("spot") or {}).get("etf") or None)
+            for line in etf_panel.get("analysis") or []:
+                if line and line not in analysis:
+                    analysis.append(line)
+
     return {
         "root": sym,
         "name_cn": name,
@@ -203,6 +245,8 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
         "spot": {
             "index": index_row or {"code": sym, "name": name, "price": price},
             "index_symbol": sym,
+            "etf": etf_row,
+            "etf_code": linked or None,
         },
         "spot_price": price,
         "continuous": {"price": price, "volume": 0, "open_interest": 0},
@@ -254,11 +298,12 @@ def build_etf_scope_spot_panel(
     *,
     picker_kind: str = "",
     market: str = "",
+    etf_code: str = "",
 ) -> Dict[str, Any]:
     kind = str(picker_kind or "").strip().lower()
     root_s = str(root or "").strip()
     if kind == "spot_index":
-        return build_spot_index_panel(root_s)
+        return build_spot_index_panel(root_s, etf_code=etf_code)
     if kind == "us_hk_etf":
         return build_us_hk_etf_panel(market or "USStock", root_s)
     if kind == "cn_etf" or "." in root_s:

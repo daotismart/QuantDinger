@@ -1,0 +1,1 @@
+"marketComposite.etf.linkedAnalysis": "对应 ETF 分析"
