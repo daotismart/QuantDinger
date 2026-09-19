@@ -118,3 +118,38 @@ def test_combine_market_tv_yields_oi_margin_weights():
     assert combo["market_yield"] is not None
     assert abs(combo["market_yield"] - a["market_yield"]) < 1e-9
     assert "OI" in (combo.get("market_yield_weight") or "")
+
+
+def test_compute_buyer_real_leverage_uses_delta_over_premium():
+    chain = [
+        {
+            "strike": 3.0,
+            "call_mid": 0.15,
+            "put_mid": 0.10,
+            "call_delta": 0.50,
+            "put_delta": -0.40,
+        },
+        {
+            "strike": 3.2,
+            "call_mid": 0.05,
+            "put_mid": 0.22,
+            "call_delta": 0.20,
+            "put_delta": -0.70,
+        },
+    ]
+    out = capital.compute_buyer_real_leverage(chain, underlying=3.0, T=30 / 365.0, month="202609")
+    assert [p["strike"] for p in out["call"]] == [3.0, 3.2]
+    assert abs(out["call"][0]["leverage"] - (0.50 * 3.0 / 0.15)) < 1e-9
+    assert abs(out["put"][0]["leverage"] - (0.40 * 3.0 / 0.10)) < 1e-9
+    assert abs(out["call"][1]["leverage"] - (0.20 * 3.0 / 0.05)) < 1e-9
+
+
+def test_compute_buyer_real_leverage_falls_back_to_black76():
+    chain = [{"strike": 4.5, "call_mid": 0.18, "put_mid": 0.09}]
+    out = capital.compute_buyer_real_leverage(chain, underlying=4.55, T=30 / 365.0, month="202609")
+    assert out["call"]
+    assert out["put"]
+    assert out["call"][0]["leverage"] > 1
+    assert out["put"][0]["leverage"] > 1
+    assert 0 < abs(out["call"][0]["delta"]) <= 1
+    assert -1 <= out["put"][0]["delta"] < 0

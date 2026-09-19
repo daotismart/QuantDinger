@@ -23,6 +23,7 @@ from app.services.cn_derivatives_analytics import (
 )
 from app.services.cn_derivatives_etf_capital import (
     build_capital_curve_by_month,
+    compute_buyer_real_leverage,
     compute_option_capital_metrics,
 )
 from app.services.etf_options_clickhouse import (
@@ -44,6 +45,7 @@ _SURFACE_CHARTS = {
     "options.iv",
     "options.oi",
     "options.tv",
+    "options.buyerLeverage",
     "options.maxPain",
     "options.max_pain",
 }
@@ -195,6 +197,12 @@ def _recompute_month_slice(
             T=T,
             month=month,
         )
+        buyer_leverage = compute_buyer_real_leverage(
+            chain,
+            underlying=float(underlying or 0.0),
+            T=T,
+            month=month,
+        )
         month_series.append(
             {
                 "month": month,
@@ -204,6 +212,7 @@ def _recompute_month_slice(
                 "iv_smile": gex_fields.get("iv_smile") or list(raw.get("iv_smile") or []),
                 "max_pain": max_pain,
                 "time_value_yield": tv_yield,
+                "buyer_leverage": buyer_leverage,
             }
         )
         all_points.extend(points)
@@ -416,6 +425,7 @@ def build_futures_options_surface_history(
             "iv_smile": primary.get("iv_smile") or [],
             "max_pain": primary.get("max_pain"),
             "time_value_yield": primary.get("time_value_yield") or {},
+            "buyer_leverage": primary.get("buyer_leverage") or {},
         }
         slices_out.append(surface_slice)
 

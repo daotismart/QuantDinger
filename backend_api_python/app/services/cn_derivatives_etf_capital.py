@@ -339,6 +339,80 @@ def compute_etf_time_value_annualized_yield(
     }
 
 
+def compute_buyer_real_leverage(
+    chain: List[Dict[str, Any]],
+    *,
+    underlying: float,
+    T: float,
+    month: str,
+) -> Dict[str, Any]:
+    """Buyer effective leverage (omega) by strike for one expiry.
+
+    ``leverage = |Δ| × S / premium``. Delta prefers a stored ``*_delta``,
+    otherwise Black-76 using stored IV or IV implied from the option price.
+    """
+    from app.services.gex_indicator import black76_greeks, implied_vol_black76
+
+    spot = _safe_float(underlying)
+    t_years = max(_safe_float(T), 1.0 / 365.0)
+    call_points: List[Dict[str, Any]] = []
+    put_points: List[Dict[str, Any]] = []
+    if spot <= 0:
+        return {
+            "month": month,
+            "T": t_years,
+            "call": [],
+            "put": [],
+            "note": "invalid underlying",
+        }
+
+    for row in chain or []:
+        k = _safe_float(row.get("strike"))
+        if k <= 0:
+            continue
+        for side, is_call in (("call", True), ("put", False)):
+            px = _option_price(row, side)
+            if px <= 1e-8:
+                continue
+            stored_delta = row.get(f"{side}_delta")
+            if stored_delta is None and not is_call:
+                stored_delta = row.get("put_delta")
+            delta = _safe_float(stored_delta) if stored_delta not in (None, "") else 0.0
+            used_stored_delta = stored_delta not in (None, "") and abs(delta) > 1e-12
+            if not used_stored_delta:
+                stored_iv = _safe_float(row.get(f"{side}_iv"))
+                iv = stored_iv if stored_iv > 0 else (implied_vol_black76(px, spot, k, t_years, is_call) or 0.0)
+                if iv <= 0:
+                    continue
+                greeks = black76_greeks(spot, k, t_years, iv, is_call)
+                delta = _safe_float(greeks.get("delta"))
+            if abs(delta) <= 1e-12:
+                continue
+            leverage = abs(delta) * spot / px
+            point = {
+                "strike": k,
+                "leverage": leverage,
+                "delta": delta,
+                "premium": px,
+                "side": side,
+                "month": month,
+            }
+            if side == "call":
+                call_points.append(point)
+            else:
+                put_points.append(point)
+
+    call_points.sort(key=lambda item: float(item["strike"]))
+    put_points.sort(key=lambda item: float(item["strike"]))
+    return {
+        "month": month,
+        "T": t_years,
+        "call": call_points,
+        "put": put_points,
+        "note": "买方真实杠杆 = |Δ| × 标的价格 / 权利金",
+    }
+
+
 def combine_market_tv_yields(tv_payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Combine per-month TV/AY payloads into one market composite (OI×margin weights)."""
     weight_rows: List[Dict[str, float]] = []

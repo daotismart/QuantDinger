@@ -77,6 +77,7 @@ def test_playback_fields_for_chart():
     assert playback_fields_for_chart("options.oi") == "quotes"
     assert playback_fields_for_chart("options.gex") == "gex"
     assert playback_fields_for_chart("options.capital") == "quotes"
+    assert playback_fields_for_chart("options.buyerLeverage") == "quotes"
 
 
 def test_playback_chain_sql_skips_unused_tables():

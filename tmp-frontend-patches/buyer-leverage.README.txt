@@ -1,0 +1,13 @@
+Buyer real leverage chart (买方真实杠杆)
+
+Backend
+  GET /api/cn-derivatives/history?chart=options.buyerLeverage
+  Panel field: buyer_leverage / month_series[].buyer_leverage
+  Formula: |Δ| × underlying / premium
+
+Frontend (QuantDinger-Vue) — apply on a Vue branch:
+  src/views/market-composite-analysis/etf-derivatives.vue
+  src/views/market-composite-analysis/futures-derivatives.vue
+  src/views/market-composite-analysis/options-analytics-mixin.js
+  src/locales/lang/zh-CN.js  (see locales/zh-CN.buyer-leverage.snippet.txt)
+  src/locales/lang/en-US.js  (see locales/en-US.buyer-leverage.snippet.txt)

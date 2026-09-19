@@ -11,6 +11,7 @@ def test_is_etf_surface_history_chart():
     assert surface.is_etf_surface_history_chart("options.iv")
     assert surface.is_etf_surface_history_chart("options.oi")
     assert surface.is_etf_surface_history_chart("options.tv")
+    assert surface.is_etf_surface_history_chart("options.buyerLeverage")
     assert surface.is_etf_surface_history_chart("options.maxPain")
     assert not surface.is_etf_surface_history_chart("options.gex")
     assert not surface.is_etf_surface_history_chart("options.capital")
@@ -56,6 +57,7 @@ def test_compute_surface_slice_builds_iv_smile(monkeypatch):
     assert out["month_series"][0]["iv_smile"]
     assert out["gex_distribution"]
     assert out["time_value_yield"].get("call") is not None
+    assert out["buyer_leverage"].get("call") is not None
     assert out["max_pain"] is not None
 
 
@@ -292,11 +294,13 @@ def _fat_panel():
                 "iv_smile": smile,
                 "gex_distribution": [{"strike": 4.5, "net_gex": 1}],
                 "time_value_yield": {"call": [{"strike": 4.5, "yield": 0.1}], "put": []},
+                "buyer_leverage": {"call": [{"strike": 4.5, "leverage": 12.0}], "put": []},
                 "max_pain": {"strike": 4.5, "pain": 9.0, "curve": curve},
             }
         ],
         "max_pain": {"strike": 4.5, "pain": 9.0, "curve": curve},
         "time_value_yield": {"call": [{"strike": 4.5, "yield": 0.1}], "put": []},
+        "buyer_leverage": {"call": [{"strike": 4.5, "leverage": 12.0}], "put": []},
         "month": "202609",
     }
 
@@ -319,6 +323,7 @@ def test_oi_history_trims_iv_and_max_pain(monkeypatch):
     assert "iv_smile" not in sl
     assert "max_pain" not in sl
     assert "time_value_yield" not in sl
+    assert "buyer_leverage" not in sl
     assert "month_series" not in sl or not sl.get("month_series")
     assert not hist.get("near_month_max_pain_series")
 
@@ -341,7 +346,29 @@ def test_maxpain_history_keeps_curve_and_series(monkeypatch):
     assert sl["month_series"][0]["max_pain"]["curve"]
     assert "iv_smile" not in sl
     assert "time_value_yield" not in sl
+    assert "buyer_leverage" not in sl
     series = hist.get("near_month_max_pain_series") or []
     assert len(series) == 1
     assert series[0]["max_pain"] == 4.5
     assert series[0]["month"] == "202609"
+
+
+def test_buyer_leverage_history_keeps_month_curves(monkeypatch):
+    monkeypatch.setattr(surface, "etf_options_ch_enabled", lambda: False)
+    monkeypatch.setattr(surface, "ch_ping", lambda: False)
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf.build_etf_options_panel",
+        lambda code, month="all": _fat_panel(),
+    )
+    hist = surface.build_etf_options_surface_history(
+        "510300",
+        chart_key="options.buyerLeverage",
+        interval="day",
+        bars=30,
+    )
+    sl = hist["slices"][0]
+    assert sl["buyer_leverage"]["call"][0]["leverage"] == 12.0
+    assert sl["month_series"][0]["buyer_leverage"]["call"][0]["strike"] == 4.5
+    assert "iv_smile" not in sl
+    assert "time_value_yield" not in sl
+    assert "max_pain" not in sl

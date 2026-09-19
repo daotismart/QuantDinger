@@ -770,6 +770,7 @@ def playback_fields_for_chart(chart_key: str) -> str:
         "options.capital",
         "etf.optionsCapital",
         "options.premiumMargin",
+        "options.buyerLeverage",
     }:
         return "quotes"
     if chart in {"options.gex", "options.gexDist", "gex", "options.gexCallPut"}:

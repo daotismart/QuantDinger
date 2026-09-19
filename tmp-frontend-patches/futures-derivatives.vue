@@ -285,6 +285,22 @@
             </div>
             <div class="fda-chart-box fda-chart-box-wide">
               <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.futures.options.buyerRealLeverage') }}</h3>
+                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.buyerLeverage')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('buyerLeverageChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('buyerLeverageChart')"
+                  >
+                    {{ isChartFullscreen('buyerLeverageChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
+              </div>
+              <div ref="buyerLeverageChart" class="fda-chart fda-chart-tall" />
+            </div>
+            <div class="fda-chart-box fda-chart-box-wide">
+              <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.capitalCurve') }}</h3>
                                 <div class="fda-chart-actions">
                   <a-button size="small" @click="openHistory('options.capital')">{{ $t('marketComposite.futures.history') }}</a-button>

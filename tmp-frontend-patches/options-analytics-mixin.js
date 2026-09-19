@@ -48,8 +48,11 @@ export default {
     isCapitalHistory () {
       return this.historyKey === 'options.capital'
     },
+    isBuyerLeverageHistory () {
+      return this.historyKey === 'options.buyerLeverage'
+    },
     isSurfaceHistory () {
-      return ['options.iv', 'options.oi', 'options.tv', 'options.maxPain'].includes(this.historyKey)
+      return ['options.iv', 'options.oi', 'options.tv', 'options.buyerLeverage', 'options.maxPain'].includes(this.historyKey)
     },
     isPlaybackHistory () {
       return this.isGexFamilyHistory || this.isCapitalHistory || this.isSurfaceHistory || this.isIvRankHistory
@@ -395,12 +398,66 @@ export default {
         ]
       }, true)
     },
+    applyBuyerLeverageChart (chart, source, price) {
+      if (!chart) return
+      const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb']
+      const series = []
+      ;(source || []).forEach((item, idx) => {
+        const lev = item.buyer_leverage || {}
+        const color = palette[idx % palette.length]
+        series.push({
+          name: `Call ${item.month || ''}`.trim(),
+          type: 'line',
+          showSymbol: false,
+          data: (lev.call || []).map(r => [r.strike, r.leverage]),
+          itemStyle: { color }
+        })
+        series.push({
+          name: `Put ${item.month || ''}`.trim(),
+          type: 'line',
+          showSymbol: false,
+          data: (lev.put || []).map(r => [r.strike, r.leverage]),
+          itemStyle: { color },
+          lineStyle: { type: 'dashed' }
+        })
+      })
+      this.appendValueAxisPriceMark(series, price)
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 24, top: 56, bottom: 40 },
+        tooltip: {
+          trigger: 'axis',
+          confine: true,
+          formatter: (params) => {
+            const rows = Array.isArray(params) ? params : [params]
+            if (!rows.length) return ''
+            const head = rows[0].axisValueLabel || rows[0].name || ''
+            const lines = rows.map((row) => {
+              const val = row.data && Array.isArray(row.data) ? row.data[1] : row.data
+              const text = val == null || val === '' ? '-' : Number(val).toFixed(2)
+              return `${row.marker}${row.seriesName}: ${text}`
+            })
+            return [head].concat(lines).join('<br/>')
+          }
+        },
+        xAxis: { type: 'value', name: this.$t('marketComposite.futures.options.strike'), scale: true, axisLabel: { color: this.chartText } },
+        yAxis: {
+          type: 'value',
+          name: this.$t('marketComposite.futures.options.buyerLeverageAxis'),
+          axisLabel: { formatter: v => Number(v).toFixed(1), color: this.chartText },
+          splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
+        },
+        series
+      }, true)
+    },
     optionsHistoryTitleFor (chartKey) {
       const titleMap = {
         'options.capital': this.$t('marketComposite.futures.options.capitalCurve'),
         'options.gex': this.$t('marketComposite.futures.options.gexDist'),
         'options.gexCallPut': this.$t('marketComposite.futures.options.gexCallPutDist'),
-        'options.ivRank': this.$t('marketComposite.futures.options.ivRank')
+        'options.ivRank': this.$t('marketComposite.futures.options.ivRank'),
+        'options.buyerLeverage': this.$t('marketComposite.futures.options.buyerRealLeverage')
       }
       return titleMap[chartKey] || chartKey
     },
@@ -739,6 +796,10 @@ export default {
           const tv = item.time_value_yield || {}
           series.push({ name: `Call ${item.month}`, type: 'line', showSymbol: false, data: (tv.call || []).map(r => [r.strike, r.yield]), itemStyle: { color } })
           series.push({ name: `Put ${item.month}`, type: 'line', showSymbol: false, data: (tv.put || []).map(r => [r.strike, r.yield]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
+        } else if (key === 'options.buyerLeverage') {
+          const lev = item.buyer_leverage || {}
+          series.push({ name: `Call ${item.month}`, type: 'line', showSymbol: false, data: (lev.call || []).map(r => [r.strike, r.leverage]), itemStyle: { color } })
+          series.push({ name: `Put ${item.month}`, type: 'line', showSymbol: false, data: (lev.put || []).map(r => [r.strike, r.leverage]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
         } else if (key === 'options.iv') {
           const rows = item.iv_smile || []
           series.push({ name: `Call ${item.month}`, type: 'line', data: rows.filter(r => r.side === 'call').map(r => [r.strike, r.iv]), itemStyle: { color } })
@@ -775,7 +836,7 @@ export default {
             data: []
           })
         }
-      } else if (key === 'options.iv' || key === 'options.maxPain') {
+      } else if (key === 'options.iv' || key === 'options.maxPain' || key === 'options.buyerLeverage') {
         const sliceSummary = slice.gex_summary || {}
         const slicePrice = slice.current_price || slice.underlying || sliceSummary.underlying
         this.appendValueAxisPriceMark(series, slicePrice)
@@ -788,7 +849,7 @@ export default {
           type: 'value',
           axisLabel: key === 'options.tv' || key === 'options.iv'
             ? { formatter: v => `${(Number(v) * 100).toFixed(0)}%`, color: this.chartText }
-            : { color: this.chartText },
+            : { formatter: v => Number(v).toFixed(1), color: this.chartText },
           splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
         },
         series
@@ -914,6 +975,15 @@ export default {
           },
           series
         }, true)
+      }
+
+      const leverage = this.ensureChart('buyerLeverageChart')
+      if (leverage) {
+        this.applyBuyerLeverageChart(
+          leverage,
+          monthSeries.length ? monthSeries : [{ month: this.optionsData.month, buyer_leverage: this.optionsData.buyer_leverage }],
+          price
+        )
       }
 
       const capital = this.ensureChart('capitalCurveChart')
