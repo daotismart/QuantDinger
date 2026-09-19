@@ -196,6 +196,35 @@ def _overlay_spot_and_estimates(code6: str, etf: Dict[str, Any]) -> Dict[str, An
         estimated = estimate_etf_amount(price, out.get("volume") if out.get("volume") not in (None, 0) else spot.get("volume"))
         if estimated is not None:
             out["amount"] = estimated
+    return _fill_holding_market_values(out)
+
+
+def _fill_holding_market_values(etf: Dict[str, Any]) -> Dict[str, Any]:
+    """Estimate per-name market value as ETF AUM × weight when the file omits it."""
+    out = dict(etf or {})
+    scale = _safe_float(out.get("scale"))
+    holdings = list(out.get("holdings") or [])
+    if scale is None or scale <= 0 or not holdings:
+        return out
+    filled: List[Dict[str, Any]] = []
+    total = 0.0
+    have = 0
+    for row in holdings:
+        item = dict(row)
+        mv = _safe_float(item.get("market_value"))
+        weight = _safe_float(item.get("weight_pct"))
+        if mv is None and weight is not None:
+            mv = scale * weight / 100.0
+            item["market_value"] = mv
+        if mv is not None:
+            total += float(mv)
+            have += 1
+        filled.append(item)
+    out["holdings"] = filled
+    if out.get("holdings_sample") is not None:
+        out["holdings_sample"] = filled[:10]
+    if out.get("constituent_market_value_sum") in (None, 0) and have:
+        out["constituent_market_value_sum"] = total
     return out
 
 
