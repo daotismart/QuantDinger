@@ -285,6 +285,22 @@
             </div>
             <div class="fda-chart-box fda-chart-box-wide">
               <div class="fda-chart-head">
+                <h3>{{ $t('marketComposite.futures.options.buyerRealLeverage') }}</h3>
+                <div class="fda-chart-actions">
+                  <a-button size="small" @click="openHistory('options.buyerLeverage')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  <a-button
+                    size="small"
+                    :icon="isChartFullscreen('buyerLeverageChart') ? 'fullscreen-exit' : 'fullscreen'"
+                    @click="toggleChartFullscreen('buyerLeverageChart')"
+                  >
+                    {{ isChartFullscreen('buyerLeverageChart') ? $t('marketComposite.futures.exitFullscreen') : $t('marketComposite.futures.fullscreen') }}
+                  </a-button>
+                </div>
+              </div>
+              <div ref="buyerLeverageChart" class="fda-chart fda-chart-tall" />
+            </div>
+            <div class="fda-chart-box fda-chart-box-wide">
+              <div class="fda-chart-head">
                 <h3>{{ $t('marketComposite.futures.options.capitalCurve') }}</h3>
                                 <div class="fda-chart-actions">
                   <a-button size="small" @click="openHistory('options.capital')">{{ $t('marketComposite.futures.history') }}</a-button>
@@ -927,11 +943,6 @@ export default {
       if (!chart) return
       const key = this.historyKey
 
-      if (String(key).startsWith('options.')) {
-        this.renderOptionsHistorySlice()
-        return
-      }
-
       if (key === 'futures.term') {
         const curve = (slice.term_structure || []).filter(p => !p.is_continuous)
         chart.setOption({
@@ -1058,6 +1069,54 @@ export default {
         }, true)
         return
       }
+
+      if (key === 'options.oi' || key === 'options.gex') {
+        const points = slice.gex_distribution || []
+        const strikes = points.map(p => p.strike)
+        const series = key === 'options.oi'
+          ? [
+            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi) },
+            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi) },
+            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi) }
+          ]
+          : [
+            { name: 'Net GEX', type: 'bar', data: points.map(p => p.net_gex), itemStyle: { color: '#fa8c16', opacity: 0.78 } }
+          ]
+        chart.setOption({
+          ...this.baseChartOption(),
+          legend: { top: 0, textStyle: { color: this.chartText } },
+          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
+          yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+          series
+        }, true)
+        return
+      }
+
+      const seriesList = slice.month_series || []
+      const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1']
+      const series = []
+      seriesList.forEach((item, idx) => {
+        const color = palette[idx % palette.length]
+        if (key === 'options.tv') {
+          const tv = item.time_value_yield || {}
+          series.push({ name: `Call ${item.month}`, type: 'line', showSymbol: false, data: (tv.call || []).map(r => [r.strike, r.yield]), itemStyle: { color } })
+          series.push({ name: `Put ${item.month}`, type: 'line', showSymbol: false, data: (tv.put || []).map(r => [r.strike, r.yield]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
+        } else if (key === 'options.iv') {
+          const rows = item.iv_smile || []
+          series.push({ name: `Call ${item.month}`, type: 'line', data: rows.filter(r => r.side === 'call').map(r => [r.strike, r.iv]), itemStyle: { color } })
+          series.push({ name: `Put ${item.month}`, type: 'line', data: rows.filter(r => r.side === 'put').map(r => [r.strike, r.iv]), itemStyle: { color }, lineStyle: { type: 'dashed' } })
+        } else if (key === 'options.maxPain') {
+          const curve = (item.max_pain && item.max_pain.curve) || []
+          series.push({ name: item.month, type: 'line', data: curve.map(r => [r.strike, r.pain]), itemStyle: { color } })
+        }
+      })
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+        xAxis: { type: 'value', scale: true, axisLabel: { color: this.chartText } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        series
+      }, true)
     },
     renderHistoryChart (data) {
       const chart = this.ensureChart('historyChart')

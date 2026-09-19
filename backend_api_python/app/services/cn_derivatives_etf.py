@@ -413,6 +413,7 @@ def _assemble_etf_options_panel(
     from app.services.cn_derivatives_etf_capital import (
         build_capital_curve_by_month,
         combine_market_tv_yields,
+        compute_buyer_real_leverage,
         compute_option_capital_metrics,
     )
 
@@ -467,6 +468,13 @@ def _assemble_etf_options_panel(
             T=T,
             month=m,
         )
+        buyer_leverage = compute_buyer_real_leverage(
+            chain,
+            underlying=underlying,
+            T=T,
+            month=m,
+            multiplier=mult,
+        )
         capital_metrics = compute_option_capital_metrics(
             chain,
             underlying=underlying,
@@ -484,6 +492,7 @@ def _assemble_etf_options_panel(
                 "iv_smile": gex_fields.get("iv_smile") or [],
                 "max_pain": max_pain,
                 "time_value_yield": tv_yield,
+                "buyer_leverage": buyer_leverage,
                 "capital_metrics": capital_metrics,
                 "indicators": gex_fields.get("indicators") or {},
             }
@@ -511,6 +520,7 @@ def _assemble_etf_options_panel(
             "iv_smile": [],
             "max_pain": None,
             "time_value_yield": [],
+            "buyer_leverage": {"month": None, "T": 0, "call": [], "put": []},
             "capital_curve": {"points": [], "total": {}, "note": ""},
             "indicators": {"gex": empty_ind},
             "message": "已连接期权数据源，但当前月份链截面为空。",
@@ -601,6 +611,7 @@ def _assemble_etf_options_panel(
         "iv_smile": iv_smile,
         "max_pain": max_pain,
         "time_value_yield": tv_primary,
+        "buyer_leverage": primary.get("buyer_leverage") or {"month": None, "T": 0, "call": [], "put": []},
         "month_series": month_series,
         "capital_curve": capital_curve,
         "indicators": {"gex": gex_indicator},

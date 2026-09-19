@@ -415,13 +415,14 @@ def build_gex_playback_history(
 
 
 # ---------------------------------------------------------------------------
-# ETF options surface history (IV smile / OI / TV yield / Max Pain)
+# ETF options surface history (IV smile / OI / TV yield / buyer leverage / Max Pain)
 # ---------------------------------------------------------------------------
 
 _SURFACE_CHARTS = {
     "options.iv",
     "options.oi",
     "options.tv",
+    "options.buyerLeverage",
     "options.maxPain",
     "options.max_pain",
 }
@@ -444,13 +445,15 @@ def surface_history_flags(chart_key: str) -> Dict[str, bool]:
     need_iv = chart == "options.iv"
     need_oi = chart == "options.oi"
     need_tv = chart == "options.tv"
+    need_leverage = chart == "options.buyerLeverage"
     need_max_pain = chart == "options.maxPain"
-    if not (need_iv or need_oi or need_tv or need_max_pain):
-        need_iv = need_oi = need_tv = need_max_pain = True
+    if not (need_iv or need_oi or need_tv or need_leverage or need_max_pain):
+        need_iv = need_oi = need_tv = need_leverage = need_max_pain = True
     return {
         "need_iv": need_iv,
         "need_oi": need_oi,
         "need_tv": need_tv,
+        "need_leverage": need_leverage,
         "need_max_pain": need_max_pain,
         "need_iv_klines": need_iv,
     }
@@ -753,10 +756,14 @@ def _compute_surface_slice(
     need_iv: bool = True,
     need_oi: bool = True,
     need_tv: bool = True,
+    need_leverage: bool = True,
     need_max_pain: bool = True,
 ) -> Dict[str, Any]:
     from app.services.cn_derivatives_analytics import compute_max_pain
-    from app.services.cn_derivatives_etf_capital import compute_etf_time_value_annualized_yield
+    from app.services.cn_derivatives_etf_capital import (
+        compute_buyer_real_leverage,
+        compute_etf_time_value_annualized_yield,
+    )
 
     chains_by_month = _surface_filter_months(build_strike_chains_by_month(flat_rows), month)
     month_series: List[Dict[str, Any]] = []
@@ -803,6 +810,14 @@ def _compute_surface_slice(
                 T=t_years,
                 month=month_key,
             )
+        if need_leverage:
+            item["buyer_leverage"] = compute_buyer_real_leverage(
+                chain,
+                underlying=underlying,
+                T=t_years,
+                month=month_key,
+                multiplier=multiplier,
+            )
         if need_max_pain:
             item["max_pain"] = compute_max_pain(chain)
             agg_chain.extend(chain)
@@ -836,6 +851,7 @@ def _compute_surface_slice(
         "month_series": month_series,
         "max_pain": max_pain,
         "time_value_yield": primary.get("time_value_yield") or {} if need_tv else {},
+        "buyer_leverage": primary.get("buyer_leverage") or {} if need_leverage else {},
     }
 
 
@@ -854,6 +870,9 @@ def _empty_surface_slice(ts: str, spot: Optional[float], flags: Dict[str, bool])
         row["gex_distribution"] = []
     if flags.get("need_tv"):
         row["time_value_yield"] = {}
+        row["month_series"] = row.get("month_series") or []
+    if flags.get("need_leverage"):
+        row["buyer_leverage"] = {}
         row["month_series"] = row.get("month_series") or []
     if flags.get("need_max_pain"):
         row["max_pain"] = None
@@ -882,6 +901,9 @@ def _assemble_surface_slice(
     if flags.get("need_tv"):
         row["time_value_yield"] = payload.get("time_value_yield") or {}
         row["month_series"] = payload.get("month_series") or []
+    if flags.get("need_leverage"):
+        row["buyer_leverage"] = payload.get("buyer_leverage") or {}
+        row["month_series"] = payload.get("month_series") or []
     if flags.get("need_max_pain"):
         row["max_pain"] = payload.get("max_pain")
         row["month_series"] = payload.get("month_series") or []
@@ -904,6 +926,8 @@ def _trim_live_fallback_slice(live: Dict[str, Any], flags: Dict[str, bool]) -> D
             trimmed["iv_smile"] = item.get("iv_smile") or []
         if flags.get("need_tv"):
             trimmed["time_value_yield"] = item.get("time_value_yield") or {}
+        if flags.get("need_leverage"):
+            trimmed["buyer_leverage"] = item.get("buyer_leverage") or {}
         if flags.get("need_max_pain"):
             trimmed["max_pain"] = item.get("max_pain")
         month_series.append(trimmed)
@@ -914,6 +938,9 @@ def _trim_live_fallback_slice(live: Dict[str, Any], flags: Dict[str, bool]) -> D
         row["gex_distribution"] = live.get("gex_distribution") or []
     if flags.get("need_tv"):
         row["time_value_yield"] = live.get("time_value_yield") or {}
+        row["month_series"] = month_series
+    if flags.get("need_leverage"):
+        row["buyer_leverage"] = live.get("buyer_leverage") or {}
         row["month_series"] = month_series
     if flags.get("need_max_pain"):
         row["max_pain"] = live.get("max_pain")
@@ -958,6 +985,7 @@ def _surface_live_fallback_slice(code6: str, month: str) -> Dict[str, Any]:
         "month_series": panel.get("month_series") or [],
         "max_pain": panel.get("max_pain"),
         "time_value_yield": panel.get("time_value_yield") or {},
+        "buyer_leverage": panel.get("buyer_leverage") or {},
         "month": panel.get("month"),
     }
 
@@ -1090,6 +1118,7 @@ def build_etf_options_surface_history(
                 need_iv=bool(flags.get("need_iv")),
                 need_oi=bool(flags.get("need_oi")),
                 need_tv=bool(flags.get("need_tv")),
+                need_leverage=bool(flags.get("need_leverage")),
                 need_max_pain=bool(flags.get("need_max_pain")),
             )
         except Exception as exc:

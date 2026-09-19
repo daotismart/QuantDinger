@@ -215,7 +215,7 @@ def chart_history():
             )
             return jsonify({"code": 1, "msg": "ok", "data": data})
 
-        # ETF options surface history (IV smile / OI / TV yield / Max Pain)
+        # ETF options surface history (IV / OI / TV / buyer leverage / Max Pain)
         if _is_etf_scope():
             from app.services.gex_history import (
                 build_etf_options_surface_history,
@@ -234,6 +234,21 @@ def chart_history():
                     ),
                 )
                 return jsonify({"code": 1, "msg": "ok", "data": data})
+
+        from app.services.cn_derivatives_futures_options_history import (
+            build_futures_options_surface_history,
+            is_futures_surface_history_chart,
+        )
+
+        if is_futures_surface_history_chart(chart_key):
+            data = build_futures_options_surface_history(
+                root,
+                chart_key=chart_key,
+                interval=interval,
+                bars=bars_i if bars_i is not None else 60,
+                month=month,
+            )
+            return jsonify({"code": 1, "msg": "ok", "data": data})
 
         # ETF fund metrics history (price/volume/amount/scale/fee/profit)
         if _is_etf_scope() and chart_key in {

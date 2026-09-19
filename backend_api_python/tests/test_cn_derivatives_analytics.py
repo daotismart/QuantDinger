@@ -385,9 +385,21 @@ def test_build_chart_history_options_single_slice(monkeypatch):
             "gex_distribution": [{"strike": 3000, "call_oi": 1, "put_oi": 2}],
             "gex_summary": {},
             "month_series": [{"month": "m2505"}],
+            "buyer_leverage": {"call": [{"strike": 3000, "leverage": 8.5}], "put": []},
         },
     )
     data = svc.build_chart_history("M", chart_key="options.gex", days=30, frequency="day")
     assert data["mode"] == "slices"
     assert len(data["slices"]) == 1
     assert data["slices"][0]["gex_distribution"][0]["strike"] == 3000
+    assert data["slices"][0]["buyer_leverage"]["call"][0]["leverage"] == 8.5
+
+
+def test_futures_surface_history_includes_buyer_leverage():
+    from app.services.cn_derivatives_futures_options_history import (
+        is_futures_surface_history_chart,
+    )
+
+    assert is_futures_surface_history_chart("options.buyerLeverage")
+    assert is_futures_surface_history_chart("options.tv")
+    assert not is_futures_surface_history_chart("options.gex")

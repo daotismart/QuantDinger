@@ -957,6 +957,15 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             T=T,
             month=m,
         )
+        from app.services.cn_derivatives_etf_capital import compute_buyer_real_leverage
+
+        buyer_leverage = compute_buyer_real_leverage(
+            chain,
+            underlying=float(underlying or 0.0),
+            T=T,
+            month=m,
+            multiplier=mult,
+        )
         month_series.append(
             {
                 "month": m,
@@ -968,6 +977,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
                 "iv_smile": gex_fields.get("iv_smile") or [],
                 "max_pain": max_pain,
                 "time_value_yield": tv_yield,
+                "buyer_leverage": buyer_leverage,
                 "indicators": gex_fields.get("indicators") or {},
             }
         )
@@ -991,6 +1001,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             "iv_smile": [],
             "max_pain": None,
             "time_value_yield": {"month": None, "T": 0, "call": [], "put": []},
+            "buyer_leverage": {"month": None, "T": 0, "call": [], "put": []},
             "month_series": [],
             "indicators": {
                 "gex": {
@@ -1031,6 +1042,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
                 iv_smile.append({**point, "month": item["month"]})
         # Flatten TV for convenience; frontend mainly uses month_series
         tv_yield = {"month": "all", "T": T, "call": [], "put": [], "by_month": [m["time_value_yield"] for m in month_series]}
+        buyer_leverage = {"month": "all", "T": T, "call": [], "put": [], "by_month": [m.get("buyer_leverage") for m in month_series]}
         chain = agg_chain
         greeks = gex_fields.get("greeks") or {}
         gex_summary = gex_fields.get("gex_summary") or {}
@@ -1047,6 +1059,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
         iv_smile = primary["iv_smile"]
         max_pain = primary["max_pain"]
         tv_yield = primary["time_value_yield"]
+        buyer_leverage = primary.get("buyer_leverage") or {"month": None, "T": 0, "call": [], "put": []}
         gex_indicator = (primary.get("indicators") or {}).get("gex")
 
     if not gex_indicator:
@@ -1080,6 +1093,7 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
         "iv_smile": iv_smile,
         "max_pain": max_pain,
         "time_value_yield": tv_yield,
+        "buyer_leverage": buyer_leverage,
         "month_series": month_series,
         "indicators": {"gex": gex_indicator},
         "asof": datetime.now().isoformat(timespec="seconds"),
@@ -1347,6 +1361,8 @@ def build_chart_history(
             "gex_summary": options.get("gex_summary") or {},
             "month_series": options.get("month_series") or [],
             "month": options.get("month"),
+            "time_value_yield": options.get("time_value_yield") or {},
+            "buyer_leverage": options.get("buyer_leverage") or {},
         }
         return {
             "root": root_u,
