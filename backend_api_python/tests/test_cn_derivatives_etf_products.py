@@ -1,5 +1,8 @@
 """ETF composite page shared product picker catalogs."""
 
+import time
+
+from app.services import cn_derivatives_etf as etf_mod
 from app.services.cn_derivatives_etf import list_etf_derivative_products
 
 
@@ -31,3 +34,96 @@ def test_star50_and_chinext_have_index_without_futures():
     assert rows["588000"]["index_futures_root"] == ""
     assert rows["159915"]["index_symbol"] == "399006.SZ"
     assert rows["159915"]["index_futures_root"] == ""
+
+
+def test_etf_spot_panel_enriches_when_local_price_exists(monkeypatch):
+    called = {}
+
+    def _enrich(code, row=None):
+        called["code"] = code
+        out = dict(row or {})
+        out.update(
+            {
+                "total_fee_pct": 0.2,
+                "constituent_profit_sum": 1.2e12,
+                "avg_pe": 12.5,
+                "holdings_count": 50,
+                "holdings": [{"code": "600000", "name": "浦发银行", "weight_pct": 3.1}],
+                "amount": 1.4e9,
+                "scale": 2.3e10,
+            }
+        )
+        return out
+
+    monkeypatch.setattr(etf_mod, "_SINA_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(etf_mod, "_ENRICH_TIMEOUT_SEC", 2.0)
+    monkeypatch.setattr(
+        etf_mod,
+        "_query_local_daily_bars",
+        lambda symbol: (
+            [{"time": 1756800000, "close": 2.881, "volume": 12345}]
+            if symbol in {"510050.SH", "000016.SH"}
+            else []
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.enrich_etf_metrics",
+        _enrich,
+    )
+    monkeypatch.setattr(
+        etf_mod,
+        "_etf_product_payload",
+        lambda code6: {"root": code6, "name_cn": "上证50ETF", "underlying_code": code6},
+    )
+    monkeypatch.setattr(
+        etf_mod,
+        "_load_etf_spot_frame_sina",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("sina should be skipped")),
+    )
+
+    panel = etf_mod.build_etf_spot_panel("510050.SH")
+    assert called.get("code") == "510050"
+    etf = panel["spot"]["etf"]
+    assert etf["price"] == 2.881
+    assert etf["total_fee_pct"] == 0.2
+    assert etf["avg_pe"] == 12.5
+    assert etf["scale"] == 2.3e10
+    assert etf["holdings_count"] == 50
+
+
+def test_etf_spot_panel_uses_local_bars_when_sina_hangs(monkeypatch):
+    def _hang(*_args, **_kwargs):
+        time.sleep(8)
+        raise RuntimeError("sina should not be awaited")
+
+    monkeypatch.setattr(etf_mod, "_SINA_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(etf_mod, "_ENRICH_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(
+        etf_mod,
+        "_query_local_daily_bars",
+        lambda symbol: (
+            [{"time": 1756800000, "close": 2.881, "volume": 12345}]
+            if symbol in {"510050.SH", "000016.SH"}
+            else []
+        ),
+    )
+    monkeypatch.setattr(etf_mod, "_load_etf_spot_frame_sina", _hang)
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_analytics._ak",
+        lambda: type("AK", (), {"stock_zh_index_spot_sina": staticmethod(_hang)})(),
+    )
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.enrich_etf_metrics",
+        lambda code, row=None: dict(row or {}),
+    )
+    monkeypatch.setattr(
+        etf_mod,
+        "_etf_product_payload",
+        lambda code6: {"root": code6, "name_cn": "上证50ETF", "underlying_code": code6},
+    )
+
+    started = time.monotonic()
+    panel = etf_mod.build_etf_spot_panel("510050.SH")
+    assert time.monotonic() - started < 3.0
+    assert panel["spot_price"] == 2.881
+    assert panel["spot"]["etf"]["source"] == "qd_market_bars"

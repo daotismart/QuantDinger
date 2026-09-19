@@ -14,6 +14,19 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 ETF_INDEX_ROOTS = ("IF", "IH", "IC", "IM")
+# Sina/East Money often hang from this host; never block the ETF spot panel on them.
+_SINA_TIMEOUT_SEC = 4.0
+_ENRICH_TIMEOUT_SEC = 8.0
+_TIMED_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="etf-spot")
+
+
+def _call_with_timeout(fn, timeout: float, default: Any = None) -> Any:
+    """Run ``fn`` with a hard timeout; do not join the worker if it hangs."""
+    try:
+        return _TIMED_POOL.submit(fn).result(timeout=max(0.05, float(timeout)))
+    except Exception as exc:
+        logger.warning("timed ETF fetch failed: %s", exc)
+        return default
 
 def _etf_code6(value: str) -> str:
     digits = re.sub(r"\D", "", str(value or ""))
@@ -96,78 +109,62 @@ def _product_row(
     return row
 
 
-def _etf_picker_row(item: Dict[str, Any]) -> Dict[str, Any]:
-    """One shared picker row for an ETF option underlying (used by all tabs)."""
-    from app.markets.cn_options import etf_benchmark_display_name, etf_benchmark_symbol
+def list_etf_derivative_products(tab: str = "") -> List[Dict[str, Any]]:
+    """Return the fixed CN ETF option-underlying picker.
 
-    sym = str(item.get("symbol") or "").strip().upper()
-    code6 = _etf_code6(sym)
-    name = _cn_display_name(code6, str(item.get("name") or sym))
+    The workbench only lists the nine SSE/SZSE ETF option underlyings in
+    ``KNOWN_ETF_UNDERLYINGS``. Do not scan the live CTP option catalog —
+    ``option_contract_info_ctp()`` is slow and often hangs from this host.
+    ``tab`` is kept for API compatibility but ignored.
+    """
+    from app.markets.cn_options import KNOWN_ETF_UNDERLYINGS
+
+    _ = str(tab or "").strip().lower()
+    rows = [_etf_product_payload(code6) for code6 in KNOWN_ETF_UNDERLYINGS]
+    rows.sort(key=lambda r: r.get("underlying_code") or r["root"])
+    return rows
+
+
+def _etf_product_payload(code6: str) -> Dict[str, Any]:
+    """Static picker payload — do not scan the live option catalog here.
+
+    The spot panel used to call ``list_etf_derivative_products`` which can hang
+    on ``listed_option_catalog()`` and block the whole ETF page.
+    """
+    from app.markets.cn_options import (
+        cn_etf_stock_symbol,
+        etf_benchmark_display_name,
+        etf_benchmark_symbol,
+        etf_underlying_display_name,
+        infer_cn_etf_board,
+    )
+
+    code6 = _etf_code6(code6)
+    name = _cn_display_name(code6, etf_underlying_display_name(code6))
     index_symbol = etf_benchmark_symbol(code6) or ""
     index_name = (
         _cn_display_name(index_symbol, etf_benchmark_display_name(code6))
         if index_symbol
         else ""
     )
-    futures_root = ETF_INDEX_FUTURES_ROOT.get(code6, "")
+    stock = cn_etf_stock_symbol(code6) if code6 else code6
     return _product_row(
-        root=sym or code6,
+        root=stock,
         name_cn=name,
         picker_kind="cn_etf",
         market="CNStock",
         underlying_code=code6,
         product_class="etf",
-        stock_symbol=sym or code6,
-        exchange=str(item.get("exchange") or "CN").upper(),
-        multiplier=10000.0,
-        option_multiplier=10000.0,
+        stock_symbol=stock,
+        exchange=infer_cn_etf_board(code6),
         has_options=True,
         has_option_chain=True,
+        multiplier=10000.0,
+        option_multiplier=10000.0,
         index_symbol=index_symbol,
         index_name=index_name,
-        index_futures_root=futures_root,
+        index_futures_root=ETF_INDEX_FUTURES_ROOT.get(code6, ""),
     )
-
-
-def list_etf_derivative_products(tab: str = "") -> List[Dict[str, Any]]:
-    """Return the shared ETF picker list.
-
-    The ETF workbench selects an ETF once; index / ETF / options tabs all reuse
-    the same underlying. ``tab`` is kept for API compatibility but ignored.
-    """
-    from app.services.cn_options_chain import listed_etf_underlying_catalog
-
-    _ = str(tab or "").strip().lower()
-    rows: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in listed_etf_underlying_catalog():
-        code6 = _etf_code6(item.get("symbol"))
-        if not code6 or code6 in seen:
-            continue
-        seen.add(code6)
-        rows.append(_etf_picker_row(item))
-    rows.sort(key=lambda r: r.get("underlying_code") or r["root"])
-    return rows
-
-
-def _etf_product_payload(code6: str) -> Dict[str, Any]:
-    code6 = _etf_code6(code6)
-    for row in list_etf_derivative_products("etf"):
-        if row.get("underlying_code") == code6 or _etf_code6(row.get("root")) == code6:
-            return row
-    from app.markets.cn_options import etf_underlying_display_name
-
-    name = _cn_display_name(code6, etf_underlying_display_name(code6))
-    return {
-        "root": code6,
-        "name": name,
-        "name_cn": name,
-        "underlying_code": code6,
-        "has_options": True,
-        "has_option_chain": True,
-        "multiplier": 10000.0,
-        "option_multiplier": 10000.0,
-    }
 
 
 def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
@@ -179,14 +176,13 @@ def build_spot_index_panel(symbol: str) -> Dict[str, Any]:
         raise ValueError("index symbol is required")
 
     name = _cn_display_name(sym, sym)
-    index_frame = None
-    try:
-        index_frame = _ak().stock_zh_index_spot_sina()
-    except Exception as exc:
-        logger.warning("stock_zh_index_spot_sina failed: %s", exc)
-
-    code_key = sym.split(".")[0].lower()
-    index_row = _index_row_from_spot(index_frame, code_key, _safe_float) if index_frame is not None else None
+    index_row = _index_row_from_local_bars(sym)
+    if not (index_row and float(index_row.get("price") or 0.0) > 0):
+        index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
+        if index_frame is not None:
+            live = _index_row_from_spot(index_frame, sym.split(".")[0].lower(), _safe_float)
+            if live and float(live.get("price") or 0.0) > 0:
+                index_row = live
     price = float((index_row or {}).get("price") or 0.0)
     analysis: List[str] = []
     if price > 0:
@@ -278,30 +274,46 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
     if not code6:
         raise ValueError("ETF code is required")
 
-    ak = _ak()
-    etf_frame = _load_etf_spot_frame_sina(ak)
-    index_frame = None
-    try:
-        index_frame = ak.stock_zh_index_spot_sina()
-    except Exception as exc:
-        logger.warning("stock_zh_index_spot_sina failed: %s", exc)
-
-    etf = _etf_row_from_spot(etf_frame, code6, _safe_float) or {
+    etf = _etf_row_from_local_bars(code6) or {
         "code": code6,
         "name": _cn_display_name(code6, etf_underlying_display_name(code6)),
         "price": 0.0,
+        "source": "none",
     }
+    # Local bars already render the page; only hit Sina when the close is missing.
+    if float(etf.get("price") or 0.0) <= 0:
+        sina_frame = _call_with_timeout(lambda: _load_etf_spot_frame_sina(_ak), _SINA_TIMEOUT_SEC)
+        sina_row = _etf_row_from_spot(sina_frame, code6, _safe_float) if sina_frame is not None else None
+        if sina_row and float(sina_row.get("price") or 0.0) > 0:
+            merged = dict(etf)
+            for key, value in sina_row.items():
+                if value not in (None, ""):
+                    merged[key] = value
+            merged["source"] = "sina"
+            etf = merged
+
     bench = etf_benchmark_index(code6)
     index_symbol = etf_benchmark_symbol(code6) if bench else ""
-    index_row = None
-    if bench and index_frame is not None:
-        index_code = str(bench[0] or "").strip()
-        index_row = _index_row_from_spot(index_frame, index_code.lower(), _safe_float)
+    index_row = _index_row_from_local_bars(index_symbol) if index_symbol else None
+    if bench and not (index_row and float(index_row.get("price") or 0.0) > 0):
+        index_frame = _call_with_timeout(lambda: _ak().stock_zh_index_spot_sina(), _SINA_TIMEOUT_SEC)
+        if index_frame is not None:
+            live = _index_row_from_spot(index_frame, str(bench[0] or "").strip().lower(), _safe_float)
+            if live and float(live.get("price") or 0.0) > 0:
+                index_row = live
 
+    # Always merge fund metrics. East Money spot is cache/background only so a
+    # local close must not skip holdings / fees / IOPV / scale.
     try:
         from app.services.cn_derivatives_etf_metrics import enrich_etf_metrics
 
-        etf = enrich_etf_metrics(code6, etf)
+        enriched = _call_with_timeout(
+            lambda: enrich_etf_metrics(code6, etf),
+            _ENRICH_TIMEOUT_SEC,
+            default=None,
+        )
+        if isinstance(enriched, dict):
+            etf = enriched
     except Exception as exc:
         logger.warning("enrich_etf_metrics %s failed: %s", code6, exc)
 
@@ -326,9 +338,31 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
         )
     if etf.get("constituent_profit_sum") is not None:
         coverage = int(etf.get("constituent_profit_coverage") or 0)
+        total = int(etf.get("holdings_count") or 0)
         analysis.append(
             f"成份股最新财报净利润合计约 {float(etf['constituent_profit_sum']):,.0f} 元"
-            f"（覆盖前部持仓 {coverage} 只）。"
+            f"（覆盖 {coverage}/{total} 只成份）。"
+        )
+    if etf.get("constituent_market_value_sum") is not None:
+        analysis.append(
+            f"成份持仓市值合计约 {float(etf['constituent_market_value_sum']):,.0f} 元。"
+        )
+    if etf.get("constituent_market_cap_sum") is not None:
+        cov = int(etf.get("market_cap_coverage") or 0)
+        total = int(etf.get("holdings_count") or 0)
+        analysis.append(
+            f"成份股总市值合计约 {float(etf['constituent_market_cap_sum']):,.0f} 元"
+            f"（覆盖 {cov}/{total} 只）。"
+        )
+    if etf.get("avg_pe") is not None:
+        analysis.append(
+            f"成份加权平均 PE 约 {float(etf['avg_pe']):.2f}"
+            f"（覆盖 {int(etf.get('pe_coverage') or 0)} 只）。"
+        )
+    if etf.get("avg_profit_margin") is not None:
+        analysis.append(
+            f"成份加权平均利润率约 {float(etf['avg_profit_margin']):.2f}%"
+            f"（覆盖 {int(etf.get('margin_coverage') or 0)} 只）。"
         )
     if index_row and index_price > 0:
         analysis.append(f"基准指数 {index_row.get('name')} 最新 {index_price:.2f}。")
@@ -733,6 +767,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
     return panel
 
 
+
 def warm_etf_options_panel_cache(codes: Optional[List[str]] = None) -> Dict[str, Any]:
     """Build `month=all` panels so Redis holds a warm copy for the ETF options page."""
     from app.services.etf_options_clickhouse import ch_ping, etf_options_ch_enabled
@@ -808,6 +843,105 @@ def _aggregate_etf_chains_by_strike(chains: List[List[Dict[str, Any]]]) -> List[
             }
         )
     return rows
+
+
+def _query_local_daily_bars(symbol: str) -> List[Dict[str, Any]]:
+    """Read the latest daily close from ``qd_market_bars`` only (no upstream)."""
+    from app.utils.db import get_db_connection
+
+    sql = (
+        "SELECT close, volume, bar_time FROM qd_market_bars "
+        "WHERE market = %s AND symbol = %s AND timeframe = %s "
+        "ORDER BY bar_time DESC LIMIT 1"
+    )
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(sql, ("CNStock", str(symbol or "").strip(), "1D"))
+            row = cur.fetchone()
+    except Exception as exc:
+        logger.debug("local ETF bar query %s failed: %s", symbol, exc)
+        return []
+    if not row:
+        return []
+    if isinstance(row, dict):
+        close, volume, ts = row.get("close"), row.get("volume"), row.get("bar_time")
+    else:
+        close, volume, ts = row[0], row[1], row[2]
+    return [{"close": close, "volume": volume, "time": ts}]
+
+
+def _last_local_bar(symbol: str) -> Optional[Dict[str, Any]]:
+    """Latest daily bar from ``qd_market_bars`` (no upstream fallback)."""
+    from app.markets.cn_options import cn_etf_stock_symbol
+
+    raw = str(symbol or "").strip().upper()
+    if not raw:
+        return None
+    candidates = [raw]
+    if "." not in raw:
+        candidates.append(cn_etf_stock_symbol(raw))
+    seen: set[str] = set()
+    for sym in candidates:
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        try:
+            bars = _query_local_daily_bars(sym)
+        except Exception as exc:
+            logger.debug("local ETF bar %s failed: %s", sym, exc)
+            continue
+        if not bars:
+            continue
+        bar = bars[-1]
+        try:
+            price = float(bar.get("close") or 0.0)
+        except (TypeError, ValueError):
+            price = 0.0
+        if price <= 0:
+            continue
+        try:
+            volume = float(bar.get("volume") or 0.0)
+        except (TypeError, ValueError):
+            volume = 0.0
+        return {
+            "symbol": sym,
+            "price": price,
+            "volume": volume,
+            "time": bar.get("time"),
+            "source": "qd_market_bars",
+        }
+    return None
+
+
+def _etf_row_from_local_bars(code6: str) -> Optional[Dict[str, Any]]:
+    from app.markets.cn_options import cn_etf_stock_symbol, etf_underlying_display_name
+
+    bar = _last_local_bar(cn_etf_stock_symbol(code6))
+    if not bar:
+        return None
+    return {
+        "code": code6,
+        "name": _cn_display_name(code6, etf_underlying_display_name(code6)),
+        "price": bar["price"],
+        "volume": bar.get("volume"),
+        "source": "qd_market_bars",
+    }
+
+
+def _index_row_from_local_bars(index_symbol: str) -> Optional[Dict[str, Any]]:
+    sym = str(index_symbol or "").strip().upper()
+    if not sym:
+        return None
+    bar = _last_local_bar(sym)
+    if not bar:
+        return None
+    return {
+        "code": sym,
+        "name": _cn_display_name(sym, sym),
+        "price": bar["price"],
+        "source": "qd_market_bars",
+    }
 
 
 def _load_etf_spot_frame_sina(ak_fn) -> Any:

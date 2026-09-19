@@ -54,21 +54,58 @@ def test_build_etf_metrics_history_shape(monkeypatch):
     assert "新浪" in data["note"]
 
 
-def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
-    monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
-    monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
+def test_metrics_history_estimates_amount_from_lot_volume(monkeypatch):
     monkeypatch.setattr(
         metrics,
-        "_spot_em_row",
-        lambda code6: {
-            "price": 4.5,
-            "volume": 99,
-            "amount": 888,
-            "shares": 2e9,
-            "scale": None,
-            "source": "fund_etf_spot_em",
-        },
+        "enrich_etf_metrics",
+        lambda code, etf_row=None: {"shares": 1e9, "total_fee_pct": 0.2, "constituent_profit_sum": None},
     )
+    monkeypatch.setattr(
+        metrics,
+        "_load_etf_ohlcv_history",
+        lambda code6, *, days: [{"date": "2026-09-17", "price": 3.0, "volume": 1000, "amount": None}],
+    )
+    data = metrics.build_etf_metrics_history("510050", chart_key="etf.volume", days=30)
+    assert data["points"][0]["amount"] == 3.0 * 1000 * 100
+    assert data["points"][0]["scale"] == 3.0 * 1e9
+
+
+def test_fill_holding_market_values_from_scale_and_weight():
+    out = metrics._fill_holding_market_values(
+        {
+            "scale": 1000.0,
+            "holdings": [
+                {"code": "600000", "weight_pct": 10.0, "market_value": None},
+                {"code": "600519", "weight_pct": 5.0},
+            ],
+            "holdings_sample": [],
+        }
+    )
+    assert out["holdings"][0]["market_value"] == 100.0
+    assert out["holdings"][1]["market_value"] == 50.0
+    assert out["constituent_market_value_sum"] == 150.0
+
+
+def test_estimate_etf_amount_uses_lot_volume():
+    # Local/EM 成交量单位是手（100 股）。
+    assert metrics.estimate_etf_amount(2.975, 4851416) == 2.975 * 4851416 * 100
+    assert metrics.estimate_etf_amount(0, 100) is None
+    assert metrics.estimate_etf_amount(3.0, None) is None
+
+
+def test_enrich_etf_metrics_merges_spot_and_fees(monkeypatch):
+    spot = {
+        "price": 4.5,
+        "volume": 99,
+        "amount": 888,
+        "shares": 2e9,
+        "scale": None,
+        "source": "fund_etf_spot_em",
+    }
+    monkeypatch.setattr(metrics, "_cache_get", lambda key: None)
+    monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(metrics, "_spot_em_row_from_cache", lambda code6: dict(spot))
+    monkeypatch.setattr(metrics, "_kick_spot_em_refresh", lambda: None)
     monkeypatch.setattr(
         metrics,
         "_fee_metrics",
