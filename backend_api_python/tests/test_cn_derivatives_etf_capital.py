@@ -149,14 +149,19 @@ def test_compute_buyer_real_leverage_uses_delta_over_premium():
     assert [p["strike"] for p in out["call"]] == [3.0, 3.2]
     atm_call = out["call"][0]
     atm_put = next(p for p in out["put"] if p["strike"] == 3.0)
-    # ATM call: TV = 0.15 − 0, unit = (0.50×3/0.15) / 0.15
-    assert abs(atm_call["leverage"] - ((0.50 * 3.0 / 0.15) / 0.15)) < 1e-9
-    assert abs(atm_call["raw_leverage"] - (0.50 * 3.0 / 0.15)) < 1e-9
+    days = 30
+    # ATM call: TV = 0.15, daily decay = 0.15/30, unit = ω / (TV/days)
+    omega_call = 0.50 * 3.0 / 0.15
+    assert abs(atm_call["raw_leverage"] - omega_call) < 1e-9
     assert abs(atm_call["time_value"] - 0.15) < 1e-9
+    assert abs(atm_call["daily_tv_decay"] - (0.15 / days)) < 1e-9
+    assert abs(atm_call["leverage"] - (omega_call / (0.15 / days))) < 1e-9
     # ATM put: TV = 0.10
-    assert abs(atm_put["leverage"] - ((0.40 * 3.0 / 0.10) / 0.10)) < 1e-9
+    omega_put = 0.40 * 3.0 / 0.10
+    assert abs(atm_put["leverage"] - (omega_put / (0.10 / days))) < 1e-9
     # OTM call: TV = 0.05
-    assert abs(out["call"][1]["leverage"] - ((0.20 * 3.0 / 0.05) / 0.05)) < 1e-9
+    omega_otm = 0.20 * 3.0 / 0.05
+    assert abs(out["call"][1]["leverage"] - (omega_otm / (0.05 / days))) < 1e-9
     # ITM call at 2.0: premium == intrinsic → omitted
     assert 2.0 not in [p["strike"] for p in out["call"]]
 

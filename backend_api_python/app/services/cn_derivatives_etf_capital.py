@@ -349,21 +349,25 @@ def compute_buyer_real_leverage(
     """Buyer unit real leverage by strike for one expiry.
 
     Real leverage ``ω = |Δ| × S / premium``. Unit real leverage is
-    ``ω / time_value`` where time value is ``premium − intrinsic`` (same
-    signed口径 as the TV-yield chart). Points with non-positive time
-    value are omitted. Delta prefers a stored ``*_delta``, otherwise
-    Black-76 using stored IV or IV implied from the option price.
+    ``ω / daily_tv_decay`` where ``daily_tv_decay = time_value / days``
+    and time value is ``premium − intrinsic`` (same signed口径 as the
+    TV-yield chart). ``days`` is the remaining calendar days from ``T``.
+    Points with non-positive time value or daily decay are omitted.
+    Delta prefers a stored ``*_delta``, otherwise Black-76 using stored
+    IV or IV implied from the option price.
     """
     from app.services.gex_indicator import black76_greeks, implied_vol_black76
 
     spot = _safe_float(underlying)
     t_years = max(_safe_float(T), 1.0 / 365.0)
+    days = _days_to_expiry_from_T(t_years)
     call_points: List[Dict[str, Any]] = []
     put_points: List[Dict[str, Any]] = []
     if spot <= 0:
         return {
             "month": month,
             "T": t_years,
+            "days_to_expiry": days,
             "call": [],
             "put": [],
             "note": "invalid underlying",
@@ -381,6 +385,9 @@ def compute_buyer_real_leverage(
             time_value = px - intrinsic
             if time_value <= 1e-8:
                 continue
+            daily_tv_decay = time_value / float(days)
+            if daily_tv_decay <= 1e-8:
+                continue
             stored_delta = row.get(f"{side}_delta")
             if stored_delta is None and not is_call:
                 stored_delta = row.get("put_delta")
@@ -396,12 +403,14 @@ def compute_buyer_real_leverage(
             if abs(delta) <= 1e-12:
                 continue
             raw_leverage = abs(delta) * spot / px
-            leverage = raw_leverage / time_value
+            leverage = raw_leverage / daily_tv_decay
             point = {
                 "strike": k,
                 "leverage": leverage,
                 "raw_leverage": raw_leverage,
                 "time_value": time_value,
+                "daily_tv_decay": daily_tv_decay,
+                "days_to_expiry": days,
                 "delta": delta,
                 "premium": px,
                 "side": side,
@@ -417,9 +426,10 @@ def compute_buyer_real_leverage(
     return {
         "month": month,
         "T": t_years,
+        "days_to_expiry": days,
         "call": call_points,
         "put": put_points,
-        "note": "买方单位真实杠杆 = (|Δ| × 标的价格 / 权利金) / 时间价值",
+        "note": "买方单位真实杠杆 = (|Δ| × 标的价格 / 权利金) / (时间价值/剩余自然日)",
     }
 
 
