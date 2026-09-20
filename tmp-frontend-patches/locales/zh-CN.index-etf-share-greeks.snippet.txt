@@ -1,0 +1,6 @@
+"marketComposite.etf.metrics.etfShare": "对应 ETF 基金占比",
+"marketComposite.etf.metrics.etfShareOfIndex": "占指数市值",
+"marketComposite.etf.metrics.etfShareCombined": "挂钩 ETF 合计占比",
+"marketComposite.etf.metrics.etfGroupShare": "占挂钩 ETF",
+"marketComposite.etf.metrics.optionGreekNotional": "对应期权希腊字母名义资金",
+"marketComposite.etf.metrics.notional": "名义资金"
