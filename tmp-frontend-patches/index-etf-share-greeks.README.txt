@@ -1,0 +1,26 @@
+Index tab also shows linked ETF fund share of index constituent cap
+and that ETF's option Greek notionals. It still does NOT dump fund-level
+AUM / fees / IOPV onto the index panel (no spot.etf).
+
+Share
+  share_pct = ETF scale / index constituent_market_cap_sum * 100
+  Multiple linked ETFs also get combined_share_pct and etf_group_share_pct.
+
+Greeks (primary linked ETF, all-month options panel)
+  delta_notional = portfolio Delta * spot
+  gamma_notional = Net GEX (or Gamma * spot)
+  vega_notional  = yuan per 1% vol
+  theta_notional = yuan per day
+
+Backend
+  GET /api/cn-derivatives/spot?scope=etf&picker_kind=spot_index&root=000016.SH&etf=510050
+  build_spot_index_panel attaches:
+    spot.index.linked_etfs
+    spot.index.etf_share
+    spot.index.option_greeks
+  Options panel cache key etf_options_panel:v3:{code6}:all is read first;
+  cache miss falls back to build_etf_options_panel(..., 25s).
+
+Frontend (QuantDinger-Vue)
+  src/views/market-composite-analysis/etf-derivatives.vue
+  locales: zh-CN/en-US.index-etf-share-greeks.snippet.txt
