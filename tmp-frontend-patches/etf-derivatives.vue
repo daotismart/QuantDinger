@@ -202,63 +202,98 @@
             {{ $t('marketComposite.futures.noData') }}
           </p>
         </div>
-        <template v-if="futuresData">
-          <div class="fda-metrics">
-            <div class="fda-metric">
-              <span>{{ $t('marketComposite.futures.futures.spotPrice') }}</span>
-              <strong>{{ fmt(futuresData && futuresData.basis && futuresData.basis.spot_price) }}</strong>
+        <div v-if="hasIndexRiskMetrics || loadingIndexDerivatives" class="fda-section">
+          <h3>{{ $t('marketComposite.etf.metrics.riskData') }}</h3>
+          <a-spin :spinning="loadingIndexDerivatives && !hasIndexRiskMetrics">
+            <div class="fda-metrics">
+              <div class="fda-metric" v-for="item in indexRiskGreekCards" :key="'idx-risk-g-' + item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ fmt(item.value, 4) }}</strong>
+              </div>
             </div>
-            <div class="fda-metric">
-              <span>{{ $t('marketComposite.futures.futures.nearBasis') }}</span>
-              <strong :class="tone(futuresData && futuresData.basis && futuresData.basis.near_basis)">
-                {{ fmt(futuresData && futuresData.basis && futuresData.basis.near_basis) }}
-              </strong>
+            <div class="fda-metrics fda-metrics-gex">
+              <div class="fda-metric" v-for="item in indexRiskGexCards" :key="'idx-risk-x-' + item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.display }}</strong>
+              </div>
             </div>
-            <div class="fda-metric">
-              <span>{{ $t('marketComposite.futures.futures.domBasis') }}</span>
-              <strong :class="tone(futuresData && futuresData.basis && futuresData.basis.dom_basis)">
-                {{ fmt(futuresData && futuresData.basis && futuresData.basis.dom_basis) }}
-              </strong>
-            </div>
+          </a-spin>
+        </div>
+        <template v-if="futuresData || indexFuturesOptionsData || loadingIndexDerivatives">
+          <div class="fda-section">
+            <h3>{{ $t('marketComposite.etf.labels.indexFutures') }}</h3>
+            <a-spin :spinning="loadingIndexDerivatives && !futuresData">
+              <div class="fda-metrics">
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.futures.spotPrice') }}</span>
+                  <strong>{{ fmt(indexFuturesSpotPrice) }}</strong>
+                </div>
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.futures.nearBasis') }}</span>
+                  <strong :class="tone(indexFuturesNearBasis)">{{ fmt(indexFuturesNearBasis) }}</strong>
+                </div>
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.futures.domBasis') }}</span>
+                  <strong :class="tone(indexFuturesDomBasis)">{{ fmt(indexFuturesDomBasis) }}</strong>
+                </div>
+              </div>
+              <div class="fda-charts">
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="termChart" class="fda-chart" />
+                </div>
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="activityChart" class="fda-chart fda-chart-tall" />
+                </div>
+              </div>
+              <a-table
+                class="fda-table"
+                size="small"
+                :pagination="false"
+                :columns="futuresColumns"
+                :data-source="(futuresData && futuresData.monthly_activity) || []"
+                row-key="symbol"
+              />
+            </a-spin>
           </div>
-          <div class="fda-charts">
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
-                <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
+          <div class="fda-section">
+            <h3>{{ $t('marketComposite.etf.labels.indexFuturesOptions') }}</h3>
+            <a-spin :spinning="loadingIndexDerivatives && !indexFuturesOptionsData">
+              <div class="fda-metrics">
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
+                  <strong>{{ fmt(indexFuturesOptionsData && (indexFuturesOptionsData.current_price || indexFuturesOptionsData.underlying), 3, true) }}</strong>
+                </div>
+                <div class="fda-metric" v-if="selectedIndexOptionRoot">
+                  <span>{{ $t('marketComposite.etf.labels.indexFuturesOptions') }}</span>
+                  <strong>{{ selectedIndexOptionRoot }}</strong>
+                </div>
               </div>
-              <div ref="termChart" class="fda-chart" />
-            </div>
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
-                <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
+              <div class="fda-charts">
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="notionalChart" class="fda-chart" />
+                </div>
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="premiumChart" class="fda-chart" />
+                </div>
               </div>
-              <div ref="activityChart" class="fda-chart fda-chart-tall" />
-            </div>
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
-                <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
-              </div>
-              <div ref="notionalChart" class="fda-chart" />
-            </div>
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
-                <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
-              </div>
-              <div ref="premiumChart" class="fda-chart" />
-            </div>
+            </a-spin>
           </div>
-          <a-table
-            class="fda-table"
-            size="small"
-            :pagination="false"
-            :columns="futuresColumns"
-            :data-source="(futuresData && futuresData.monthly_activity) || []"
-            row-key="symbol"
-          />
         </template>
       </div>
 
@@ -491,7 +526,9 @@ export default {
       loadingTab: false,
       spotData: null,
       futuresData: null,
+      indexFuturesOptionsData: null,
       optionsData: null,
+      loadingIndexDerivatives: false,
       charts: {},
       historyVisible: false,
       historyLoading: false,
@@ -805,6 +842,70 @@ export default {
       const product = this.selectedProduct || {}
       return product.index_futures_root || ''
     },
+    selectedIndexOptionRoot () {
+      const product = this.selectedProduct || {}
+      return product.index_option_root || ''
+    },
+    indexFuturesMonths () {
+      return ((this.futuresData && this.futuresData.term_structure) || []).filter(p => !p.is_continuous)
+    },
+    indexFuturesSpotPrice () {
+      const fromBoard = this.futuresData && this.futuresData.basis && this.futuresData.basis.spot_price
+      if (fromBoard) return fromBoard
+      return this.spotData && this.spotData.spot_price
+    },
+    indexFuturesNearBasis () {
+      const board = this.futuresData && this.futuresData.basis
+      if (board && board.near_basis != null) return board.near_basis
+      const spot = Number(this.indexFuturesSpotPrice)
+      const near = this.indexFuturesMonths[0]
+      if (!near || !Number.isFinite(spot) || !spot) return null
+      const px = Number(near.price)
+      return Number.isFinite(px) ? px - spot : null
+    },
+    indexFuturesDomBasis () {
+      const board = this.futuresData && this.futuresData.basis
+      if (board && board.dom_basis != null) return board.dom_basis
+      const spot = Number(this.indexFuturesSpotPrice)
+      const rows = this.indexFuturesMonths
+      const dom = rows.reduce((best, row) => {
+        const oi = Number(row && row.open_interest) || 0
+        const bestOi = Number(best && best.open_interest) || 0
+        return oi >= bestOi ? row : best
+      }, rows[0])
+      if (!dom || !Number.isFinite(spot) || !spot) return null
+      const px = Number(dom.price)
+      return Number.isFinite(px) ? px - spot : null
+    },
+    hasIndexRiskMetrics () {
+      const panel = this.indexFuturesOptionsData || {}
+      const g = panel.greeks || {}
+      const s = panel.gex_summary || {}
+      return !!(g.delta != null || g.gamma != null || s.net_gex != null || s.flip != null)
+    },
+    indexRiskGreekCards () {
+      const g = (this.indexFuturesOptionsData && this.indexFuturesOptionsData.greeks) || {}
+      return [
+        { key: 'delta', label: 'Delta', value: g.delta },
+        { key: 'gamma', label: 'Gamma', value: g.gamma },
+        { key: 'vega', label: 'Vega', value: g.vega },
+        { key: 'theta', label: 'Theta', value: g.theta }
+      ]
+    },
+    indexRiskGexCards () {
+      const s = (this.indexFuturesOptionsData && this.indexFuturesOptionsData.gex_summary) || {}
+      const mp = this.indexFuturesOptionsData && this.indexFuturesOptionsData.max_pain
+      return [
+        { key: 'net', label: 'Net GEX', display: this.fmt(s.net_gex, 0) },
+        { key: 'call', label: 'Call GEX', display: this.fmt(s.call_gex, 0) },
+        { key: 'put', label: 'Put GEX', display: this.fmt(s.put_gex, 0) },
+        { key: 'flip', label: 'Flip', display: this.fmt(s.flip) },
+        { key: 'callWall', label: 'Call Wall', display: this.fmt(s.call_wall) },
+        { key: 'putWall', label: 'Put Wall', display: this.fmt(s.put_wall) },
+        { key: 'pin', label: 'Pin', display: this.fmt(s.pin) },
+        { key: 'maxPain', label: 'Max Pain', display: this.fmt(mp && mp.strike) }
+      ]
+    },
     selectedUnderlyingCode () {
       const product = this.selectedProduct || {}
       return product.underlying_code || this.selectedRoot
@@ -1114,6 +1215,7 @@ export default {
       // Keep the same ETF selection across tabs; only reload the active panel.
       this.spotData = null
       this.futuresData = null
+      this.indexFuturesOptionsData = null
       this.optionsData = null
       this.reloadActiveTab()
     },
@@ -1145,6 +1247,7 @@ export default {
       this.selectedRoot = root
       this.spotData = null
       this.futuresData = null
+      this.indexFuturesOptionsData = null
       this.optionsData = null
       this.selectedMonth = 'all'
       if (this.$router) {
@@ -1181,22 +1284,50 @@ export default {
           // Fallback: ETF spot panel still carries the embedded index quote.
           await this.loadSpot()
         }
-        const futuresRoot = this.selectedFuturesRoot
-        if (futuresRoot) {
-          try {
-            const fres = await getFuturesPanel(futuresRoot)
-            this.futuresData = (fres && fres.data) || null
-            this.$nextTick(() => this.renderFuturesCharts())
-          } catch (e) {
-            this.futuresData = null
-          }
-        } else {
-          this.futuresData = null
-        }
       } catch (e) {
         this.$message.error((e && e.message) || this.$t('marketComposite.futures.loadFailed'))
       } finally {
         this.loadingTab = false
+      }
+      this.loadIndexFuturesAndOptions()
+    },
+    async loadIndexFuturesAndOptions () {
+      const futuresRoot = this.selectedFuturesRoot
+      const optionRoot = this.selectedIndexOptionRoot
+      if (!futuresRoot && !optionRoot) {
+        this.futuresData = null
+        this.indexFuturesOptionsData = null
+        return
+      }
+      this.loadingIndexDerivatives = true
+      const tasks = []
+      if (futuresRoot) {
+        tasks.push(
+          getFuturesPanel(futuresRoot).then(res => {
+            this.futuresData = (res && res.data) || null
+          }).catch(() => {
+            this.futuresData = null
+          })
+        )
+      } else {
+        this.futuresData = null
+      }
+      if (optionRoot) {
+        tasks.push(
+          getOptionsPanel(optionRoot, 'all', {}).then(res => {
+            this.indexFuturesOptionsData = (res && res.data) || null
+          }).catch(() => {
+            this.indexFuturesOptionsData = null
+          })
+        )
+      } else {
+        this.indexFuturesOptionsData = null
+      }
+      try {
+        await Promise.all(tasks)
+      } finally {
+        this.loadingIndexDerivatives = false
+        this.$nextTick(() => this.renderFuturesCharts())
       }
     },
     spotRequestParams () {
@@ -1482,7 +1613,18 @@ export default {
       const curve = ((this.futuresData && this.futuresData.term_structure) || []).filter(p => !p.is_continuous)
       const activityRows = (this.futuresData && this.futuresData.monthly_activity) || curve
       const months = activityRows.map(p => p.symbol || p.label)
-      const capitalRows = (this.futuresData && this.futuresData.options_settled_capital) || []
+      let capitalRows = (this.futuresData && this.futuresData.options_settled_capital) || []
+      if (!capitalRows.length && this.indexFuturesOptionsData) {
+        capitalRows = (this.indexFuturesOptionsData.month_series || []).map(row => ({
+          month: row.month,
+          call_notional: row.call_notional,
+          put_notional: row.put_notional,
+          call_premium: row.call_premium,
+          put_premium: row.put_premium,
+          call_settled: row.call_premium,
+          put_settled: row.put_premium
+        }))
+      }
 
       if (term) {
         const termMonths = curve.map(p => p.label || p.symbol)

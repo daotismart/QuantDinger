@@ -25,6 +25,9 @@ Backend
   greeks empty rather than blocking price/volume/holdings/PE.
   Index enrich uses cache/DB constituent snapshots (live=False).
 
+  Index tab also loads IH/IF futures + HO/IO options in the background:
+  风险数据 = HO greeks / GEX; 股指期货 = monthly IH; 股指期货期权 = HO capital.
+
 Frontend (QuantDinger-Vue)
   src/views/market-composite-analysis/etf-derivatives.vue
   locales: zh-CN/en-US.index-etf-share-greeks.snippet.txt

@@ -9,6 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from app.markets.cn_futures import get_future_product, list_products
 from app.markets.cn_options import INDEX_OPTION_UNDERLYING
+
+# Reverse of INDEX_OPTION_UNDERLYING: IH futures -> HO options, IF -> IO, IM -> MO.
+INDEX_FUTURES_OPTION_ROOT = {fut: opt for opt, fut in INDEX_OPTION_UNDERLYING.items()}
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -407,6 +410,14 @@ def _futures_zh_spot(symbol: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def index_option_root_for_futures(root: str) -> str:
+    """CFFEX option root for an index-futures (or option) root. IH -> HO."""
+    root_u = str(root or "").upper()
+    if root_u in CFFEX_OPTION_LIST_FN:
+        return root_u
+    return INDEX_FUTURES_OPTION_ROOT.get(root_u, "")
+
+
 def _option_months(root: str) -> List[str]:
     root_u = str(root or "").upper()
     if root_u in CFFEX_OPTION_LIST_FN:
@@ -707,7 +718,9 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
     root_u = str(root or "").upper()
     product = _product_payload(root_u)
     board = _spot_board_row(root_u)
-    months = _option_months(root_u)
+    opt_root = index_option_root_for_futures(root_u)
+    months = _option_months(opt_root or root_u)
+    chain_root = opt_root or root_u
 
     candidates: List[str] = []
     if board:
@@ -715,10 +728,12 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
             sym = str(board.get(key) or "").strip()
             if sym:
                 candidates.append(sym)
-    candidates.extend(months)
-    if root_u in INDEX_OPTION_UNDERLYING:
+    if not opt_root:
+        candidates.extend(months)
+    if opt_root or root_u in INDEX_OPTION_UNDERLYING:
+        map_root = opt_root or root_u
         for m in months:
-            candidates.append(_underlying_futures_symbol(root_u, m))
+            candidates.append(_underlying_futures_symbol(map_root, m))
     candidates.append(str(product.get("continuous_symbol") or f"{root_u.lower()}0"))
 
     seen = set()
@@ -760,8 +775,12 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
     options_capital = []
     capital_by_month: Dict[str, Dict[str, float]] = {}
     mult = float(product.get("option_multiplier") or product.get("multiplier") or 1)
-    for month in months[:6]:
-        chain = _option_chain_table(root_u, month)
+    # Index-futures roots (IH/IF/IM) map onto HO/IO/MO chains. Walking those
+    # chains here can take tens of seconds and starve the index tab; the index
+    # page loads the option root separately for GEX / 权利金.
+    walk_option_chains = not bool(opt_root) or root_u in CFFEX_OPTION_LIST_FN
+    for month in months[:6] if walk_option_chains else []:
+        chain = _option_chain_table(chain_root, month)
         if not chain:
             continue
         month_quote = _futures_zh_spot(month)
@@ -820,6 +839,7 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
         },
         "monthly_activity": monthly_activity,
         "options_settled_capital": options_capital,
+        "index_option_root": opt_root or None,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -966,6 +986,11 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             month=m,
             multiplier=mult,
         )
+        capital = _option_capital_for_chain(
+            chain,
+            underlying=float(underlying or 0.0),
+            multiplier=mult,
+        )
         month_series.append(
             {
                 "month": m,
@@ -979,6 +1004,12 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
                 "time_value_yield": tv_yield,
                 "buyer_leverage": buyer_leverage,
                 "indicators": gex_fields.get("indicators") or {},
+                "call_notional": capital.get("call_notional"),
+                "put_notional": capital.get("put_notional"),
+                "notional": capital.get("notional"),
+                "call_premium": capital.get("call_premium"),
+                "put_premium": capital.get("put_premium"),
+                "premium": capital.get("premium"),
             }
         )
 

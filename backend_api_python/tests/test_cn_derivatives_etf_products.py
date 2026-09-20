@@ -28,12 +28,14 @@ def test_products_include_benchmark_index_and_options_flags():
     assert row["index_symbol"] == "000016.SH"
     assert row["index_name"]
     assert row["index_futures_root"] == "IH"
+    assert row["index_option_root"] == "HO"
 
 
 def test_star50_and_chinext_have_index_without_futures():
     rows = {r["underlying_code"]: r for r in list_etf_derivative_products()}
     assert rows["588000"]["index_symbol"] == "000688.SH"
     assert rows["588000"]["index_futures_root"] == ""
+    assert rows["588000"].get("index_option_root") in ("", None)
     assert rows["159915"]["index_symbol"] == "399006.SZ"
     assert rows["159915"]["index_futures_root"] == ""
 

@@ -77,6 +77,13 @@ ETF_INDEX_FUTURES_ROOT: Dict[str, str] = {
     "159922": "IC",
 }
 
+# CFFEX index options on that futures root (IC has no dedicated options).
+ETF_INDEX_OPTION_ROOT: Dict[str, str] = {
+    "510050": "HO",
+    "510300": "IO",
+    "159919": "IO",
+}
+
 
 def _cn_display_name(symbol: str, fallback: str = "") -> str:
     sym = str(symbol or "").strip().upper()
@@ -164,6 +171,7 @@ def _etf_product_payload(code6: str) -> Dict[str, Any]:
         index_symbol=index_symbol,
         index_name=index_name,
         index_futures_root=ETF_INDEX_FUTURES_ROOT.get(code6, ""),
+        index_option_root=ETF_INDEX_OPTION_ROOT.get(code6, ""),
     )
 
 

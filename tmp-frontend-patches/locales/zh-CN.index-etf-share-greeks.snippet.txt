@@ -6,4 +6,6 @@
 "marketComposite.etf.metrics.notional": "名义资金",
 "marketComposite.etf.metrics.optionMargin": "保证金",
 "marketComposite.etf.metrics.optionEtfBreakdown": "各ETF分项",
-"marketComposite.etf.metrics.optionEtfCombined": "挂钩 ETF 合计"
+"marketComposite.etf.metrics.optionEtfCombined": "挂钩 ETF 合计",
+"marketComposite.etf.metrics.riskData": "风险数据",
+"marketComposite.etf.labels.indexFuturesOptions": "股指期货期权"

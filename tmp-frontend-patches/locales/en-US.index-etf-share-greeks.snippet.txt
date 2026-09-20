@@ -6,4 +6,6 @@
 "marketComposite.etf.metrics.notional": "notional",
 "marketComposite.etf.metrics.optionMargin": "Margin",
 "marketComposite.etf.metrics.optionEtfBreakdown": "Per ETF",
-"marketComposite.etf.metrics.optionEtfCombined": "Linked ETFs combined"
+"marketComposite.etf.metrics.optionEtfCombined": "Linked ETFs combined",
+"marketComposite.etf.metrics.riskData": "Risk data",
+"marketComposite.etf.labels.indexFuturesOptions": "Index futures options"
