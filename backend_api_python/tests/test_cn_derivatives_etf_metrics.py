@@ -196,6 +196,34 @@ def test_reconcile_index_activity_matches_local_and_tencent():
     assert statuses["volume_shares"] == "match"
 
 
+def test_compute_etf_index_share_pct():
+    assert metrics.compute_etf_index_share_pct(2.32e10, 9e12) == 0.2578
+    assert metrics.compute_etf_index_share_pct(None, 9e12) is None
+    assert metrics.compute_etf_index_share_pct(100, 0) is None
+
+
+def test_build_index_etf_shares_marks_primary(monkeypatch):
+    monkeypatch.setattr(metrics, "load_etf_scale", lambda code: 1e10 if code == "510050" else 5e9)
+    out = metrics.build_index_etf_shares(["510050", "510300"], index_market_cap=1e12, primary="510050")
+    assert out["primary"] == "510050"
+    assert out["etfs"][0]["primary"] is True
+    assert out["etfs"][0]["share_pct"] == 1.0
+    assert out["etfs"][1]["etf_group_share_pct"] == 33.33
+    assert out["combined_share_pct"] == 1.5
+
+
+def test_compute_option_greek_notionals():
+    out = metrics.compute_option_greek_notionals(
+        {"delta": 1000.0, "gamma": 20.0, "vega": 50.0, "theta": -8.0},
+        spot=3.0,
+        net_gex=75.0,
+    )
+    assert out["delta_notional"] == 3000.0
+    assert out["gamma_notional"] == 75.0
+    assert out["vega_notional"] == 50.0
+    assert out["theta_notional"] == -8.0
+
+
 def test_estimate_etf_amount_uses_lot_volume():
     # Local/EM 成交量单位是手（100 股）。
     assert metrics.estimate_etf_amount(2.975, 4851416) == 2.975 * 4851416 * 100

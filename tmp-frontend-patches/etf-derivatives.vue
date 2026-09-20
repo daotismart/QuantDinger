@@ -142,6 +142,33 @@
           </div>
           <p v-if="indexActivityMeta" class="fda-muted fda-etf-note">{{ indexActivityMeta }}</p>
           <p v-if="indexMetricsNote" class="fda-muted fda-etf-note">{{ indexMetricsNote }}</p>
+          <div v-if="indexLinkedEtfs.length" class="fda-section">
+            <h3>{{ $t('marketComposite.etf.metrics.etfShare') }}</h3>
+            <div class="fda-metrics">
+              <div class="fda-metric" v-for="item in indexEtfShareCards" :key="'idx-etf-' + item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.display }}</strong>
+              </div>
+            </div>
+            <a-table
+              class="fda-table"
+              size="small"
+              :pagination="false"
+              :columns="indexEtfShareColumns"
+              :data-source="indexLinkedEtfs"
+              row-key="code"
+            />
+          </div>
+          <div v-if="hasIndexOptionGreeks" class="fda-section">
+            <h3>{{ $t('marketComposite.etf.metrics.optionGreekNotional') }}</h3>
+            <p v-if="indexOptionGreeksMeta" class="fda-muted">{{ indexOptionGreeksMeta }}</p>
+            <div class="fda-metrics">
+              <div class="fda-metric" v-for="item in indexGreekCards" :key="'idx-greek-' + item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.display }}</strong>
+              </div>
+            </div>
+          </div>
           <div v-if="indexHoldings.length" class="fda-section fda-constituents">
             <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
             <p v-if="indexHoldingsMeta" class="fda-muted">{{ indexHoldingsMeta }}</p>
@@ -589,6 +616,82 @@ export default {
         { key: 'avgMargin', label: this.$t('marketComposite.etf.metrics.avgProfitMargin'), display: idx.avg_profit_margin != null ? `${this.fmt(idx.avg_profit_margin, 2)}%` : '-' }
       ]
     },
+    indexLinkedEtfs () {
+      return (this.indexSpot && this.indexSpot.linked_etfs) || []
+    },
+    indexEtfShare () {
+      return (this.indexSpot && this.indexSpot.etf_share) || {}
+    },
+    indexEtfShareCards () {
+      const share = this.indexEtfShare
+      const primary = this.indexLinkedEtfs.find(item => item.primary) || this.indexLinkedEtfs[0] || {}
+      return [
+        {
+          key: 'primary',
+          label: primary.name || primary.code || this.$t('marketComposite.etf.tabs.etf'),
+          display: primary.code || '-'
+        },
+        {
+          key: 'scale',
+          label: this.$t('marketComposite.etf.metrics.scale'),
+          display: this.fmtMoney(primary.scale != null ? primary.scale : share.total_scale)
+        },
+        {
+          key: 'share',
+          label: this.$t('marketComposite.etf.metrics.etfShareOfIndex'),
+          display: primary.share_pct != null ? `${this.fmt(primary.share_pct, 4)}%` : '-'
+        },
+        {
+          key: 'combined',
+          label: this.$t('marketComposite.etf.metrics.etfShareCombined'),
+          display: share.combined_share_pct != null ? `${this.fmt(share.combined_share_pct, 4)}%` : '-'
+        }
+      ]
+    },
+    indexEtfShareColumns () {
+      return [
+        { title: this.$t('marketComposite.etf.metrics.colCode'), dataIndex: 'code', width: 92 },
+        { title: this.$t('marketComposite.etf.metrics.colName'), dataIndex: 'name', ellipsis: true },
+        { title: this.$t('marketComposite.etf.metrics.scale'), dataIndex: 'scale', customRender: v => this.fmtMoney(v) },
+        {
+          title: this.$t('marketComposite.etf.metrics.etfShareOfIndex'),
+          dataIndex: 'share_pct',
+          customRender: v => (v != null ? `${this.fmt(v, 4)}%` : '-')
+        },
+        {
+          title: this.$t('marketComposite.etf.metrics.etfGroupShare'),
+          dataIndex: 'etf_group_share_pct',
+          customRender: v => (v != null ? `${this.fmt(v, 2)}%` : '-')
+        }
+      ]
+    },
+    indexOptionGreeks () {
+      return (this.indexSpot && this.indexSpot.option_greeks) || {}
+    },
+    hasIndexOptionGreeks () {
+      const g = this.indexOptionGreeks
+      return !!(g && (g.delta_notional != null || g.gamma_notional != null || g.vega_notional != null || g.theta_notional != null))
+    },
+    indexOptionGreeksMeta () {
+      const g = this.indexOptionGreeks
+      const parts = []
+      if (g.etf_name || g.etf_code) parts.push(g.etf_name || g.etf_code)
+      if (g.spot != null) parts.push(`${this.$t('marketComposite.etf.metrics.price')} ${this.fmt(g.spot, 4)}`)
+      return parts.join(' · ')
+    },
+    indexGreekCards () {
+      const g = this.indexOptionGreeks
+      const units = g.units || {}
+      return [
+        { key: 'delta', label: `Delta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.delta_notional), unit: units.delta_notional },
+        { key: 'gamma', label: `Gamma ${this.$t('marketComposite.etf.metrics.notional')} (GEX)`, display: this.fmtMoney(g.gamma_notional), unit: units.gamma_notional },
+        { key: 'vega', label: `Vega ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.vega_notional), unit: units.vega_notional || '元/1%' },
+        { key: 'theta', label: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.theta_notional), unit: units.theta_notional || '元/日' }
+      ].map(item => ({
+        ...item,
+        display: item.display === '-' ? '-' : (item.unit && item.unit !== '元' ? `${item.display} (${item.unit})` : item.display)
+      }))
+    },
     etfHoldings () {
       const etf = this.etfSpot
       return etf.holdings || etf.holdings_sample || []
@@ -1025,7 +1128,8 @@ export default {
           const res = await getSpotPanel(indexSymbol, {
             scope: 'etf',
             picker_kind: 'spot_index',
-            market: 'CNStock'
+            market: 'CNStock',
+            etf: this.selectedUnderlyingCode || undefined
           })
           this.spotData = (res && res.data) || null
           await this.loadIndexMetricsHistory()

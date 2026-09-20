@@ -1,0 +1,6 @@
+"marketComposite.etf.metrics.etfShare": "Linked ETF share",
+"marketComposite.etf.metrics.etfShareOfIndex": "Share of index cap",
+"marketComposite.etf.metrics.etfShareCombined": "All linked ETFs",
+"marketComposite.etf.metrics.etfGroupShare": "Share of linked ETFs",
+"marketComposite.etf.metrics.optionGreekNotional": "Linked option Greek notionals",
+"marketComposite.etf.metrics.notional": "notional"

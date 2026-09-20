@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 from app.services import cn_derivatives_etf as etf_mod
 from app.services.cn_derivatives_etf import list_etf_derivative_products
 
@@ -158,6 +160,35 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
         },
     )
     monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.build_index_etf_shares",
+        lambda codes, index_market_cap=None, primary="": {
+            "etfs": [
+                {
+                    "code": "510050",
+                    "name": "上证50ETF",
+                    "scale": 2.32e10,
+                    "share_pct": 0.2578,
+                    "etf_group_share_pct": 100.0,
+                    "primary": True,
+                }
+            ],
+            "primary": "510050",
+            "total_scale": 2.32e10,
+            "index_market_cap": 9e12,
+            "combined_share_pct": 0.2578,
+        },
+    )
+    monkeypatch.setattr(
+        etf_mod,
+        "build_etf_options_panel",
+        lambda code, month=None: {
+            "greeks": {"delta": 1e7, "gamma": 2e5, "vega": 3e6, "theta": -4e5},
+            "underlying": 2.97,
+            "gex_summary": {"net_gex": 5.94e5},
+            "multiplier": 10000,
+        },
+    )
+    monkeypatch.setattr(
         "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
         lambda symbol: {
             "holdings_count": 50,
@@ -182,11 +213,16 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     assert idx["volume"] == 39360945.0
     assert idx["amount"] == 138366086012.0
     assert idx["volume_unit"] == "手"
+    assert idx["linked_etfs"][0]["code"] == "510050"
+    assert idx["etf_share"]["combined_share_pct"] == 0.2578
+    assert idx["option_greeks"]["delta_notional"] == pytest.approx(1e7 * 2.97)
+    assert idx["option_greeks"]["gamma_notional"] == 5.94e5
     text = "".join(panel["analysis"])
     assert "上证50指数" in text
     assert "12.50" in text
     assert "成交额" in text
     assert "手" in text
     assert "校对通过" in text
-    assert "50ETF" not in text
+    assert "占指数成份市值" in text
+    assert "Delta 名义资金" in text
     assert "运作费率" not in text

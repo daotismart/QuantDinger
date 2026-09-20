@@ -1295,6 +1295,152 @@ def enrich_index_metrics(index_symbol: str) -> Dict[str, Any]:
     return out
 
 
+def compute_etf_index_share_pct(scale: Any, index_market_cap: Any) -> Optional[float]:
+    """ETF AUM as a percentage of index constituent market cap."""
+    aum = _safe_float(scale)
+    cap = _safe_float(index_market_cap)
+    if aum is None or cap is None or cap <= 0:
+        return None
+    return round(float(aum) / float(cap) * 100.0, 4)
+
+
+def load_etf_scale(code: str) -> Optional[float]:
+    """AUM only — prefer cached enrich / East Money row, no holdings walk."""
+    code6 = _code6(code)
+    if not code6:
+        return None
+    cached = _cache_get(f"etf:metrics_bundle:v4:{code6}")
+    if isinstance(cached, dict):
+        scale = _safe_float((cached.get("metrics") or {}).get("scale"))
+        if scale is not None and scale > 0:
+            return scale
+    spot = _spot_em_row_from_cache(code6)
+    scale = _safe_float(spot.get("scale"))
+    if scale is not None and scale > 0:
+        return scale
+    shares = _safe_float(spot.get("shares"))
+    price = _safe_float(spot.get("price"))
+    if shares is not None and price is not None and price > 0:
+        return shares * price
+    return None
+
+
+def build_index_etf_shares(
+    codes: List[str],
+    *,
+    index_market_cap: Any = None,
+    primary: str = "",
+) -> Dict[str, Any]:
+    """Linked ETF AUM and share of the benchmark index market cap."""
+    from app.markets.cn_options import etf_underlying_display_name
+
+    primary6 = _code6(primary)
+    rows: List[Dict[str, Any]] = []
+    for raw in codes or []:
+        code6 = _code6(raw)
+        if not code6:
+            continue
+        scale = load_etf_scale(code6)
+        share_pct = compute_etf_index_share_pct(scale, index_market_cap)
+        rows.append(
+            {
+                "code": code6,
+                "name": etf_underlying_display_name(code6),
+                "scale": scale,
+                "share_pct": share_pct,
+                "primary": code6 == primary6 if primary6 else len(rows) == 0,
+            }
+        )
+    if primary6 and not any(r.get("primary") for r in rows):
+        scale = load_etf_scale(primary6)
+        rows.insert(
+            0,
+            {
+                "code": primary6,
+                "name": etf_underlying_display_name(primary6),
+                "scale": scale,
+                "share_pct": compute_etf_index_share_pct(scale, index_market_cap),
+                "primary": True,
+            },
+        )
+    total_scale = 0.0
+    for row in rows:
+        if row.get("scale") is not None:
+            total_scale += float(row["scale"])
+    for row in rows:
+        if total_scale > 0 and row.get("scale") is not None:
+            row["etf_group_share_pct"] = round(float(row["scale"]) / total_scale * 100.0, 2)
+        else:
+            row["etf_group_share_pct"] = None
+    combined = compute_etf_index_share_pct(total_scale or None, index_market_cap)
+    return {
+        "etfs": rows,
+        "primary": primary6 or ((rows[0] or {}).get("code") if rows else ""),
+        "total_scale": total_scale or None,
+        "index_market_cap": _safe_float(index_market_cap),
+        "combined_share_pct": combined,
+    }
+
+
+def compute_option_greek_notionals(
+    greeks: Optional[Dict[str, Any]],
+    *,
+    spot: Any = None,
+    net_gex: Any = None,
+    multiplier: Any = 10000.0,
+) -> Dict[str, Any]:
+    """Convert portfolio Greeks into yuan notionals.
+
+    ``portfolio_greeks`` already include OI × multiplier:
+      delta_notional = Δ_shares × spot
+      gamma_notional = Net GEX (γ × OI × multiplier × spot) when available
+      vega_notional  = Vega (yuan per 1 vol point)
+      theta_notional = Theta (yuan per day)
+    """
+    g = dict(greeks or {})
+    spot_f = _safe_float(spot)
+    delta = _safe_float(g.get("delta"))
+    gamma = _safe_float(g.get("gamma"))
+    vega = _safe_float(g.get("vega"))
+    theta = _safe_float(g.get("theta"))
+    gex = _safe_float(net_gex)
+    delta_notional = None
+    if delta is not None and spot_f is not None:
+        delta_notional = delta * spot_f
+    gamma_notional = gex
+    if gamma_notional is None and gamma is not None and spot_f is not None:
+        gamma_notional = gamma * spot_f
+    return {
+        "delta": delta,
+        "gamma": gamma,
+        "vega": vega,
+        "theta": theta,
+        "delta_notional": delta_notional,
+        "gamma_notional": gamma_notional,
+        "vega_notional": vega,
+        "theta_notional": theta,
+        "spot": spot_f,
+        "multiplier": _safe_float(multiplier) or 10000.0,
+        "units": {
+            "delta_notional": "元",
+            "gamma_notional": "元",
+            "vega_notional": "元/1%波动",
+            "theta_notional": "元/日",
+        },
+    }
+
+
+def greek_notionals_from_options_panel(panel: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    data = panel if isinstance(panel, dict) else {}
+    gex = (data.get("gex_summary") or {}).get("net_gex")
+    return compute_option_greek_notionals(
+        data.get("greeks") or {},
+        spot=data.get("underlying") or data.get("current_price"),
+        net_gex=gex,
+        multiplier=data.get("multiplier") or 10000.0,
+    )
+
+
 _INDEX_VOLUME_LOT_SIZE = 100
 _INDEX_AMOUNT_WAN_TO_YUAN = 10000.0
 

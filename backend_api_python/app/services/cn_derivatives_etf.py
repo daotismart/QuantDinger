@@ -293,6 +293,62 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
             f"（覆盖 {int(index_metrics.get('margin_coverage') or 0)} 只）。"
         )
 
+    linked_codes = linked_etf_codes_for_index(sym)
+    primary_etf = _resolve_linked_etf_code(sym, etf_code)
+    etf_shares: Dict[str, Any] = {}
+    try:
+        from app.services.cn_derivatives_etf_metrics import build_index_etf_shares
+
+        etf_shares = _call_with_timeout(
+            lambda: build_index_etf_shares(
+                linked_codes,
+                index_market_cap=index_metrics.get("constituent_market_cap_sum"),
+                primary=primary_etf,
+            ),
+            4.0,
+            default={},
+        ) or {}
+    except Exception as exc:
+        logger.warning("build_index_etf_shares %s failed: %s", sym, exc)
+
+    option_greeks: Dict[str, Any] = {}
+    if primary_etf:
+        try:
+            from app.services.cn_derivatives_etf_metrics import greek_notionals_from_options_panel
+
+            panel = _call_with_timeout(
+                lambda: build_etf_options_panel(primary_etf, "all"),
+                8.0,
+                default=None,
+            )
+            if isinstance(panel, dict):
+                option_greeks = greek_notionals_from_options_panel(panel)
+                option_greeks["etf_code"] = primary_etf
+                option_greeks["etf_name"] = _cn_display_name(primary_etf, primary_etf)
+        except Exception as exc:
+            logger.warning("index option greeks %s failed: %s", primary_etf, exc)
+
+    for row in etf_shares.get("etfs") or []:
+        label = f"{row.get('name') or row.get('code')}({row.get('code')})"
+        bits = []
+        if row.get("scale") is not None:
+            bits.append(f"规模约 {float(row['scale']):,.0f} 元")
+        if row.get("share_pct") is not None:
+            bits.append(f"占指数成份市值 {float(row['share_pct']):.4f}%")
+        if row.get("etf_group_share_pct") is not None and len(etf_shares.get("etfs") or []) > 1:
+            bits.append(f"占挂钩ETF {float(row['etf_group_share_pct']):.2f}%")
+        if bits:
+            prefix = "对应 ETF" if row.get("primary") else "挂钩 ETF"
+            analysis.append(f"{prefix} {label} {'，'.join(bits)}。")
+    if option_greeks.get("delta_notional") is not None:
+        analysis.append(
+            f"对应期权 {option_greeks.get('etf_name') or primary_etf} "
+            f"Delta 名义资金约 {float(option_greeks['delta_notional']):,.0f} 元，"
+            f"Gamma 名义（Net GEX）约 {float(option_greeks.get('gamma_notional') or 0):,.0f} 元，"
+            f"Vega 约 {float(option_greeks.get('vega_notional') or 0):,.0f} 元/1%波动，"
+            f"Theta 约 {float(option_greeks.get('theta_notional') or 0):,.0f} 元/日。"
+        )
+
     index_out = dict(index_row or {"code": sym, "name": name, "price": price})
     index_out["name"] = name
     index_out["code"] = sym
@@ -311,6 +367,16 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
     ):
         if activity.get(key) is not None:
             index_out[key] = activity[key]
+    if etf_shares:
+        index_out["linked_etfs"] = etf_shares.get("etfs") or []
+        index_out["etf_share"] = {
+            "primary": etf_shares.get("primary"),
+            "total_scale": etf_shares.get("total_scale"),
+            "index_market_cap": etf_shares.get("index_market_cap"),
+            "combined_share_pct": etf_shares.get("combined_share_pct"),
+        }
+    if option_greeks:
+        index_out["option_greeks"] = option_greeks
     for key, value in index_metrics.items():
         if key in {"code"}:
             continue
