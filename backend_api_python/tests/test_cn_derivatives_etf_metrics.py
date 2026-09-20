@@ -146,6 +146,11 @@ def test_build_index_metrics_history_shape(monkeypatch):
     assert "成交额" in data["note"]
 
 
+def test_bar_date_cn_uses_shanghai_session():
+    assert metrics._bar_date_cn(1789660800) == "2026-09-18"
+    assert metrics._bar_date_cn(1789574400) == "2026-09-17"
+
+
 def test_index_tx_code_uses_board():
     assert metrics._index_tx_code("000016.SH") == "sh000016"
     assert metrics._index_tx_code("399006.SZ") == "sz399006"

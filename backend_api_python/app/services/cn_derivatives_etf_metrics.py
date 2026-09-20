@@ -1013,6 +1013,19 @@ def _bar_date(ts: Any) -> str:
         return text[:10] if len(text) >= 10 else text
 
 
+def _bar_date_cn(ts: Any) -> str:
+    """CN session date for index/ETF bars stored as Asia/Shanghai midnight."""
+    try:
+        from datetime import timezone, timedelta
+
+        value = float(ts)
+        if value > 1e12:
+            value /= 1000.0
+        return datetime.fromtimestamp(value, tz=timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    except Exception:
+        return _bar_date(ts)
+
+
 def _query_local_ohlcv(code6: str, *, days: int) -> List[Dict[str, Any]]:
     """Read ETF daily OHLCV from ``qd_market_bars`` only (no upstream)."""
     from app.markets.cn_options import cn_etf_stock_symbol
@@ -1588,7 +1601,7 @@ def _query_index_ohlcv(symbol: str, *, days: int) -> List[Dict[str, Any]]:
                     price = _safe_float(close)
                     points.append(
                         {
-                            "date": _bar_date(ts),
+                            "date": _bar_date_cn(ts),
                             "price": price,
                             "open": _safe_float(opn),
                             "high": _safe_float(high),
