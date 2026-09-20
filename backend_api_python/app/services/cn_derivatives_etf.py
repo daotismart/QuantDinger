@@ -49,8 +49,8 @@ ETF_CN_NAMES: Dict[str, str] = {
     "510050": "上证50ETF",
     "510300": "沪深300ETF",
     "510500": "中证500ETF",
-    "588000": "科创50ETF",
-    "588080": "科创50ETF",
+    "588000": "华泰柏瑞科创50ETF",
+    "588080": "易方达科创50ETF",
     "159901": "深证100ETF",
     "159915": "创业板ETF",
     "159919": "沪深300ETF",
@@ -1041,7 +1041,7 @@ def warm_etf_options_panel_cache(codes: Optional[List[str]] = None) -> Dict[str,
 
     if not etf_options_ch_enabled() or not ch_ping():
         return {"skipped": True, "reason": "clickhouse_unavailable", "warmed": [], "count": 0}
-    raw = codes if codes is not None else os.getenv("ETF_OPTIONS_PANEL_WARM_CODES", "510050,510300,588000")
+    raw = codes if codes is not None else os.getenv("ETF_OPTIONS_PANEL_WARM_CODES", "510050,510300,588000,588080")
     if isinstance(raw, str):
         items = [part.strip() for part in raw.split(",")]
     else:

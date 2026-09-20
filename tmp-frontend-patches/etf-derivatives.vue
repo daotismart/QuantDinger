@@ -552,6 +552,12 @@ import {
 } from './gex-chart-series'
 import { buildStrikeMarkLineData as createStrikeMarkLineData } from './strike-mark-lines'
 
+// Same-benchmark option underlyings that must always appear together on the
+// index tab (STAR 50: 588000 Huatai-PineBridge + 588080 E Fund).
+const INDEX_LINKED_ETF_CODES = {
+  '000688.SH': ['588000', '588080']
+}
+
 export default {
   name: 'EtfDerivativesAnalysis',
   components: { AnalysisView },
@@ -567,6 +573,7 @@ export default {
       futuresData: null,
       indexFuturesOptionsData: null,
       indexEtfOptionsData: null,
+      indexEtfOptionsByCode: {},
       optionsData: null,
       loadingIndexDerivatives: false,
       loadingIndexEtfOptions: false,
@@ -754,18 +761,34 @@ export default {
         }
       ]
     },
-    indexOptionGreeks () {
-      const fromSpot = (this.indexSpot && this.indexSpot.option_greeks) || {}
-      if (
-        fromSpot.delta_notional != null ||
-        fromSpot.gamma_notional != null ||
-        fromSpot.premium_total != null ||
-        fromSpot.margin_total != null ||
-        fromSpot.time_value_total != null
-      ) {
-        return fromSpot
+    indexSpotOptionGreeks () {
+      return (this.indexSpot && this.indexSpot.option_greeks) || {}
+    },
+    linkedIndexEtfCodes () {
+      const idx = String(this.selectedIndexSymbol || '').toUpperCase()
+      const codes = []
+      const seen = new Set()
+      const add = (raw) => {
+        const code = String(raw || '').replace(/\D/g, '').slice(0, 6)
+        if (code && !seen.has(code)) {
+          seen.add(code)
+          codes.push(code)
+        }
       }
-      return this.indexEtfOptionNotionalsFromPanel
+      add(this.selectedUnderlyingCode)
+      for (const extra of INDEX_LINKED_ETF_CODES[idx] || []) add(extra)
+      for (const product of this.products || []) {
+        if (idx && String(product.index_symbol || '').toUpperCase() === idx) {
+          add(product.underlying_code || product.root)
+        }
+      }
+      for (const row of this.indexLinkedEtfs || []) add(row.code)
+      return codes
+    },
+    indexOptionGreeks () {
+      const rows = this.indexOptionEtfRows
+      if (rows.length) return this.mergeOptionNotionals(rows)
+      return this.indexSpotOptionGreeks
     },
     hasIndexOptionGreeks () {
       const g = this.indexOptionGreeks
@@ -808,18 +831,32 @@ export default {
       }))
     },
     indexOptionEtfRows () {
-      const rows = (this.indexOptionGreeks && this.indexOptionGreeks.etfs) || []
-      const filtered = rows.filter(item => item && (item.etf_code || item.delta_notional != null || item.premium_total != null))
-      if (filtered.length) return filtered
-      const g = this.indexEtfOptionNotionalsFromPanel
-      if (g && (g.delta_notional != null || g.premium_total != null)) {
-        return [{ ...g, etf_code: g.etf_code || this.selectedUnderlyingCode, etf_name: g.etf_name }]
+      const byCode = {}
+      const spotRows = (this.indexSpotOptionGreeks && this.indexSpotOptionGreeks.etfs) || []
+      spotRows.forEach(row => {
+        const code = String((row && row.etf_code) || '').replace(/\D/g, '').slice(0, 6)
+        if (code) byCode[code] = row
+      })
+      Object.keys(this.indexEtfOptionsByCode || {}).forEach(code => {
+        const panel = this.indexEtfOptionsByCode[code]
+        if (panel) byCode[code] = this.optionNotionalsRowFromPanel(code, panel)
+      })
+      if (!Object.keys(byCode).length && this.indexEtfOptionsData) {
+        const row = this.optionNotionalsRowFromPanel(this.selectedUnderlyingCode, this.indexEtfOptionsData)
+        if (row && row.etf_code) byCode[row.etf_code] = row
       }
-      return []
+      const order = this.linkedIndexEtfCodes
+      const extras = Object.keys(byCode).filter(code => order.indexOf(code) < 0)
+      const codes = order.length ? order.concat(extras) : extras
+      return codes.map(code => byCode[code] || {
+        etf_code: code,
+        etf_name: this.etfDisplayName(code),
+        etf_count: 1,
+        primary: code === this.selectedUnderlyingCode
+      })
     },
     hasIndexEtfOptions () {
-      const product = this.selectedProduct || {}
-      return !!(product.has_options && this.selectedUnderlyingCode)
+      return this.linkedIndexEtfCodes.length > 0
     },
     showIndexEtfOptionSection () {
       return !!(
@@ -859,44 +896,7 @@ export default {
       ]
     },
     indexEtfOptionNotionalsFromPanel () {
-      const panel = this.indexEtfOptionsData || {}
-      const g = panel.greeks || {}
-      const s = panel.gex_summary || {}
-      const total = ((panel.capital_curve || {}).total) || {}
-      const spot = Number(panel.current_price != null ? panel.current_price : panel.underlying)
-      const delta = Number(g.delta)
-      const gamma = Number(g.gamma)
-      const vega = Number(g.vega)
-      const theta = Number(g.theta)
-      const netGex = Number(s.net_gex)
-      const hasSpot = Number.isFinite(spot)
-      const margin = total.margin_total != null ? total.margin_total : total.margin_short_total
-      const code = this.selectedUnderlyingCode || ''
-      const name = (this.selectedProduct && this.selectedProduct.name_cn) || code
-      return {
-        etf_code: code,
-        etf_name: name,
-        etf_count: 1,
-        spot: hasSpot ? spot : null,
-        delta_notional: Number.isFinite(delta) && hasSpot ? delta * spot : null,
-        gamma_notional: Number.isFinite(netGex) ? netGex : (Number.isFinite(gamma) && hasSpot ? gamma * spot : null),
-        vega_notional: Number.isFinite(vega) ? vega : null,
-        theta_notional: Number.isFinite(theta) ? theta : null,
-        premium_total: total.premium_total,
-        margin_total: margin,
-        margin_long_total: total.margin_long_total,
-        margin_short_total: total.margin_short_total,
-        time_value_total: total.time_value_total,
-        units: {
-          delta_notional: '元',
-          gamma_notional: '元',
-          vega_notional: '元/1%波动',
-          theta_notional: '元/日',
-          premium_total: '元',
-          margin_total: '元',
-          time_value_total: '元'
-        }
-      }
+      return this.optionNotionalsRowFromPanel(this.selectedUnderlyingCode, this.indexEtfOptionsData)
     },
     indexOptionEtfColumns () {
       return [
@@ -1223,6 +1223,13 @@ export default {
     },
     isDarkTheme () {
       this.$nextTick(() => this.renderActiveCharts())
+    },
+    linkedIndexEtfCodes (codes) {
+      if (this.activeTab !== 'index') return
+      const have = this.indexEtfOptionsByCode || {}
+      if ((codes || []).some(code => !Object.prototype.hasOwnProperty.call(have, code))) {
+        this.loadIndexEtfOptions()
+      }
     }
   },
   methods: {
@@ -1367,6 +1374,7 @@ export default {
       this.futuresData = null
       this.indexFuturesOptionsData = null
       this.indexEtfOptionsData = null
+      this.indexEtfOptionsByCode = {}
       this.optionsData = null
       this.reloadActiveTab()
     },
@@ -1400,6 +1408,7 @@ export default {
       this.futuresData = null
       this.indexFuturesOptionsData = null
       this.indexEtfOptionsData = null
+      this.indexEtfOptionsByCode = {}
       this.optionsData = null
       this.selectedMonth = 'all'
       if (this.$router) {
@@ -1452,22 +1461,107 @@ export default {
       if (inner && typeof inner === 'object') return inner
       return inner || null
     },
+    etfDisplayName (code) {
+      const want = String(code || '').replace(/\D/g, '').slice(0, 6)
+      const product = (this.products || []).find(item => String(item.underlying_code || '') === want)
+      return (product && (product.name_cn || product.name)) || want
+    },
+    optionNotionalsRowFromPanel (code, panel) {
+      const data = panel && typeof panel === 'object' ? panel : {}
+      const g = data.greeks || {}
+      const s = data.gex_summary || {}
+      const total = ((data.capital_curve || {}).total) || {}
+      const spot = Number(data.current_price != null ? data.current_price : data.underlying)
+      const delta = Number(g.delta)
+      const gamma = Number(g.gamma)
+      const vega = Number(g.vega)
+      const theta = Number(g.theta)
+      const netGex = Number(s.net_gex)
+      const hasSpot = Number.isFinite(spot)
+      const margin = total.margin_total != null ? total.margin_total : total.margin_short_total
+      const code6 = String(code || '').replace(/\D/g, '').slice(0, 6)
+      return {
+        etf_code: code6,
+        etf_name: this.etfDisplayName(code6),
+        etf_count: 1,
+        primary: code6 === this.selectedUnderlyingCode,
+        spot: hasSpot ? spot : null,
+        delta_notional: Number.isFinite(delta) && hasSpot ? delta * spot : null,
+        gamma_notional: Number.isFinite(netGex) ? netGex : (Number.isFinite(gamma) && hasSpot ? gamma * spot : null),
+        vega_notional: Number.isFinite(vega) ? vega : null,
+        theta_notional: Number.isFinite(theta) ? theta : null,
+        premium_total: total.premium_total,
+        margin_total: margin,
+        margin_long_total: total.margin_long_total,
+        margin_short_total: total.margin_short_total,
+        time_value_total: total.time_value_total,
+        units: {
+          delta_notional: '元',
+          gamma_notional: '元',
+          vega_notional: '元/1%波动',
+          theta_notional: '元/日',
+          premium_total: '元',
+          margin_total: '元',
+          time_value_total: '元'
+        }
+      }
+    },
+    mergeOptionNotionals (rows) {
+      const keys = [
+        'delta_notional', 'gamma_notional', 'vega_notional', 'theta_notional',
+        'premium_total', 'margin_total', 'margin_long_total', 'margin_short_total', 'time_value_total'
+      ]
+      const list = (rows || []).filter(Boolean)
+      const total = {}
+      keys.forEach(key => {
+        const vals = list.map(row => row[key]).filter(v => v != null && Number.isFinite(Number(v)))
+        total[key] = vals.length ? vals.reduce((sum, v) => sum + Number(v), 0) : null
+      })
+      const primary = list.find(row => row.primary) || list[0] || {}
+      total.spot = primary.spot
+      total.etf_code = primary.etf_code
+      total.etf_name = primary.etf_name
+      total.multiplier = primary.multiplier
+      total.units = Object.assign({}, primary.units || {})
+      total.etf_count = list.length
+      total.etfs = list
+      return total
+    },
     async loadIndexEtfOptions () {
-      const etfCode = this.selectedUnderlyingCode
-      if (!this.hasIndexEtfOptions) {
+      const codes = this.linkedIndexEtfCodes
+      if (!codes.length) {
         this.indexEtfOptionsData = null
+        this.indexEtfOptionsByCode = {}
+        this.loadingIndexEtfOptions = false
+        return
+      }
+      const panels = Object.assign({}, this.indexEtfOptionsByCode || {})
+      const missing = codes.filter(code => !Object.prototype.hasOwnProperty.call(panels, code))
+      const selected = this.selectedUnderlyingCode
+      if (!missing.length) {
+        this.indexEtfOptionsData = panels[selected] || Object.values(panels).find(Boolean) || null
         this.loadingIndexEtfOptions = false
         return
       }
       const seq = (this._indexEtfOptSeq = (this._indexEtfOptSeq || 0) + 1)
       this.loadingIndexEtfOptions = true
       try {
-        const res = await getOptionsPanel(etfCode, 'all', this.etfScopeParams())
+        await Promise.all(missing.map(code => (
+          getOptionsPanel(code, 'all', this.etfScopeParams()).then(res => {
+            if (seq !== this._indexEtfOptSeq) return
+            panels[code] = this.panelPayload(res)
+          }).catch(() => {
+            if (seq !== this._indexEtfOptSeq) return
+            panels[code] = null
+          })
+        )))
         if (seq !== this._indexEtfOptSeq) return
-        this.indexEtfOptionsData = this.panelPayload(res)
+        this.indexEtfOptionsByCode = panels
+        this.indexEtfOptionsData = panels[selected] || Object.values(panels).find(Boolean) || null
       } catch (e) {
         if (seq !== this._indexEtfOptSeq) return
         this.indexEtfOptionsData = null
+        this.indexEtfOptionsByCode = {}
       } finally {
         if (seq === this._indexEtfOptSeq) this.loadingIndexEtfOptions = false
       }

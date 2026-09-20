@@ -36,6 +36,9 @@ def test_star50_and_chinext_have_index_without_futures():
     assert rows["588000"]["index_symbol"] == "000688.SH"
     assert rows["588000"]["index_futures_root"] == ""
     assert rows["588000"].get("index_option_root") in ("", None)
+    assert rows["588080"]["index_symbol"] == "000688.SH"
+    assert rows["588080"]["index_futures_root"] == ""
+    assert rows["588080"].get("index_option_root") in ("", None)
     assert rows["159915"]["index_symbol"] == "399006.SZ"
     assert rows["159915"]["index_futures_root"] == ""
 
@@ -137,8 +140,52 @@ def test_linked_etf_codes_for_index():
     assert etf_mod.linked_etf_codes_for_index("000016.SH") == ["510050"]
     assert "510300" in etf_mod.linked_etf_codes_for_index("000300.SH")
     assert etf_mod.linked_etf_codes_for_index("399006.SZ") == ["159915"]
+    assert etf_mod.linked_etf_codes_for_index("000688.SH") == ["588000", "588080"]
     assert etf_mod._resolve_linked_etf_code("000688.SH", "588080") == "588080"
     assert etf_mod._resolve_linked_etf_code("000688.SH", "") == "588000"
+
+
+def test_star50_index_option_notionals_merge_both_etfs(monkeypatch):
+    panels = {
+        "588000": {
+            "greeks": {"delta": 1e6, "gamma": 2e4, "vega": 3e5, "theta": -4e4},
+            "underlying": 1.40,
+            "gex_summary": {"net_gex": 1.1e5},
+            "capital_curve": {
+                "total": {
+                    "premium_total": 1.0e7,
+                    "margin_total": 2.0e7,
+                    "time_value_total": 3.0e6,
+                }
+            },
+        },
+        "588080": {
+            "greeks": {"delta": 5e5, "gamma": 1e4, "vega": 1.5e5, "theta": -2e4},
+            "underlying": 1.41,
+            "gex_summary": {"net_gex": 6.0e4},
+            "capital_curve": {
+                "total": {
+                    "premium_total": 4.0e6,
+                    "margin_total": 8.0e6,
+                    "time_value_total": 1.2e6,
+                }
+            },
+        },
+    }
+    monkeypatch.setattr(
+        etf_mod,
+        "_etf_options_cache_get",
+        lambda key: next((panel for code, panel in panels.items() if key.endswith(f":{code}:all")), None),
+    )
+    out = etf_mod._build_index_option_notionals(["588000", "588080"], "588000")
+    assert {row["etf_code"] for row in out["etfs"]} == {"588000", "588080"}
+    assert out["etf_count"] == 2
+    assert out["etf_code"] == "588000"
+    assert out["delta_notional"] == pytest.approx(1e6 * 1.40 + 5e5 * 1.41)
+    assert out["gamma_notional"] == pytest.approx(1.1e5 + 6.0e4)
+    assert out["premium_total"] == pytest.approx(1.4e7)
+    assert out["margin_total"] == pytest.approx(2.8e7)
+    assert out["time_value_total"] == pytest.approx(4.2e6)
 
 
 def test_spot_index_panel_attaches_index_analysis(monkeypatch):

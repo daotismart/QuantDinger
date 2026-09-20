@@ -22,9 +22,11 @@ Backend
     spot.index.option_greeks
   Options panel cache key etf_options_panel:v3:{code6}:all is cache-only on
   the index *spot* request path (no live build_etf_options_panel there).
-  The index tab separately loads GET /options?scope=etf for the selected ETF
-  so ETF期权风险数据 (greeks/GEX) and 对应期权希腊字母名义资金 still render
-  on a cold cache. That live fetch also warms the Redis panel cache.
+  The index tab separately loads GET /options?scope=etf for every linked ETF
+  (STAR 50: 588000 and 588080), not only the selected picker code, so
+  各ETF分项 lists each option underlying. ETF期权风险数据 stays on the
+  selected ETF; 对应期权希腊字母名义资金 is the yuan sum. Live fetches also
+  warm the Redis panel cache.
   Index enrich uses cache/DB constituent snapshots (live=False).
 
   Index tab also loads IH/IF futures + HO/IO options in parallel with spot:
