@@ -180,47 +180,34 @@
               />
             </div>
           </div>
-          <div v-if="indexHoldings.length" class="fda-section fda-constituents">
-            <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
-            <p v-if="indexHoldingsMeta" class="fda-muted">{{ indexHoldingsMeta }}</p>
-            <a-table
-              class="fda-table"
-              size="small"
-              :pagination="etfHoldingsPagination"
-              :columns="etfConstituentColumns"
-              :data-source="indexHoldings"
-              row-key="code"
-            />
-          </div>
         </div>
-        <div class="fda-section">
-          <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
-          <ul class="fda-analysis">
-            <li v-for="(line, idx) in ((spotData && spotData.analysis) || [])" :key="'idx-' + idx">{{ line }}</li>
-          </ul>
-          <p v-if="!(spotData && spotData.analysis && spotData.analysis.length)" class="fda-muted">
-            {{ $t('marketComposite.futures.noData') }}
-          </p>
-        </div>
-        <div v-if="hasIndexRiskMetrics || loadingIndexDerivatives" class="fda-section">
+        <div v-if="showIndexRiskSection" class="fda-section" data-testid="index-risk-data">
           <h3>{{ $t('marketComposite.etf.metrics.riskData') }}</h3>
+          <p v-if="selectedIndexOptionRoot" class="fda-muted">
+            {{ selectedIndexOptionRoot }}
+          </p>
           <a-spin :spinning="loadingIndexDerivatives && !hasIndexRiskMetrics">
-            <div class="fda-metrics">
-              <div class="fda-metric" v-for="item in indexRiskGreekCards" :key="'idx-risk-g-' + item.key">
-                <span>{{ item.label }}</span>
-                <strong>{{ fmt(item.value, 4) }}</strong>
+            <template v-if="hasIndexRiskMetrics">
+              <div class="fda-metrics">
+                <div class="fda-metric" v-for="item in indexRiskGreekCards" :key="'idx-risk-g-' + item.key">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ fmt(item.value, 4) }}</strong>
+                </div>
               </div>
-            </div>
-            <div class="fda-metrics fda-metrics-gex">
-              <div class="fda-metric" v-for="item in indexRiskGexCards" :key="'idx-risk-x-' + item.key">
-                <span>{{ item.label }}</span>
-                <strong>{{ item.display }}</strong>
+              <div class="fda-metrics fda-metrics-gex">
+                <div class="fda-metric" v-for="item in indexRiskGexCards" :key="'idx-risk-x-' + item.key">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.display }}</strong>
+                </div>
               </div>
-            </div>
+            </template>
+            <p v-else-if="!loadingIndexDerivatives" class="fda-muted">
+              {{ $t('marketComposite.futures.noData') }}
+            </p>
           </a-spin>
         </div>
-        <template v-if="futuresData || indexFuturesOptionsData || loadingIndexDerivatives">
-          <div class="fda-section">
+        <template v-if="showIndexFuturesSection">
+          <div class="fda-section" data-testid="index-futures">
             <h3>{{ $t('marketComposite.etf.labels.indexFutures') }}</h3>
             <a-spin :spinning="loadingIndexDerivatives && !futuresData">
               <div class="fda-metrics">
@@ -261,9 +248,12 @@
                 :data-source="(futuresData && futuresData.monthly_activity) || []"
                 row-key="symbol"
               />
+              <p v-if="!loadingIndexDerivatives && !(futuresData && (futuresData.monthly_activity || []).length)" class="fda-muted">
+                {{ $t('marketComposite.futures.noData') }}
+              </p>
             </a-spin>
           </div>
-          <div class="fda-section">
+          <div class="fda-section" data-testid="index-futures-options">
             <h3>{{ $t('marketComposite.etf.labels.indexFuturesOptions') }}</h3>
             <a-spin :spinning="loadingIndexDerivatives && !indexFuturesOptionsData">
               <div class="fda-metrics">
@@ -292,9 +282,33 @@
                   <div ref="premiumChart" class="fda-chart" />
                 </div>
               </div>
+              <p v-if="!loadingIndexDerivatives && !indexFuturesOptionsData" class="fda-muted">
+                {{ $t('marketComposite.futures.noData') }}
+              </p>
             </a-spin>
           </div>
         </template>
+        <div v-if="indexHoldings.length" class="fda-section fda-constituents">
+          <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
+          <p v-if="indexHoldingsMeta" class="fda-muted">{{ indexHoldingsMeta }}</p>
+          <a-table
+            class="fda-table"
+            size="small"
+            :pagination="etfHoldingsPagination"
+            :columns="etfConstituentColumns"
+            :data-source="indexHoldings"
+            row-key="code"
+          />
+        </div>
+        <div class="fda-section">
+          <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
+          <ul class="fda-analysis">
+            <li v-for="(line, idx) in ((spotData && spotData.analysis) || [])" :key="'idx-' + idx">{{ line }}</li>
+          </ul>
+          <p v-if="!(spotData && spotData.analysis && spotData.analysis.length)" class="fda-muted">
+            {{ $t('marketComposite.futures.noData') }}
+          </p>
+        </div>
       </div>
 
       <!-- Options -->
@@ -846,6 +860,18 @@ export default {
       const product = this.selectedProduct || {}
       return product.index_option_root || ''
     },
+    showIndexRiskSection () {
+      return !!(this.selectedIndexOptionRoot || this.hasIndexRiskMetrics || this.loadingIndexDerivatives)
+    },
+    showIndexFuturesSection () {
+      return !!(
+        this.selectedFuturesRoot ||
+        this.selectedIndexOptionRoot ||
+        this.futuresData ||
+        this.indexFuturesOptionsData ||
+        this.loadingIndexDerivatives
+      )
+    },
     indexFuturesMonths () {
       return ((this.futuresData && this.futuresData.term_structure) || []).filter(p => !p.is_continuous)
     },
@@ -1267,7 +1293,9 @@ export default {
       }
     },
     async loadIndexTab () {
-      // Spot panel for the ETF's corresponding benchmark index.
+      // CFFEX risk / futures / options must start immediately, otherwise the
+      // sections stay hidden until spot + history finish (several seconds).
+      this.loadIndexFuturesAndOptions()
       this.loadingTab = true
       try {
         const indexSymbol = this.selectedIndexSymbol
@@ -1289,7 +1317,13 @@ export default {
       } finally {
         this.loadingTab = false
       }
-      this.loadIndexFuturesAndOptions()
+    },
+    panelPayload (res) {
+      if (!res || typeof res !== 'object') return null
+      if (res.greeks || res.gex_summary || res.term_structure || res.monthly_activity) return res
+      const inner = res.data
+      if (inner && typeof inner === 'object') return inner
+      return inner || null
     },
     async loadIndexFuturesAndOptions () {
       const futuresRoot = this.selectedFuturesRoot
@@ -1297,15 +1331,19 @@ export default {
       if (!futuresRoot && !optionRoot) {
         this.futuresData = null
         this.indexFuturesOptionsData = null
+        this.loadingIndexDerivatives = false
         return
       }
+      const seq = (this._indexDerivSeq = (this._indexDerivSeq || 0) + 1)
       this.loadingIndexDerivatives = true
       const tasks = []
       if (futuresRoot) {
         tasks.push(
           getFuturesPanel(futuresRoot).then(res => {
-            this.futuresData = (res && res.data) || null
+            if (seq !== this._indexDerivSeq) return
+            this.futuresData = this.panelPayload(res)
           }).catch(() => {
+            if (seq !== this._indexDerivSeq) return
             this.futuresData = null
           })
         )
@@ -1315,8 +1353,10 @@ export default {
       if (optionRoot) {
         tasks.push(
           getOptionsPanel(optionRoot, 'all', {}).then(res => {
-            this.indexFuturesOptionsData = (res && res.data) || null
+            if (seq !== this._indexDerivSeq) return
+            this.indexFuturesOptionsData = this.panelPayload(res)
           }).catch(() => {
+            if (seq !== this._indexDerivSeq) return
             this.indexFuturesOptionsData = null
           })
         )
@@ -1326,8 +1366,10 @@ export default {
       try {
         await Promise.all(tasks)
       } finally {
-        this.loadingIndexDerivatives = false
-        this.$nextTick(() => this.renderFuturesCharts())
+        if (seq === this._indexDerivSeq) {
+          this.loadingIndexDerivatives = false
+          this.$nextTick(() => this.renderFuturesCharts())
+        }
       }
     },
     spotRequestParams () {

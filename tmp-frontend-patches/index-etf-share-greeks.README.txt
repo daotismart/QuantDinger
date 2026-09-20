@@ -25,8 +25,10 @@ Backend
   greeks empty rather than blocking price/volume/holdings/PE.
   Index enrich uses cache/DB constituent snapshots (live=False).
 
-  Index tab also loads IH/IF futures + HO/IO options in the background:
+  Index tab also loads IH/IF futures + HO/IO options in parallel with spot:
   风险数据 = HO greeks / GEX; 股指期货 = monthly IH; 股指期货期权 = HO capital.
+  Those three sections render as soon as the ETF maps to IH/HO (spinner / empty
+  state), above the constituent table — they are not gated on the spot panel.
 
 Frontend (QuantDinger-Vue)
   src/views/market-composite-analysis/etf-derivatives.vue
