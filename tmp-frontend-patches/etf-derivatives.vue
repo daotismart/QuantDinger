@@ -159,7 +159,30 @@
               row-key="code"
             />
           </div>
-          <div v-if="hasIndexOptionGreeks" class="fda-section">
+          <div v-if="showIndexEtfOptionSection" class="fda-section" data-testid="index-etf-option-risk">
+            <h3>{{ $t('marketComposite.etf.metrics.etfOptionRiskData') }}</h3>
+            <p v-if="selectedUnderlyingCode" class="fda-muted">
+              {{ (selectedProduct && selectedProduct.name_cn) || selectedUnderlyingCode }}
+            </p>
+            <a-spin :spinning="loadingIndexEtfOptions && !hasIndexEtfOptionRisk">
+              <template v-if="hasIndexEtfOptionRisk">
+                <div class="fda-metrics">
+                  <div class="fda-metric" v-for="item in indexEtfOptionRiskGreekCards" :key="'idx-etf-risk-g-' + item.key">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ fmt(item.value, 4) }}</strong>
+                  </div>
+                </div>
+                <div class="fda-metrics fda-metrics-gex">
+                  <div class="fda-metric" v-for="item in indexEtfOptionRiskGexCards" :key="'idx-etf-risk-x-' + item.key">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.display }}</strong>
+                  </div>
+                </div>
+              </template>
+              <p v-else-if="!loadingIndexEtfOptions" class="fda-muted">
+                {{ $t('marketComposite.futures.noData') }}
+              </p>
+            </a-spin>
             <h3>{{ $t('marketComposite.etf.metrics.optionGreekNotional') }}</h3>
             <p v-if="indexOptionGreeksMeta" class="fda-muted">{{ indexOptionGreeksMeta }}</p>
             <div class="fda-metrics">
@@ -182,7 +205,7 @@
           </div>
         </div>
         <div v-if="showIndexRiskSection" class="fda-section" data-testid="index-risk-data">
-          <h3>{{ $t('marketComposite.etf.metrics.riskData') }}</h3>
+          <h3>{{ $t('marketComposite.etf.metrics.indexOptionRiskData') }}</h3>
           <p v-if="selectedIndexOptionRoot" class="fda-muted">
             {{ selectedIndexOptionRoot }}
           </p>
@@ -330,21 +353,23 @@
             </a-select>
           </div>
 
-          <div class="fda-metrics">
-            <div class="fda-metric fda-metric-price">
-              <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
-              <strong>{{ fmt(optionsData && (optionsData.current_price || optionsData.underlying), 3, true) }}</strong>
+          <div class="fda-section" data-testid="etf-option-risk">
+            <h3>{{ $t('marketComposite.etf.metrics.etfOptionRiskData') }}</h3>
+            <div class="fda-metrics">
+              <div class="fda-metric fda-metric-price">
+                <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
+                <strong>{{ fmt(optionsData && (optionsData.current_price || optionsData.underlying), 3, true) }}</strong>
+              </div>
+              <div class="fda-metric" v-for="item in greeksMetrics" :key="item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ fmt(item.value, 4) }}</strong>
+              </div>
             </div>
-            <div class="fda-metric" v-for="item in greeksMetrics" :key="item.key">
-              <span>{{ item.label }}</span>
-              <strong>{{ fmt(item.value, 4) }}</strong>
-            </div>
-          </div>
-
-          <div class="fda-metrics fda-metrics-gex">
-            <div class="fda-metric" v-for="item in gexMetrics" :key="item.key">
-              <span>{{ item.label }}</span>
-              <strong>{{ item.display }}</strong>
+            <div class="fda-metrics fda-metrics-gex">
+              <div class="fda-metric" v-for="item in gexMetrics" :key="item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.display }}</strong>
+              </div>
             </div>
           </div>
 
@@ -541,8 +566,10 @@ export default {
       spotData: null,
       futuresData: null,
       indexFuturesOptionsData: null,
+      indexEtfOptionsData: null,
       optionsData: null,
       loadingIndexDerivatives: false,
+      loadingIndexEtfOptions: false,
       charts: {},
       historyVisible: false,
       historyLoading: false,
@@ -728,7 +755,17 @@ export default {
       ]
     },
     indexOptionGreeks () {
-      return (this.indexSpot && this.indexSpot.option_greeks) || {}
+      const fromSpot = (this.indexSpot && this.indexSpot.option_greeks) || {}
+      if (
+        fromSpot.delta_notional != null ||
+        fromSpot.gamma_notional != null ||
+        fromSpot.premium_total != null ||
+        fromSpot.margin_total != null ||
+        fromSpot.time_value_total != null
+      ) {
+        return fromSpot
+      }
+      return this.indexEtfOptionNotionalsFromPanel
     },
     hasIndexOptionGreeks () {
       const g = this.indexOptionGreeks
@@ -772,7 +809,94 @@ export default {
     },
     indexOptionEtfRows () {
       const rows = (this.indexOptionGreeks && this.indexOptionGreeks.etfs) || []
-      return rows.filter(item => item && (item.etf_code || item.delta_notional != null || item.premium_total != null))
+      const filtered = rows.filter(item => item && (item.etf_code || item.delta_notional != null || item.premium_total != null))
+      if (filtered.length) return filtered
+      const g = this.indexEtfOptionNotionalsFromPanel
+      if (g && (g.delta_notional != null || g.premium_total != null)) {
+        return [{ ...g, etf_code: g.etf_code || this.selectedUnderlyingCode, etf_name: g.etf_name }]
+      }
+      return []
+    },
+    hasIndexEtfOptions () {
+      const product = this.selectedProduct || {}
+      return !!(product.has_options && this.selectedUnderlyingCode)
+    },
+    showIndexEtfOptionSection () {
+      return !!(
+        this.hasIndexEtfOptions ||
+        this.hasIndexOptionGreeks ||
+        this.hasIndexEtfOptionRisk ||
+        this.loadingIndexEtfOptions
+      )
+    },
+    hasIndexEtfOptionRisk () {
+      const panel = this.indexEtfOptionsData || {}
+      const g = panel.greeks || {}
+      const s = panel.gex_summary || {}
+      return !!(g.delta != null || g.gamma != null || s.net_gex != null || s.flip != null)
+    },
+    indexEtfOptionRiskGreekCards () {
+      const g = (this.indexEtfOptionsData && this.indexEtfOptionsData.greeks) || {}
+      return [
+        { key: 'delta', label: 'Delta', value: g.delta },
+        { key: 'gamma', label: 'Gamma', value: g.gamma },
+        { key: 'vega', label: 'Vega', value: g.vega },
+        { key: 'theta', label: 'Theta', value: g.theta }
+      ]
+    },
+    indexEtfOptionRiskGexCards () {
+      const s = (this.indexEtfOptionsData && this.indexEtfOptionsData.gex_summary) || {}
+      const mp = this.indexEtfOptionsData && this.indexEtfOptionsData.max_pain
+      return [
+        { key: 'net', label: 'Net GEX', display: this.fmt(s.net_gex, 0) },
+        { key: 'call', label: 'Call GEX', display: this.fmt(s.call_gex, 0) },
+        { key: 'put', label: 'Put GEX', display: this.fmt(s.put_gex, 0) },
+        { key: 'flip', label: 'Flip', display: this.fmt(s.flip) },
+        { key: 'callWall', label: 'Call Wall', display: this.fmt(s.call_wall) },
+        { key: 'putWall', label: 'Put Wall', display: this.fmt(s.put_wall) },
+        { key: 'pin', label: 'Pin', display: this.fmt(s.pin) },
+        { key: 'maxPain', label: 'Max Pain', display: this.fmt(mp && mp.strike) }
+      ]
+    },
+    indexEtfOptionNotionalsFromPanel () {
+      const panel = this.indexEtfOptionsData || {}
+      const g = panel.greeks || {}
+      const s = panel.gex_summary || {}
+      const total = ((panel.capital_curve || {}).total) || {}
+      const spot = Number(panel.current_price != null ? panel.current_price : panel.underlying)
+      const delta = Number(g.delta)
+      const gamma = Number(g.gamma)
+      const vega = Number(g.vega)
+      const theta = Number(g.theta)
+      const netGex = Number(s.net_gex)
+      const hasSpot = Number.isFinite(spot)
+      const margin = total.margin_total != null ? total.margin_total : total.margin_short_total
+      const code = this.selectedUnderlyingCode || ''
+      const name = (this.selectedProduct && this.selectedProduct.name_cn) || code
+      return {
+        etf_code: code,
+        etf_name: name,
+        etf_count: 1,
+        spot: hasSpot ? spot : null,
+        delta_notional: Number.isFinite(delta) && hasSpot ? delta * spot : null,
+        gamma_notional: Number.isFinite(netGex) ? netGex : (Number.isFinite(gamma) && hasSpot ? gamma * spot : null),
+        vega_notional: Number.isFinite(vega) ? vega : null,
+        theta_notional: Number.isFinite(theta) ? theta : null,
+        premium_total: total.premium_total,
+        margin_total: margin,
+        margin_long_total: total.margin_long_total,
+        margin_short_total: total.margin_short_total,
+        time_value_total: total.time_value_total,
+        units: {
+          delta_notional: '元',
+          gamma_notional: '元',
+          vega_notional: '元/1%波动',
+          theta_notional: '元/日',
+          premium_total: '元',
+          margin_total: '元',
+          time_value_total: '元'
+        }
+      }
     },
     indexOptionEtfColumns () {
       return [
@@ -1242,6 +1366,7 @@ export default {
       this.spotData = null
       this.futuresData = null
       this.indexFuturesOptionsData = null
+      this.indexEtfOptionsData = null
       this.optionsData = null
       this.reloadActiveTab()
     },
@@ -1274,6 +1399,7 @@ export default {
       this.spotData = null
       this.futuresData = null
       this.indexFuturesOptionsData = null
+      this.indexEtfOptionsData = null
       this.optionsData = null
       this.selectedMonth = 'all'
       if (this.$router) {
@@ -1293,9 +1419,10 @@ export default {
       }
     },
     async loadIndexTab () {
-      // CFFEX risk / futures / options must start immediately, otherwise the
+      // CFFEX + ETF option risk must start immediately, otherwise the
       // sections stay hidden until spot + history finish (several seconds).
       this.loadIndexFuturesAndOptions()
+      this.loadIndexEtfOptions()
       this.loadingTab = true
       try {
         const indexSymbol = this.selectedIndexSymbol
@@ -1324,6 +1451,26 @@ export default {
       const inner = res.data
       if (inner && typeof inner === 'object') return inner
       return inner || null
+    },
+    async loadIndexEtfOptions () {
+      const etfCode = this.selectedUnderlyingCode
+      if (!this.hasIndexEtfOptions) {
+        this.indexEtfOptionsData = null
+        this.loadingIndexEtfOptions = false
+        return
+      }
+      const seq = (this._indexEtfOptSeq = (this._indexEtfOptSeq || 0) + 1)
+      this.loadingIndexEtfOptions = true
+      try {
+        const res = await getOptionsPanel(etfCode, 'all', this.etfScopeParams())
+        if (seq !== this._indexEtfOptSeq) return
+        this.indexEtfOptionsData = this.panelPayload(res)
+      } catch (e) {
+        if (seq !== this._indexEtfOptSeq) return
+        this.indexEtfOptionsData = null
+      } finally {
+        if (seq === this._indexEtfOptSeq) this.loadingIndexEtfOptions = false
+      }
     },
     async loadIndexFuturesAndOptions () {
       const futuresRoot = this.selectedFuturesRoot
@@ -1620,7 +1767,7 @@ export default {
           this.selectedMonth,
           this.etfScopeParams()
         )
-        this.optionsData = (res && res.data) || null
+        this.optionsData = this.panelPayload(res) || (res && res.data) || null
         if (this.optionsData && this.optionsData.month) {
           this.selectedMonth = this.optionsData.month
         }

@@ -8,4 +8,6 @@
 "marketComposite.etf.metrics.optionEtfBreakdown": "Per ETF",
 "marketComposite.etf.metrics.optionEtfCombined": "Linked ETFs combined",
 "marketComposite.etf.metrics.riskData": "Risk data",
+"marketComposite.etf.metrics.etfOptionRiskData": "ETF option risk data",
+"marketComposite.etf.metrics.indexOptionRiskData": "Index futures option risk data",
 "marketComposite.etf.labels.indexFuturesOptions": "Index futures options"
