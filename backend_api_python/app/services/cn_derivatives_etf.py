@@ -217,6 +217,25 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
         volume = float((index_row or {}).get("volume") or 0.0) or None
     except (TypeError, ValueError):
         volume = None
+    activity: Dict[str, Any] = {}
+    try:
+        from app.services.cn_derivatives_etf_metrics import load_index_activity
+
+        activity = _call_with_timeout(
+            lambda: load_index_activity(sym, local_volume=volume),
+            6.0,
+            default={},
+        ) or {}
+    except Exception as exc:
+        logger.warning("load_index_activity %s failed: %s", sym, exc)
+    if activity.get("volume") not in (None, 0):
+        volume = float(activity["volume"])
+    amount = activity.get("amount")
+    if amount is None:
+        try:
+            amount = float((index_row or {}).get("amount") or 0.0) or None
+        except (TypeError, ValueError):
+            amount = None
     analysis: List[str] = []
     if price > 0:
         analysis.append(f"{name} 最新点位 {price:.2f}。")
@@ -238,7 +257,15 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
         logger.warning("enrich_index_metrics %s failed: %s", sym, exc)
 
     if volume:
-        analysis.append(f"成交量 {volume:,.0f}。")
+        shares = activity.get("volume_shares")
+        if shares:
+            analysis.append(f"成交量 {volume:,.0f} 手（约 {shares / 1e8:.2f} 亿股）。")
+        else:
+            analysis.append(f"成交量 {volume:,.0f} 手。")
+    if amount:
+        analysis.append(f"成交额 {float(amount):,.0f} 元。")
+    if activity.get("note"):
+        analysis.append(str(activity["note"]))
     if index_metrics.get("holdings_count"):
         analysis.append(f"指数成份 {int(index_metrics['holdings_count'])} 只。")
     if index_metrics.get("constituent_market_cap_sum") is not None:
@@ -272,6 +299,18 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
     index_out["price"] = price
     if volume is not None:
         index_out["volume"] = volume
+    if amount is not None:
+        index_out["amount"] = amount
+    for key in (
+        "volume_unit",
+        "volume_shares",
+        "amount_unit",
+        "checks",
+        "checked",
+        "note",
+    ):
+        if activity.get(key) is not None:
+            index_out[key] = activity[key]
     for key, value in index_metrics.items():
         if key in {"code"}:
             continue
@@ -1079,6 +1118,9 @@ def _index_row_from_spot(frame: Any, index_code: str, safe_float) -> Optional[Di
                 "code": index_code,
                 "name": str(row.get("名称") or row.get("name") or index_code),
                 "price": safe_float(row.get("最新价") or row.get("price")),
+                "volume": safe_float(row.get("成交量")),
+                "amount": safe_float(row.get("成交额")),
+                "source": "sina_index_spot",
             }
     return None
 

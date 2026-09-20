@@ -1,0 +1,3 @@
+"marketComposite.etf.metrics.indexVolumeAmountTrend": "成交量 / 成交额",
+"marketComposite.etf.metrics.volumeShares": "约合股数",
+"marketComposite.etf.metrics.activityChecked": "成交量/成交额已与腾讯、新浪校对"

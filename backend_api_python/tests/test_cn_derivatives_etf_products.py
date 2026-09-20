@@ -145,6 +145,19 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     )
     monkeypatch.setattr(etf_mod, "_ENRICH_TIMEOUT_SEC", 2.0)
     monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.load_index_activity",
+        lambda symbol, local_volume=None: {
+            "volume": 39360945.0,
+            "volume_unit": "手",
+            "volume_shares": 3936094500.0,
+            "amount": 138366086012.0,
+            "amount_unit": "元",
+            "checks": [{"field": "volume", "status": "match"}],
+            "checked": True,
+            "note": "校对通过：本地日线与腾讯/新浪一致。",
+        },
+    )
+    monkeypatch.setattr(
         "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
         lambda symbol: {
             "holdings_count": 50,
@@ -166,8 +179,14 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     assert idx["avg_pe"] == 12.5
     assert idx["holdings_count"] == 50
     assert idx["holdings"][0]["code"] == "600519"
+    assert idx["volume"] == 39360945.0
+    assert idx["amount"] == 138366086012.0
+    assert idx["volume_unit"] == "手"
     text = "".join(panel["analysis"])
     assert "上证50指数" in text
     assert "12.50" in text
+    assert "成交额" in text
+    assert "手" in text
+    assert "校对通过" in text
     assert "50ETF" not in text
     assert "运作费率" not in text

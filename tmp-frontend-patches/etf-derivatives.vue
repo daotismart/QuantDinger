@@ -134,12 +134,13 @@
             </div>
             <div class="fda-chart-box">
               <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.etf.metrics.indexVolumeTrend') }}</h3>
+                <h3>{{ $t('marketComposite.etf.metrics.indexVolumeAmountTrend') }}</h3>
                 <a-button size="small" @click="openHistory('index.volume')">{{ $t('marketComposite.futures.history') }}</a-button>
               </div>
               <div ref="indexVolumeChart" class="fda-chart" />
             </div>
           </div>
+          <p v-if="indexActivityMeta" class="fda-muted fda-etf-note">{{ indexActivityMeta }}</p>
           <p v-if="indexMetricsNote" class="fda-muted fda-etf-note">{{ indexMetricsNote }}</p>
           <div v-if="indexHoldings.length" class="fda-section fda-constituents">
             <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
@@ -558,11 +559,29 @@ export default {
       }
       return parts.join(' · ')
     },
+    indexActivityMeta () {
+      const idx = this.indexSpot
+      const parts = []
+      if (idx.volume_unit) {
+        parts.push(`${this.$t('marketComposite.etf.metrics.volume')} ${idx.volume_unit}`)
+      }
+      if (idx.volume_shares) {
+        parts.push(`${this.$t('marketComposite.etf.metrics.volumeShares')} ${this.fmtCompact(idx.volume_shares)}`)
+      }
+      if (idx.checked) {
+        parts.push(this.$t('marketComposite.etf.metrics.activityChecked'))
+      } else if (idx.note) {
+        parts.push(idx.note)
+      }
+      return parts.join(' · ')
+    },
     indexMetricCards () {
       const idx = this.indexSpot
+      const volumeUnit = idx.volume_unit ? ` ${idx.volume_unit}` : ''
       return [
         { key: 'point', label: this.$t('marketComposite.etf.metrics.indexPoint'), display: this.fmt(this.spotData && this.spotData.spot_price, 2) },
-        { key: 'volume', label: this.$t('marketComposite.etf.metrics.volume'), display: this.fmtCompact(idx.volume) },
+        { key: 'volume', label: this.$t('marketComposite.etf.metrics.volume'), display: idx.volume != null ? `${this.fmtCompact(idx.volume)}${volumeUnit}` : '-' },
+        { key: 'amount', label: this.$t('marketComposite.etf.metrics.amount'), display: this.fmtMoney(idx.amount) },
         { key: 'count', label: this.$t('marketComposite.etf.metrics.constituentCount'), display: idx.holdings_count != null ? `${idx.holdings_count}` : '-' },
         { key: 'marketCap', label: this.$t('marketComposite.etf.metrics.constituentMarketCap'), display: this.fmtMoney(idx.constituent_market_cap_sum) },
         { key: 'profit', label: this.$t('marketComposite.etf.metrics.constituentProfit'), display: this.fmtMoney(idx.constituent_profit_sum) },
@@ -1130,15 +1149,29 @@ export default {
       if (volume) {
         volume.setOption({
           ...this.baseChartOption(),
-          grid: { left: 52, right: 24, top: 36, bottom: 36 },
+          legend: { top: 0, textStyle: { color: this.chartText } },
+          grid: { left: 52, right: 56, top: 40, bottom: 36 },
           xAxis: { type: 'category', data: dates, axisLabel },
-          yAxis: { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
-          series: [{
-            name: this.$t('marketComposite.etf.metrics.volume'),
-            type: 'bar',
-            data: points.map(p => p.volume),
-            itemStyle: { color: '#69c0ff', opacity: 0.55 }
-          }]
+          yAxis: [
+            { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
+            { type: 'value', name: this.$t('marketComposite.etf.metrics.amount'), splitLine: { show: false } }
+          ],
+          series: [
+            {
+              name: this.$t('marketComposite.etf.metrics.volume'),
+              type: 'bar',
+              data: points.map(p => p.volume),
+              itemStyle: { color: '#69c0ff', opacity: 0.55 }
+            },
+            {
+              name: this.$t('marketComposite.etf.metrics.amount'),
+              type: 'line',
+              yAxisIndex: 1,
+              showSymbol: false,
+              data: points.map(p => p.amount),
+              itemStyle: { color: '#fa8c16' }
+            }
+          ]
         }, true)
       }
     },
@@ -1923,7 +1956,8 @@ export default {
         'etf.profit': this.$t('marketComposite.etf.metrics.feeProfitTrend'),
         'index.metrics': this.$t('marketComposite.etf.indexAnalysis'),
         'index.price': this.$t('marketComposite.etf.metrics.indexPriceTrend'),
-        'index.volume': this.$t('marketComposite.etf.metrics.indexVolumeTrend'),
+        'index.volume': this.$t('marketComposite.etf.metrics.indexVolumeAmountTrend'),
+        'index.amount': this.$t('marketComposite.etf.metrics.indexVolumeAmountTrend'),
         'options.capital': this.$t('marketComposite.futures.options.capitalCurve'),
         'options.gex': this.$t('marketComposite.futures.options.gexDist'),
         'options.gexCallPut': this.$t('marketComposite.futures.options.gexCallPutDist'),
@@ -2497,13 +2531,15 @@ export default {
       let series = []
       let yAxis = { type: 'value', scale: true, splitLine }
 
-      if (key === 'index.volume') {
-        series = [{
-          name: this.$t('marketComposite.etf.metrics.volume'),
-          type: 'bar',
-          data: points.map(p => p.volume),
-          itemStyle: { opacity: 0.45 }
-        }]
+      if (key === 'index.volume' || key === 'index.amount') {
+        yAxis = [
+          { type: 'value', name: this.$t('marketComposite.etf.metrics.volume'), splitLine },
+          { type: 'value', name: this.$t('marketComposite.etf.metrics.amount'), splitLine: { show: false } }
+        ]
+        series = [
+          { name: this.$t('marketComposite.etf.metrics.volume'), type: 'bar', data: points.map(p => p.volume), itemStyle: { opacity: 0.45 } },
+          { name: this.$t('marketComposite.etf.metrics.amount'), type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => p.amount) }
+        ]
       } else if (key === 'index.price') {
         series = [{
           name: this.$t('marketComposite.etf.metrics.indexPoint'),

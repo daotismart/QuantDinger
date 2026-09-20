@@ -128,12 +128,72 @@ def test_build_index_metrics_history_shape(monkeypatch):
             {"date": "2026-09-17", "price": 2860.0, "volume": 12},
         ],
     )
+    monkeypatch.setattr(
+        metrics,
+        "_fetch_index_tencent_daily",
+        lambda symbol, *, days: [
+            {"date": "2026-09-16", "price": 2800.0, "volume": 10, "amount": 1.1e11},
+            {"date": "2026-09-17", "price": 2860.0, "volume": 12, "amount": 1.2e11},
+        ],
+    )
     data = metrics.build_index_metrics_history("000016.SH", chart_key="index.price", days=30)
     assert data["root"] == "000016.SH"
     assert len(data["points"]) == 2
     assert data["points"][-1]["price"] == 2860.0
     assert data["points"][-1]["avg_pe"] == 11.0
-    assert "点位" in data["note"]
+    assert data["points"][-1]["amount"] == 1.2e11
+    assert "手" in data["note"]
+    assert "成交额" in data["note"]
+
+
+def test_bar_date_cn_uses_shanghai_session():
+    assert metrics._bar_date_cn(1789660800) == "2026-09-18"
+    assert metrics._bar_date_cn(1789574400) == "2026-09-17"
+
+
+def test_index_tx_code_uses_board():
+    assert metrics._index_tx_code("000016.SH") == "sh000016"
+    assert metrics._index_tx_code("399006.SZ") == "sz399006"
+    assert metrics._index_tx_code("000300.SH") == "sh000300"
+
+
+def test_parse_tencent_index_quote_volume_and_amount():
+    parts = [""] * 60
+    parts[3] = "2860.77"
+    parts[6] = "39360945"
+    parts[35] = "2860.77/39360945/138366086012"
+    parts[36] = "39360945"
+    parts[37] = "13836609"
+    out = metrics._parse_tencent_index_quote(parts)
+    assert out["volume"] == 39360945
+    assert out["amount"] == 138366086012
+
+
+def test_parse_tencent_index_kline_amount_from_wan():
+    row = ["2026-09-18", "2857.05", "2860.77", "2870.71", "2854.05", "39360945.00", {}, "0.24", "13836608.60"]
+    out = metrics._parse_tencent_index_kline_row(row)
+    assert out["date"] == "2026-09-18"
+    assert out["volume"] == 39360945
+    assert abs(out["amount"] - 138366086000) < 1
+
+
+def test_reconcile_index_activity_matches_local_and_tencent():
+    out = metrics.reconcile_index_activity(
+        local_volume=39360945,
+        live_volume=39360945,
+        live_amount=138366086012,
+        hist_amount=138366086000,
+        hist_volume_shares=3936094500,
+        live_source="tencent_quote",
+    )
+    assert out["volume"] == 39360945
+    assert out["volume_shares"] == 3936094500
+    assert out["amount"] == 138366086012
+    assert out["checked"] is True
+    statuses = {c["field"]: c["status"] for c in out["checks"]}
+    assert statuses["volume"] == "match"
+    assert statuses["amount"] == "match"
+    assert statuses["volume_shares"] == "match"
 
 
 def test_estimate_etf_amount_uses_lot_volume():

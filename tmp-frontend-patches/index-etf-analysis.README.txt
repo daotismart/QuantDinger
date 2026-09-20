@@ -4,7 +4,9 @@ It does NOT attach linked-ETF fund metrics (AUM / fees / IOPV).
 Backend
   GET /api/cn-derivatives/spot?scope=etf&picker_kind=spot_index&root=000016.SH
   build_spot_index_panel attaches spot.index via enrich_index_metrics (CSI constituents).
-  History: chart=index.metrics|index.price|index.volume → build_index_metrics_history.
+  History: chart=index.metrics|index.price|index.volume|index.amount → build_index_metrics_history.
+  Volume unit is 手 (Tencent/Sina spot). Sina daily volume is 股 = 手×100.
+  Amount is yuan from Tencent daily (万元×10000), cross-checked with the quote.
 
 Frontend (QuantDinger-Vue)
   src/views/market-composite-analysis/etf-derivatives.vue
