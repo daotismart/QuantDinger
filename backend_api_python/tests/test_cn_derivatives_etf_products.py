@@ -178,6 +178,7 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
             "combined_share_pct": 0.2578,
         },
     )
+    monkeypatch.setattr(etf_mod, "_etf_options_cache_get", lambda key: None)
     monkeypatch.setattr(
         etf_mod,
         "build_etf_options_panel",

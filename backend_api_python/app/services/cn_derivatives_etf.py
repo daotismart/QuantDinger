@@ -316,11 +316,13 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
         try:
             from app.services.cn_derivatives_etf_metrics import greek_notionals_from_options_panel
 
-            panel = _call_with_timeout(
-                lambda: build_etf_options_panel(primary_etf, "all"),
-                8.0,
-                default=None,
-            )
+            panel = _etf_options_cache_get(f"etf_options_panel:v3:{_etf_code6(primary_etf)}:all")
+            if not isinstance(panel, dict):
+                panel = _call_with_timeout(
+                    lambda: build_etf_options_panel(primary_etf, "all"),
+                    25.0,
+                    default=None,
+                )
             if isinstance(panel, dict):
                 option_greeks = greek_notionals_from_options_panel(panel)
                 option_greeks["etf_code"] = primary_etf
