@@ -3,4 +3,7 @@
 "marketComposite.etf.metrics.etfShareCombined": "All linked ETFs",
 "marketComposite.etf.metrics.etfGroupShare": "Share of linked ETFs",
 "marketComposite.etf.metrics.optionGreekNotional": "Linked option Greek notionals",
-"marketComposite.etf.metrics.notional": "notional"
+"marketComposite.etf.metrics.notional": "notional",
+"marketComposite.etf.metrics.optionMargin": "Margin",
+"marketComposite.etf.metrics.optionEtfBreakdown": "Per ETF",
+"marketComposite.etf.metrics.optionEtfCombined": "Linked ETFs combined"

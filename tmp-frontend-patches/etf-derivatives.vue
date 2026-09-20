@@ -168,6 +168,17 @@
                 <strong>{{ item.display }}</strong>
               </div>
             </div>
+            <div v-if="indexOptionEtfRows.length" class="fda-section">
+              <h3>{{ $t('marketComposite.etf.metrics.optionEtfBreakdown') }}</h3>
+              <a-table
+                class="fda-table"
+                size="small"
+                :pagination="false"
+                :columns="indexOptionEtfColumns"
+                :data-source="indexOptionEtfRows"
+                row-key="etf_code"
+              />
+            </div>
           </div>
           <div v-if="indexHoldings.length" class="fda-section fda-constituents">
             <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
@@ -670,12 +681,25 @@ export default {
     },
     hasIndexOptionGreeks () {
       const g = this.indexOptionGreeks
-      return !!(g && (g.delta_notional != null || g.gamma_notional != null || g.vega_notional != null || g.theta_notional != null))
+      return !!(g && (
+        g.delta_notional != null ||
+        g.gamma_notional != null ||
+        g.vega_notional != null ||
+        g.theta_notional != null ||
+        g.premium_total != null ||
+        g.margin_total != null ||
+        g.time_value_total != null
+      ))
     },
     indexOptionGreeksMeta () {
       const g = this.indexOptionGreeks
       const parts = []
-      if (g.etf_name || g.etf_code) parts.push(g.etf_name || g.etf_code)
+      const count = g.etf_count || ((g.etfs || []).length)
+      if (count > 1) {
+        parts.push(`${this.$t('marketComposite.etf.metrics.optionEtfCombined')} ${count}`)
+      } else if (g.etf_name || g.etf_code) {
+        parts.push(g.etf_name || g.etf_code)
+      }
       if (g.spot != null) parts.push(`${this.$t('marketComposite.etf.metrics.price')} ${this.fmt(g.spot, 4)}`)
       return parts.join(' · ')
     },
@@ -686,11 +710,31 @@ export default {
         { key: 'delta', label: `Delta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.delta_notional), unit: units.delta_notional },
         { key: 'gamma', label: `Gamma ${this.$t('marketComposite.etf.metrics.notional')} (GEX)`, display: this.fmtMoney(g.gamma_notional), unit: units.gamma_notional },
         { key: 'vega', label: `Vega ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.vega_notional), unit: units.vega_notional || '元/1%' },
-        { key: 'theta', label: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.theta_notional), unit: units.theta_notional || '元/日' }
+        { key: 'theta', label: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.theta_notional), unit: units.theta_notional || '元/日' },
+        { key: 'premium', label: this.$t('marketComposite.futures.options.premiumTotal'), display: this.fmtMoney(g.premium_total), unit: units.premium_total },
+        { key: 'margin', label: this.$t('marketComposite.etf.metrics.optionMargin'), display: this.fmtMoney(g.margin_total), unit: units.margin_total },
+        { key: 'timeValue', label: this.$t('marketComposite.futures.options.timeValueTotal'), display: this.fmtMoney(g.time_value_total), unit: units.time_value_total }
       ].map(item => ({
         ...item,
         display: item.display === '-' ? '-' : (item.unit && item.unit !== '元' ? `${item.display} (${item.unit})` : item.display)
       }))
+    },
+    indexOptionEtfRows () {
+      const rows = (this.indexOptionGreeks && this.indexOptionGreeks.etfs) || []
+      return rows.filter(item => item && (item.etf_code || item.delta_notional != null || item.premium_total != null))
+    },
+    indexOptionEtfColumns () {
+      return [
+        { title: this.$t('marketComposite.etf.metrics.colCode'), dataIndex: 'etf_code', width: 92 },
+        { title: this.$t('marketComposite.etf.metrics.colName'), dataIndex: 'etf_name', ellipsis: true },
+        { title: this.$t('marketComposite.futures.options.premiumTotal'), dataIndex: 'premium_total', customRender: v => this.fmtMoney(v) },
+        { title: this.$t('marketComposite.etf.metrics.optionMargin'), dataIndex: 'margin_total', customRender: v => this.fmtMoney(v) },
+        { title: this.$t('marketComposite.futures.options.timeValueTotal'), dataIndex: 'time_value_total', customRender: v => this.fmtMoney(v) },
+        { title: `Delta ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'delta_notional', customRender: v => this.fmtMoney(v) },
+        { title: `Gamma ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'gamma_notional', customRender: v => this.fmtMoney(v) },
+        { title: `Vega ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'vega_notional', customRender: v => this.fmtMoney(v) },
+        { title: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'theta_notional', customRender: v => this.fmtMoney(v) }
+      ]
     },
     etfHoldings () {
       const etf = this.etfSpot

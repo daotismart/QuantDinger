@@ -312,23 +312,10 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
         logger.warning("build_index_etf_shares %s failed: %s", sym, exc)
 
     option_greeks: Dict[str, Any] = {}
-    if primary_etf:
-        try:
-            from app.services.cn_derivatives_etf_metrics import greek_notionals_from_options_panel
-
-            panel = _etf_options_cache_get(f"etf_options_panel:v3:{_etf_code6(primary_etf)}:all")
-            if not isinstance(panel, dict):
-                panel = _call_with_timeout(
-                    lambda: build_etf_options_panel(primary_etf, "all"),
-                    25.0,
-                    default=None,
-                )
-            if isinstance(panel, dict):
-                option_greeks = greek_notionals_from_options_panel(panel)
-                option_greeks["etf_code"] = primary_etf
-                option_greeks["etf_name"] = _cn_display_name(primary_etf, primary_etf)
-        except Exception as exc:
-            logger.warning("index option greeks %s failed: %s", primary_etf, exc)
+    try:
+        option_greeks = _build_index_option_notionals(linked_codes, primary_etf)
+    except Exception as exc:
+        logger.warning("index option greeks %s failed: %s", primary_etf or sym, exc)
 
     for row in etf_shares.get("etfs") or []:
         label = f"{row.get('name') or row.get('code')}({row.get('code')})"
@@ -342,14 +329,42 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
         if bits:
             prefix = "对应 ETF" if row.get("primary") else "挂钩 ETF"
             analysis.append(f"{prefix} {label} {'，'.join(bits)}。")
-    if option_greeks.get("delta_notional") is not None:
-        analysis.append(
-            f"对应期权 {option_greeks.get('etf_name') or primary_etf} "
-            f"Delta 名义资金约 {float(option_greeks['delta_notional']):,.0f} 元，"
-            f"Gamma 名义（Net GEX）约 {float(option_greeks.get('gamma_notional') or 0):,.0f} 元，"
-            f"Vega 约 {float(option_greeks.get('vega_notional') or 0):,.0f} 元/1%波动，"
-            f"Theta 约 {float(option_greeks.get('theta_notional') or 0):,.0f} 元/日。"
-        )
+    etf_option_rows = option_greeks.get("etfs") or []
+    if option_greeks.get("delta_notional") is not None or option_greeks.get("premium_total") is not None:
+        bits = []
+        if option_greeks.get("delta_notional") is not None:
+            bits.append(f"Delta 名义资金约 {float(option_greeks['delta_notional']):,.0f} 元")
+            bits.append(f"Gamma 名义（Net GEX）约 {float(option_greeks.get('gamma_notional') or 0):,.0f} 元")
+            bits.append(f"Vega 约 {float(option_greeks.get('vega_notional') or 0):,.0f} 元/1%波动")
+            bits.append(f"Theta 约 {float(option_greeks.get('theta_notional') or 0):,.0f} 元/日")
+        if option_greeks.get("premium_total") is not None:
+            bits.append(f"权利金约 {float(option_greeks['premium_total']):,.0f} 元")
+        if option_greeks.get("margin_total") is not None:
+            bits.append(f"保证金约 {float(option_greeks['margin_total']):,.0f} 元")
+        if option_greeks.get("time_value_total") is not None:
+            bits.append(f"时间价值约 {float(option_greeks['time_value_total']):,.0f} 元")
+        if bits:
+            count = int(option_greeks.get("etf_count") or len(etf_option_rows) or 1)
+            prefix = (
+                f"对应期权合计（{count} 只挂钩 ETF）"
+                if count > 1
+                else f"对应期权 {option_greeks.get('etf_name') or primary_etf}"
+            )
+            analysis.append(f"{prefix} {'，'.join(bits)}。")
+    if len(etf_option_rows) > 1:
+        for row in etf_option_rows:
+            label = f"{row.get('etf_name') or row.get('etf_code')}({row.get('etf_code')})"
+            bits = []
+            if row.get("premium_total") is not None:
+                bits.append(f"权利金约 {float(row['premium_total']):,.0f} 元")
+            if row.get("margin_total") is not None:
+                bits.append(f"保证金约 {float(row['margin_total']):,.0f} 元")
+            if row.get("time_value_total") is not None:
+                bits.append(f"时间价值约 {float(row['time_value_total']):,.0f} 元")
+            if row.get("delta_notional") is not None:
+                bits.append(f"Delta 约 {float(row['delta_notional']):,.0f} 元")
+            if bits:
+                analysis.append(f"挂钩 ETF 期权 {label} {'，'.join(bits)}。")
 
     index_out = dict(index_row or {"code": sym, "name": name, "price": price})
     index_out["name"] = name
@@ -579,6 +594,63 @@ def build_etf_spot_panel(code: str) -> Dict[str, Any]:
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
 
+
+
+def _option_notionals_row_from_panel(code6: str, panel: Dict[str, Any], primary6: str) -> Dict[str, Any]:
+    from app.services.cn_derivatives_etf_metrics import option_notionals_from_options_panel
+
+    row = option_notionals_from_options_panel(panel)
+    row["etf_code"] = code6
+    row["etf_name"] = _cn_display_name(code6, code6)
+    row["primary"] = bool(primary6) and code6 == primary6
+    return row
+
+
+def _build_index_option_notionals(codes: List[str], primary: str = "") -> Dict[str, Any]:
+    """Greeks + premium/margin/TV for each linked ETF, plus a yuan total."""
+    from app.services.cn_derivatives_etf_metrics import merge_option_notionals
+
+    primary6 = _etf_code6(primary)
+    wanted: List[str] = []
+    seen = set()
+    for raw in list(codes or []) + ([primary6] if primary6 else []):
+        code6 = _etf_code6(raw)
+        if code6 and code6 not in seen:
+            seen.add(code6)
+            wanted.append(code6)
+    rows: List[Dict[str, Any]] = []
+    misses: List[str] = []
+    for code6 in wanted:
+        panel = _etf_options_cache_get(f"etf_options_panel:v3:{code6}:all")
+        if isinstance(panel, dict):
+            rows.append(_option_notionals_row_from_panel(code6, panel, primary6))
+        else:
+            misses.append(code6)
+    if misses:
+        timeout = 25.0 if primary6 in misses else 12.0
+        futs = {
+            _TIMED_POOL.submit(build_etf_options_panel, code6, "all"): code6
+            for code6 in misses
+        }
+        try:
+            for fut in as_completed(futs, timeout=timeout):
+                code6 = futs[fut]
+                try:
+                    panel = fut.result(timeout=0.05)
+                except Exception as exc:
+                    logger.warning("index option panel %s failed: %s", code6, exc)
+                    continue
+                if isinstance(panel, dict):
+                    rows.append(_option_notionals_row_from_panel(code6, panel, primary6))
+        except Exception as exc:
+            logger.warning("index option panels timed out: %s", exc)
+    rows.sort(key=lambda row: (not row.get("primary"), str(row.get("etf_code") or "")))
+    total = merge_option_notionals(rows)
+    if not total.get("etf_code") and primary6:
+        total["etf_code"] = primary6
+        total["etf_name"] = _cn_display_name(primary6, primary6)
+    total["etfs"] = rows
+    return total
 
 
 def _etf_options_cache_get(key: str) -> Optional[Dict[str, Any]]:

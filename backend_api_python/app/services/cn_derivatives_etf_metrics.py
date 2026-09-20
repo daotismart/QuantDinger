@@ -1426,19 +1426,85 @@ def compute_option_greek_notionals(
             "gamma_notional": "元",
             "vega_notional": "元/1%波动",
             "theta_notional": "元/日",
+            "premium_total": "元",
+            "margin_total": "元",
+            "time_value_total": "元",
         },
     }
+
+
+def capital_notionals_from_options_panel(panel: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """权利金 / 义务仓保证金 / 时间价值 from the ETF options capital curve."""
+    data = panel if isinstance(panel, dict) else {}
+    total = ((data.get("capital_curve") or {}).get("total") or {})
+    premium = _safe_float(total.get("premium_total"))
+    margin = _safe_float(total.get("margin_total"))
+    if margin is None:
+        margin = _safe_float(total.get("margin_short_total"))
+    return {
+        "premium_total": premium,
+        "margin_total": margin,
+        "margin_long_total": _safe_float(total.get("margin_long_total")),
+        "margin_short_total": _safe_float(total.get("margin_short_total")),
+        "time_value_total": _safe_float(total.get("time_value_total")),
+    }
+
+
+def option_notionals_from_options_panel(panel: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Greeks + premium / margin / time-value notionals for one ETF options panel."""
+    out = greek_notionals_from_options_panel(panel)
+    out.update(capital_notionals_from_options_panel(panel))
+    return out
+
+
+def merge_option_notionals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Sum yuan notionals across linked ETFs; keep primary metadata."""
+    keys = (
+        "delta_notional",
+        "gamma_notional",
+        "vega_notional",
+        "theta_notional",
+        "premium_total",
+        "margin_total",
+        "margin_long_total",
+        "margin_short_total",
+        "time_value_total",
+    )
+    total: Dict[str, Any] = {}
+    for key in keys:
+        vals = [row.get(key) for row in rows if row.get(key) is not None]
+        total[key] = sum(float(v) for v in vals) if vals else None
+    primary = next((row for row in rows if row.get("primary")), rows[0] if rows else {})
+    total["spot"] = primary.get("spot")
+    total["etf_code"] = primary.get("etf_code")
+    total["etf_name"] = primary.get("etf_name")
+    total["multiplier"] = primary.get("multiplier")
+    total["units"] = dict(primary.get("units") or {})
+    total["etf_count"] = len(rows)
+    if not total.get("units"):
+        total["units"] = {
+            "delta_notional": "元",
+            "gamma_notional": "元",
+            "vega_notional": "元/1%波动",
+            "theta_notional": "元/日",
+            "premium_total": "元",
+            "margin_total": "元",
+            "time_value_total": "元",
+        }
+    return total
 
 
 def greek_notionals_from_options_panel(panel: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     data = panel if isinstance(panel, dict) else {}
     gex = (data.get("gex_summary") or {}).get("net_gex")
-    return compute_option_greek_notionals(
+    out = compute_option_greek_notionals(
         data.get("greeks") or {},
         spot=data.get("underlying") or data.get("current_price"),
         net_gex=gex,
         multiplier=data.get("multiplier") or 10000.0,
     )
+    out.update(capital_notionals_from_options_panel(data))
+    return out
 
 
 _INDEX_VOLUME_LOT_SIZE = 100

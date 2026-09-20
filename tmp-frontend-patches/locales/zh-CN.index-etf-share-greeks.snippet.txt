@@ -3,4 +3,7 @@
 "marketComposite.etf.metrics.etfShareCombined": "挂钩 ETF 合计占比",
 "marketComposite.etf.metrics.etfGroupShare": "占挂钩 ETF",
 "marketComposite.etf.metrics.optionGreekNotional": "对应期权希腊字母名义资金",
-"marketComposite.etf.metrics.notional": "名义资金"
+"marketComposite.etf.metrics.notional": "名义资金",
+"marketComposite.etf.metrics.optionMargin": "保证金",
+"marketComposite.etf.metrics.optionEtfBreakdown": "各ETF分项",
+"marketComposite.etf.metrics.optionEtfCombined": "挂钩 ETF 合计"
