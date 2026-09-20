@@ -282,6 +282,7 @@ def chart_history():
             "index.metrics",
             "index.price",
             "index.volume",
+            "index.amount",
         }:
             from app.services.cn_derivatives_etf_metrics import build_index_metrics_history
 

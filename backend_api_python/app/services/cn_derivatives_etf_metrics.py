@@ -1282,6 +1282,272 @@ def enrich_index_metrics(index_symbol: str) -> Dict[str, Any]:
     return out
 
 
+_INDEX_VOLUME_LOT_SIZE = 100
+_INDEX_AMOUNT_WAN_TO_YUAN = 10000.0
+
+
+def _index_tx_code(symbol: str) -> str:
+    """Tencent/Sina index code: ``000016.SH`` → ``sh000016``."""
+    raw = str(symbol or "").strip().upper()
+    code6 = _code6(raw)
+    if not code6:
+        return ""
+    if raw.endswith(".SZ") or code6.startswith("399"):
+        return f"sz{code6}"
+    return f"sh{code6}"
+
+
+def _rel_close(left: Any, right: Any, *, tol: float = 0.02) -> bool:
+    a = _safe_float(left)
+    b = _safe_float(right)
+    if a is None or b is None:
+        return False
+    scale = max(abs(a), abs(b), 1.0)
+    return abs(a - b) / scale <= float(tol)
+
+
+def _parse_tencent_index_quote(parts: List[str]) -> Dict[str, Any]:
+    """Parse qt.gtimg.cn fields for a CN index."""
+    def _at(idx: int) -> Optional[float]:
+        if idx >= len(parts):
+            return None
+        return _safe_float(parts[idx])
+
+    volume = _at(36) or _at(6)
+    amount = None
+    packed = str(parts[35] if len(parts) > 35 else "")
+    if "/" in packed:
+        bits = packed.split("/")
+        if len(bits) >= 3:
+            amount = _safe_float(bits[2])
+            if volume is None:
+                volume = _safe_float(bits[1])
+    if amount is None:
+        wan = _at(57) or _at(37)
+        if wan is not None:
+            amount = wan * _INDEX_AMOUNT_WAN_TO_YUAN
+    return {
+        "price": _at(3),
+        "volume": volume,
+        "amount": amount,
+        "source": "tencent_quote",
+    }
+
+
+def _fetch_index_tencent_quote(symbol: str) -> Dict[str, Any]:
+    from app.data_sources.tencent import fetch_quote
+
+    code = _index_tx_code(symbol)
+    if not code:
+        return {}
+    parts = fetch_quote(code)
+    if not parts:
+        return {}
+    return _parse_tencent_index_quote(parts)
+
+
+def _parse_tencent_index_kline_row(row: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(row, (list, tuple)) or len(row) < 6:
+        return None
+    date_s = str(row[0] or "")[:10]
+    if len(date_s) < 10:
+        return None
+    volume = _safe_float(row[5])
+    amount = None
+    if len(row) > 8:
+        wan = _safe_float(row[8])
+        if wan is not None:
+            amount = wan * _INDEX_AMOUNT_WAN_TO_YUAN
+    return {
+        "date": date_s,
+        "open": _safe_float(row[1]),
+        "price": _safe_float(row[2]),
+        "high": _safe_float(row[3]),
+        "low": _safe_float(row[4]),
+        "volume": volume,
+        "amount": amount,
+        "source": "tencent_newfqkline",
+    }
+
+
+def _fetch_index_tencent_daily(symbol: str, *, days: int) -> List[Dict[str, Any]]:
+    import requests
+
+    from app.data_sources.rate_limiter import get_request_headers
+
+    code = _index_tx_code(symbol)
+    if not code:
+        return []
+    limit = max(7, min(int(days or 180), 800))
+    url = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
+    resp = requests.get(
+        url,
+        params={"param": f"{code},day,,,{limit},qfq"},
+        headers=get_request_headers(referer="https://gu.qq.com/"),
+        timeout=6,
+    )
+    resp.raise_for_status()
+    payload = resp.json() if resp.text else {}
+    root = ((payload.get("data") or {}).get(code) or {})
+    rows = root.get("day") or root.get("qfqday") or []
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        parsed = _parse_tencent_index_kline_row(row)
+        if parsed:
+            out.append(parsed)
+    return out
+
+
+def reconcile_index_activity(
+    *,
+    local_volume: Any = None,
+    live_volume: Any = None,
+    live_amount: Any = None,
+    hist_volume_shares: Any = None,
+    hist_amount: Any = None,
+    live_source: str = "",
+) -> Dict[str, Any]:
+    """Cross-check index volume (lots) and turnover (yuan)."""
+    volume_lots = _safe_float(local_volume)
+    if volume_lots is None:
+        volume_lots = _safe_float(live_volume)
+    live_volume_f = _safe_float(live_volume)
+    live_amount_f = _safe_float(live_amount)
+    hist_amount_f = _safe_float(hist_amount)
+    amount = live_amount_f if live_amount_f is not None else hist_amount_f
+    volume_shares = volume_lots * _INDEX_VOLUME_LOT_SIZE if volume_lots is not None else None
+    checks: List[Dict[str, Any]] = []
+
+    if volume_lots is not None and live_volume_f is not None:
+        checks.append(
+            {
+                "field": "volume",
+                "status": "match" if _rel_close(volume_lots, live_volume_f) else "mismatch",
+                "local": volume_lots,
+                "ref": live_volume_f,
+                "unit": "手",
+                "source": live_source or "tencent",
+            }
+        )
+    shares_ref = _safe_float(hist_volume_shares)
+    if volume_shares is not None and shares_ref is not None:
+        checks.append(
+            {
+                "field": "volume_shares",
+                "status": "match" if _rel_close(volume_shares, shares_ref) else "mismatch",
+                "local": volume_shares,
+                "ref": shares_ref,
+                "unit": "股",
+                "note": "新浪日线成交量为股=手×100",
+            }
+        )
+    if live_amount_f is not None and hist_amount_f is not None:
+        checks.append(
+            {
+                "field": "amount",
+                "status": "match" if _rel_close(live_amount_f, hist_amount_f, tol=0.005) else "mismatch",
+                "local": hist_amount_f,
+                "ref": live_amount_f,
+                "unit": "元",
+                "source": live_source or "tencent",
+            }
+        )
+    elif amount is not None:
+        checks.append(
+            {
+                "field": "amount",
+                "status": "ok",
+                "ref": amount,
+                "unit": "元",
+                "source": live_source or "tencent",
+            }
+        )
+
+    notes = []
+    if volume_lots is not None:
+        notes.append("成交量单位为手（与腾讯/新浪现货一致）。")
+        notes.append("新浪日线成交量为股，等于手×100。")
+    if amount is not None:
+        notes.append("成交额单位为元（腾讯日线万元×10000）。")
+    matched = [c for c in checks if c.get("status") == "match"]
+    mismatched = [c for c in checks if c.get("status") == "mismatch"]
+    if matched and not mismatched:
+        notes.append("校对通过：本地日线与腾讯/新浪一致。")
+    elif mismatched:
+        notes.append("校对存在偏差，请核对数据源。")
+
+    return {
+        "volume": volume_lots,
+        "volume_unit": "手",
+        "volume_shares": volume_shares,
+        "amount": amount,
+        "amount_unit": "元",
+        "checks": checks,
+        "checked": bool(matched) and not mismatched,
+        "note": " ".join(notes),
+        "source": live_source or "tencent",
+    }
+
+
+def load_index_activity(symbol: str, *, local_volume: Any = None) -> Dict[str, Any]:
+    """Latest index volume/amount plus cross-check against Tencent."""
+    cache_key = f"index:activity:v1:{_code6(symbol)}"
+    cached = _cache_get(cache_key)
+    live: Dict[str, Any] = {}
+    hist_last: Dict[str, Any] = {}
+    if isinstance(cached, dict) and cached.get("live"):
+        live = dict(cached.get("live") or {})
+        hist_last = dict(cached.get("hist_last") or {})
+    else:
+        live = _call_with_timeout(
+            lambda: _fetch_index_tencent_quote(symbol),
+            3.0,
+            default={},
+        ) or {}
+        daily = _call_with_timeout(
+            lambda: _fetch_index_tencent_daily(symbol, days=8),
+            4.0,
+            default=[],
+        ) or []
+        hist_last = daily[-1] if daily else {}
+        _cache_set(cache_key, {"live": live, "hist_last": hist_last}, 180)
+
+    return reconcile_index_activity(
+        local_volume=local_volume if local_volume not in (None, 0) else live.get("volume"),
+        live_volume=live.get("volume") if live.get("volume") not in (None, 0) else hist_last.get("volume"),
+        live_amount=live.get("amount"),
+        hist_amount=hist_last.get("amount"),
+        live_source=str(live.get("source") or "tencent_quote"),
+    )
+
+
+def _merge_index_history_amount(
+    points: List[Dict[str, Any]],
+    daily: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    by_date = {str(row.get("date") or "")[:10]: row for row in daily if row.get("date")}
+    out: List[Dict[str, Any]] = []
+    for row in points:
+        item = dict(row)
+        extra = by_date.get(str(item.get("date") or "")[:10]) or {}
+        if item.get("amount") in (None, 0) and extra.get("amount") is not None:
+            item["amount"] = extra.get("amount")
+        if item.get("volume") in (None, 0) and extra.get("volume") is not None:
+            item["volume"] = extra.get("volume")
+        out.append(item)
+    if points:
+        return out
+    return [
+        {
+            "date": row.get("date"),
+            "price": row.get("price"),
+            "volume": row.get("volume"),
+            "amount": row.get("amount"),
+        }
+        for row in daily
+    ]
+
+
 def _query_index_ohlcv(symbol: str, *, days: int) -> List[Dict[str, Any]]:
     """Daily OHLCV for a CN index symbol such as ``000016.SH``."""
     from app.utils.db import get_db_connection
@@ -1357,6 +1623,12 @@ def build_index_metrics_history(
         freq = "day"
 
     ohlcv = _query_index_ohlcv(symbol, days=days_i)
+    daily = _call_with_timeout(
+        lambda: _fetch_index_tencent_daily(symbol, days=days_i),
+        5.0,
+        default=[],
+    ) or []
+    ohlcv = _merge_index_history_amount(ohlcv, daily)
     try:
         metrics = enrich_index_metrics(symbol)
     except Exception as exc:
@@ -1374,6 +1646,7 @@ def build_index_metrics_history(
                 "date": row.get("date"),
                 "price": row.get("price"),
                 "volume": row.get("volume"),
+                "amount": row.get("amount"),
                 "avg_pe": pe,
                 "avg_profit_margin": margin,
                 "constituent_profit_sum": profit_sum,
@@ -1383,7 +1656,11 @@ def build_index_metrics_history(
     if freq in {"week", "month"} and points:
         points = _resample_metric_points(points, freq)
 
-    notes = ["点位/成交量来自本地日线（qd_market_bars）。"]
+    notes = [
+        "点位/成交量来自本地日线（qd_market_bars，单位：手）。",
+        "成交额来自腾讯日线（万元×10000=元），并与现货校对。",
+        "新浪日线成交量为股=手×100。",
+    ]
     if pe is not None:
         notes.append(f"成份加权 PE 约 {pe:.2f}（水平参考）。")
     if profit_sum is not None:

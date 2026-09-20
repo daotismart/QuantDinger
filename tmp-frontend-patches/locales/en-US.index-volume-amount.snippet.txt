@@ -1,0 +1,3 @@
+"marketComposite.etf.metrics.indexVolumeAmountTrend": "Volume / turnover",
+"marketComposite.etf.metrics.volumeShares": "Shares equiv.",
+"marketComposite.etf.metrics.activityChecked": "Volume and turnover checked against Tencent / Sina"
