@@ -21,14 +21,16 @@ Backend
     spot.index.etf_share
     spot.index.option_greeks
   Options panel cache key etf_options_panel:v3:{code6}:all is cache-only on
-  the index request path (no live build_etf_options_panel). Cache miss leaves
-  greeks empty rather than blocking price/volume/holdings/PE.
+  the index *spot* request path (no live build_etf_options_panel there).
+  The index tab separately loads GET /options?scope=etf for the selected ETF
+  so ETF期权风险数据 (greeks/GEX) and 对应期权希腊字母名义资金 still render
+  on a cold cache. That live fetch also warms the Redis panel cache.
   Index enrich uses cache/DB constituent snapshots (live=False).
 
   Index tab also loads IH/IF futures + HO/IO options in parallel with spot:
-  风险数据 = HO greeks / GEX; 股指期货 = monthly IH; 股指期货期权 = HO capital.
-  Those three sections render as soon as the ETF maps to IH/HO (spinner / empty
-  state), above the constituent table — they are not gated on the spot panel.
+  股指期货期权风险数据 = HO greeks / GEX; 股指期货 = monthly IH;
+  股指期货期权 = HO capital. ETF期权风险数据 = selected ETF option greeks/GEX.
+  Those sections render as soon as the ETF maps to options / IH/HO.
 
 Frontend (QuantDinger-Vue)
   src/views/market-composite-analysis/etf-derivatives.vue
