@@ -20,8 +20,10 @@ Backend
     spot.index.linked_etfs
     spot.index.etf_share
     spot.index.option_greeks
-  Options panel cache key etf_options_panel:v3:{code6}:all is read first;
-  cache miss falls back to build_etf_options_panel(..., 25s).
+  Options panel cache key etf_options_panel:v3:{code6}:all is cache-only on
+  the index request path (no live build_etf_options_panel). Cache miss leaves
+  greeks empty rather than blocking price/volume/holdings/PE.
+  Index enrich uses cache/DB constituent snapshots (live=False).
 
 Frontend (QuantDinger-Vue)
   src/views/market-composite-analysis/etf-derivatives.vue

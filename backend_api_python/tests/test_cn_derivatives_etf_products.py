@@ -178,28 +178,33 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
             "combined_share_pct": 0.2578,
         },
     )
-    monkeypatch.setattr(etf_mod, "_etf_options_cache_get", lambda key: None)
+    option_panel = {
+        "greeks": {"delta": 1e7, "gamma": 2e5, "vega": 3e6, "theta": -4e5},
+        "underlying": 2.97,
+        "gex_summary": {"net_gex": 5.94e5},
+        "multiplier": 10000,
+        "capital_curve": {
+            "total": {
+                "premium_total": 1.2e8,
+                "margin_total": 4.5e8,
+                "margin_short_total": 4.5e8,
+                "time_value_total": 3.3e7,
+            }
+        },
+    }
+    monkeypatch.setattr(
+        etf_mod,
+        "_etf_options_cache_get",
+        lambda key: option_panel if key.endswith(":510050:all") else None,
+    )
     monkeypatch.setattr(
         etf_mod,
         "build_etf_options_panel",
-        lambda code, month=None: {
-            "greeks": {"delta": 1e7, "gamma": 2e5, "vega": 3e6, "theta": -4e5},
-            "underlying": 2.97,
-            "gex_summary": {"net_gex": 5.94e5},
-            "multiplier": 10000,
-            "capital_curve": {
-                "total": {
-                    "premium_total": 1.2e8,
-                    "margin_total": 4.5e8,
-                    "margin_short_total": 4.5e8,
-                    "time_value_total": 3.3e7,
-                }
-            },
-        },
+        lambda code, month=None: (_ for _ in ()).throw(AssertionError("live option rebuild")),
     )
     monkeypatch.setattr(
         "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
-        lambda symbol: {
+        lambda symbol, live=False: {
             "holdings_count": 50,
             "avg_pe": 12.5,
             "avg_profit_margin": 16.2,
@@ -242,3 +247,58 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     assert "保证金" in text
     assert "时间价值" in text
     assert "运作费率" not in text
+
+
+def test_spot_index_panel_skips_live_option_rebuild_on_cache_miss(monkeypatch):
+    monkeypatch.setattr(
+        etf_mod,
+        "_index_row_from_local_bars",
+        lambda symbol: {"code": symbol, "name": "上证50指数", "price": 2860.77, "volume": 123},
+    )
+    monkeypatch.setattr(etf_mod, "_ENRICH_TIMEOUT_SEC", 2.0)
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.load_index_activity",
+        lambda symbol, local_volume=None: {
+            "volume": 39360945.0,
+            "volume_unit": "手",
+            "amount": 138366086012.0,
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.build_index_etf_shares",
+        lambda codes, index_market_cap=None, primary="": {
+            "etfs": [{"code": "510050", "name": "上证50ETF", "scale": 2.32e10, "share_pct": 0.2578, "primary": True}],
+            "primary": "510050",
+            "total_scale": 2.32e10,
+            "index_market_cap": 9e12,
+            "combined_share_pct": 0.2578,
+        },
+    )
+    monkeypatch.setattr(etf_mod, "_etf_options_cache_get", lambda key: None)
+    monkeypatch.setattr(
+        etf_mod,
+        "build_etf_options_panel",
+        lambda code, month=None: (_ for _ in ()).throw(AssertionError("live option rebuild")),
+    )
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
+        lambda symbol, live=False: {
+            "holdings_count": 50,
+            "avg_pe": 12.5,
+            "constituent_market_cap_sum": 9e12,
+            "holdings": [{"code": "600519", "name": "贵州茅台"}],
+        },
+    )
+    started = time.monotonic()
+    panel = etf_mod.build_spot_index_panel("000016.SH", etf_code="510050")
+    assert time.monotonic() - started < 2.0
+    idx = panel["spot"]["index"]
+    assert idx["price"] == 2860.77
+    assert idx["volume"] == 39360945.0
+    assert idx["amount"] == 138366086012.0
+    assert idx["holdings_count"] == 50
+    assert idx["avg_pe"] == 12.5
+    assert idx["etf_share"]["combined_share_pct"] == 0.2578
+    assert idx["option_greeks"].get("delta_notional") is None
+    assert idx["option_greeks"].get("etfs") == []
+    assert "Delta 名义资金" not in "".join(panel["analysis"])
