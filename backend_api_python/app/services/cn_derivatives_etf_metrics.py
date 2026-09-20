@@ -565,7 +565,11 @@ def _load_index_constituent_rows(index_code: str) -> List[Dict[str, Any]]:
 
     rows: List[Dict[str, Any]] = []
     try:
-        frame = _ak().index_stock_cons_weight_csindex(symbol=index_code)
+        frame = _call_with_timeout(
+            lambda: _ak().index_stock_cons_weight_csindex(symbol=index_code),
+            5.0,
+            default=None,
+        )
     except Exception as exc:
         logger.warning("index_stock_cons_weight_csindex %s failed: %s", index_code, exc)
         return rows
@@ -645,7 +649,13 @@ def _load_constituent_base_rows(code6: str) -> Tuple[List[Dict[str, Any]], str, 
     return rows, "fund_portfolio_hold_em", quarter
 
 
-def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 180.0, batch_size: int = 50) -> Dict[str, Dict[str, Any]]:
+def _enrich_constituent_snapshots(
+    codes: List[str],
+    *,
+    timeout: float = 180.0,
+    batch_size: int = 50,
+    live: bool = True,
+) -> Dict[str, Dict[str, Any]]:
     unique = []
     seen = set()
     for code in codes or []:
@@ -693,6 +703,13 @@ def _enrich_constituent_snapshots(codes: List[str], *, timeout: float = 180.0, b
             logger.debug("constituent db batch load failed: %s", exc)
 
     if not pending:
+        return snapshots
+
+    if not live:
+        for code in pending:
+            cached = _cache_get(f"etf:constituent_snapshot:{code}")
+            if isinstance(cached, dict) and cached:
+                snapshots[code] = cached
         return snapshots
 
     per_batch = max(30.0, float(timeout) / max(1, (len(pending) + batch_size - 1) // batch_size))
@@ -1233,8 +1250,13 @@ def build_etf_metrics_history(
     }
 
 
-def enrich_index_metrics(index_symbol: str) -> Dict[str, Any]:
-    """Benchmark-index constituent metrics (not the linked ETF)."""
+def enrich_index_metrics(index_symbol: str, *, live: bool = False) -> Dict[str, Any]:
+    """Benchmark-index constituent metrics (not the linked ETF).
+
+    Request path uses ``live=False`` so the index panel never starts a nested
+    East-Money snapshot walk (50 names can run well past the outer 8s timeout
+    and pin gunicorn gthreads). Stale ``index:metrics_bundle`` wins over empty.
+    """
     code6 = _code6(index_symbol)
     empty: Dict[str, Any] = {
         "code": code6,
@@ -1265,7 +1287,11 @@ def enrich_index_metrics(index_symbol: str) -> Dict[str, Any]:
     if not rows:
         return empty
 
-    snapshots = _enrich_constituent_snapshots([r.get("code") for r in rows], timeout=12.0)
+    snapshots = _enrich_constituent_snapshots(
+        [r.get("code") for r in rows],
+        timeout=12.0 if live else 0.05,
+        live=live,
+    )
     merged = _merge_holdings_metrics(rows, snapshots)
     holdings = []
     for item in merged.get("holdings") or []:
@@ -1291,7 +1317,9 @@ def enrich_index_metrics(index_symbol: str) -> Dict[str, Any]:
         "source": "index_stock_cons_weight_csindex",
         "metrics_asof": datetime.now().isoformat(timespec="seconds"),
     }
-    _cache_set(cache_key, out, 900 if holdings else 120)
+    cov = int(out.get("market_cap_coverage") or 0)
+    complete = bool(holdings) and cov >= max(10, len(holdings) // 2)
+    _cache_set(cache_key, out, 900 if complete else 120)
     return out
 
 

@@ -28,12 +28,17 @@ def test_products_include_benchmark_index_and_options_flags():
     assert row["index_symbol"] == "000016.SH"
     assert row["index_name"]
     assert row["index_futures_root"] == "IH"
+    assert row["index_option_root"] == "HO"
 
 
 def test_star50_and_chinext_have_index_without_futures():
     rows = {r["underlying_code"]: r for r in list_etf_derivative_products()}
     assert rows["588000"]["index_symbol"] == "000688.SH"
     assert rows["588000"]["index_futures_root"] == ""
+    assert rows["588000"].get("index_option_root") in ("", None)
+    assert rows["588080"]["index_symbol"] == "000688.SH"
+    assert rows["588080"]["index_futures_root"] == ""
+    assert rows["588080"].get("index_option_root") in ("", None)
     assert rows["159915"]["index_symbol"] == "399006.SZ"
     assert rows["159915"]["index_futures_root"] == ""
 
@@ -135,8 +140,52 @@ def test_linked_etf_codes_for_index():
     assert etf_mod.linked_etf_codes_for_index("000016.SH") == ["510050"]
     assert "510300" in etf_mod.linked_etf_codes_for_index("000300.SH")
     assert etf_mod.linked_etf_codes_for_index("399006.SZ") == ["159915"]
+    assert etf_mod.linked_etf_codes_for_index("000688.SH") == ["588000", "588080"]
     assert etf_mod._resolve_linked_etf_code("000688.SH", "588080") == "588080"
     assert etf_mod._resolve_linked_etf_code("000688.SH", "") == "588000"
+
+
+def test_star50_index_option_notionals_merge_both_etfs(monkeypatch):
+    panels = {
+        "588000": {
+            "greeks": {"delta": 1e6, "gamma": 2e4, "vega": 3e5, "theta": -4e4},
+            "underlying": 1.40,
+            "gex_summary": {"net_gex": 1.1e5},
+            "capital_curve": {
+                "total": {
+                    "premium_total": 1.0e7,
+                    "margin_total": 2.0e7,
+                    "time_value_total": 3.0e6,
+                }
+            },
+        },
+        "588080": {
+            "greeks": {"delta": 5e5, "gamma": 1e4, "vega": 1.5e5, "theta": -2e4},
+            "underlying": 1.41,
+            "gex_summary": {"net_gex": 6.0e4},
+            "capital_curve": {
+                "total": {
+                    "premium_total": 4.0e6,
+                    "margin_total": 8.0e6,
+                    "time_value_total": 1.2e6,
+                }
+            },
+        },
+    }
+    monkeypatch.setattr(
+        etf_mod,
+        "_etf_options_cache_get",
+        lambda key: next((panel for code, panel in panels.items() if key.endswith(f":{code}:all")), None),
+    )
+    out = etf_mod._build_index_option_notionals(["588000", "588080"], "588000")
+    assert {row["etf_code"] for row in out["etfs"]} == {"588000", "588080"}
+    assert out["etf_count"] == 2
+    assert out["etf_code"] == "588000"
+    assert out["delta_notional"] == pytest.approx(1e6 * 1.40 + 5e5 * 1.41)
+    assert out["gamma_notional"] == pytest.approx(1.1e5 + 6.0e4)
+    assert out["premium_total"] == pytest.approx(1.4e7)
+    assert out["margin_total"] == pytest.approx(2.8e7)
+    assert out["time_value_total"] == pytest.approx(4.2e6)
 
 
 def test_spot_index_panel_attaches_index_analysis(monkeypatch):
@@ -178,28 +227,33 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
             "combined_share_pct": 0.2578,
         },
     )
-    monkeypatch.setattr(etf_mod, "_etf_options_cache_get", lambda key: None)
+    option_panel = {
+        "greeks": {"delta": 1e7, "gamma": 2e5, "vega": 3e6, "theta": -4e5},
+        "underlying": 2.97,
+        "gex_summary": {"net_gex": 5.94e5},
+        "multiplier": 10000,
+        "capital_curve": {
+            "total": {
+                "premium_total": 1.2e8,
+                "margin_total": 4.5e8,
+                "margin_short_total": 4.5e8,
+                "time_value_total": 3.3e7,
+            }
+        },
+    }
+    monkeypatch.setattr(
+        etf_mod,
+        "_etf_options_cache_get",
+        lambda key: option_panel if key.endswith(":510050:all") else None,
+    )
     monkeypatch.setattr(
         etf_mod,
         "build_etf_options_panel",
-        lambda code, month=None: {
-            "greeks": {"delta": 1e7, "gamma": 2e5, "vega": 3e6, "theta": -4e5},
-            "underlying": 2.97,
-            "gex_summary": {"net_gex": 5.94e5},
-            "multiplier": 10000,
-            "capital_curve": {
-                "total": {
-                    "premium_total": 1.2e8,
-                    "margin_total": 4.5e8,
-                    "margin_short_total": 4.5e8,
-                    "time_value_total": 3.3e7,
-                }
-            },
-        },
+        lambda code, month=None: (_ for _ in ()).throw(AssertionError("live option rebuild")),
     )
     monkeypatch.setattr(
         "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
-        lambda symbol: {
+        lambda symbol, live=False: {
             "holdings_count": 50,
             "avg_pe": 12.5,
             "avg_profit_margin": 16.2,
@@ -242,3 +296,58 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     assert "保证金" in text
     assert "时间价值" in text
     assert "运作费率" not in text
+
+
+def test_spot_index_panel_skips_live_option_rebuild_on_cache_miss(monkeypatch):
+    monkeypatch.setattr(
+        etf_mod,
+        "_index_row_from_local_bars",
+        lambda symbol: {"code": symbol, "name": "上证50指数", "price": 2860.77, "volume": 123},
+    )
+    monkeypatch.setattr(etf_mod, "_ENRICH_TIMEOUT_SEC", 2.0)
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.load_index_activity",
+        lambda symbol, local_volume=None: {
+            "volume": 39360945.0,
+            "volume_unit": "手",
+            "amount": 138366086012.0,
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.build_index_etf_shares",
+        lambda codes, index_market_cap=None, primary="": {
+            "etfs": [{"code": "510050", "name": "上证50ETF", "scale": 2.32e10, "share_pct": 0.2578, "primary": True}],
+            "primary": "510050",
+            "total_scale": 2.32e10,
+            "index_market_cap": 9e12,
+            "combined_share_pct": 0.2578,
+        },
+    )
+    monkeypatch.setattr(etf_mod, "_etf_options_cache_get", lambda key: None)
+    monkeypatch.setattr(
+        etf_mod,
+        "build_etf_options_panel",
+        lambda code, month=None: (_ for _ in ()).throw(AssertionError("live option rebuild")),
+    )
+    monkeypatch.setattr(
+        "app.services.cn_derivatives_etf_metrics.enrich_index_metrics",
+        lambda symbol, live=False: {
+            "holdings_count": 50,
+            "avg_pe": 12.5,
+            "constituent_market_cap_sum": 9e12,
+            "holdings": [{"code": "600519", "name": "贵州茅台"}],
+        },
+    )
+    started = time.monotonic()
+    panel = etf_mod.build_spot_index_panel("000016.SH", etf_code="510050")
+    assert time.monotonic() - started < 2.0
+    idx = panel["spot"]["index"]
+    assert idx["price"] == 2860.77
+    assert idx["volume"] == 39360945.0
+    assert idx["amount"] == 138366086012.0
+    assert idx["holdings_count"] == 50
+    assert idx["avg_pe"] == 12.5
+    assert idx["etf_share"]["combined_share_pct"] == 0.2578
+    assert idx["option_greeks"].get("delta_notional") is None
+    assert idx["option_greeks"].get("etfs") == []
+    assert "Delta 名义资金" not in "".join(panel["analysis"])
