@@ -187,6 +187,14 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
             "underlying": 2.97,
             "gex_summary": {"net_gex": 5.94e5},
             "multiplier": 10000,
+            "capital_curve": {
+                "total": {
+                    "premium_total": 1.2e8,
+                    "margin_total": 4.5e8,
+                    "margin_short_total": 4.5e8,
+                    "time_value_total": 3.3e7,
+                }
+            },
         },
     )
     monkeypatch.setattr(
@@ -218,6 +226,10 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     assert idx["etf_share"]["combined_share_pct"] == 0.2578
     assert idx["option_greeks"]["delta_notional"] == pytest.approx(1e7 * 2.97)
     assert idx["option_greeks"]["gamma_notional"] == 5.94e5
+    assert idx["option_greeks"]["premium_total"] == 1.2e8
+    assert idx["option_greeks"]["margin_total"] == 4.5e8
+    assert idx["option_greeks"]["time_value_total"] == 3.3e7
+    assert idx["option_greeks"]["etfs"][0]["etf_code"] == "510050"
     text = "".join(panel["analysis"])
     assert "上证50指数" in text
     assert "12.50" in text
@@ -226,4 +238,7 @@ def test_spot_index_panel_attaches_index_analysis(monkeypatch):
     assert "校对通过" in text
     assert "占指数成份市值" in text
     assert "Delta 名义资金" in text
+    assert "权利金" in text
+    assert "保证金" in text
+    assert "时间价值" in text
     assert "运作费率" not in text

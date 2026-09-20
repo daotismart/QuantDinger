@@ -6,11 +6,13 @@ Share
   share_pct = ETF scale / index constituent_market_cap_sum * 100
   Multiple linked ETFs also get combined_share_pct and etf_group_share_pct.
 
-Greeks (primary linked ETF, all-month options panel)
+Greeks + capital (all linked ETFs, all-month options panel)
   delta_notional = portfolio Delta * spot
   gamma_notional = Net GEX (or Gamma * spot)
   vega_notional  = yuan per 1% vol
   theta_notional = yuan per day
+  premium_total / margin_total / time_value_total from capital_curve.total
+  Top cards are the yuan sum; option_greeks.etfs is the per-ETF breakdown.
 
 Backend
   GET /api/cn-derivatives/spot?scope=etf&picker_kind=spot_index&root=000016.SH&etf=510050

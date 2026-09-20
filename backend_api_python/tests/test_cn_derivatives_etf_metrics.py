@@ -224,6 +224,60 @@ def test_compute_option_greek_notionals():
     assert out["theta_notional"] == -8.0
 
 
+def test_option_notionals_from_options_panel_includes_capital():
+    panel = {
+        "greeks": {"delta": 10.0, "gamma": 2.0, "vega": 4.0, "theta": -1.0},
+        "underlying": 2.5,
+        "gex_summary": {"net_gex": 8.0},
+        "multiplier": 10000,
+        "capital_curve": {
+            "total": {
+                "premium_total": 100.0,
+                "margin_total": 300.0,
+                "margin_short_total": 300.0,
+                "margin_long_total": 100.0,
+                "time_value_total": 40.0,
+            }
+        },
+    }
+    out = metrics.option_notionals_from_options_panel(panel)
+    assert out["delta_notional"] == 25.0
+    assert out["premium_total"] == 100.0
+    assert out["margin_total"] == 300.0
+    assert out["time_value_total"] == 40.0
+
+
+def test_merge_option_notionals_sums_etfs():
+    rows = [
+        {
+            "etf_code": "510300",
+            "etf_name": "沪深300ETF",
+            "primary": True,
+            "spot": 4.1,
+            "delta_notional": 10.0,
+            "premium_total": 100.0,
+            "margin_total": 200.0,
+            "time_value_total": 30.0,
+        },
+        {
+            "etf_code": "159919",
+            "etf_name": "沪深300ETF",
+            "primary": False,
+            "delta_notional": 5.0,
+            "premium_total": 50.0,
+            "margin_total": 80.0,
+            "time_value_total": 20.0,
+        },
+    ]
+    out = metrics.merge_option_notionals(rows)
+    assert out["delta_notional"] == 15.0
+    assert out["premium_total"] == 150.0
+    assert out["margin_total"] == 280.0
+    assert out["time_value_total"] == 50.0
+    assert out["etf_code"] == "510300"
+    assert out["etf_count"] == 2
+
+
 def test_estimate_etf_amount_uses_lot_volume():
     # Local/EM 成交量单位是手（100 股）。
     assert metrics.estimate_etf_amount(2.975, 4851416) == 2.975 * 4851416 * 100
