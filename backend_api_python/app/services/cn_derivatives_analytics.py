@@ -374,6 +374,17 @@ def _spot_board_row(root: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+_CFFEX_FINANCIAL_ROOTS = frozenset({"IF", "IH", "IC", "IM", "IO", "HO", "MO", "T", "TF", "TS", "TL"})
+
+
+def _futures_spot_markets(symbol: str) -> List[str]:
+    """CFFEX financials need Sina FF; commodities use CF. Try the other as fallback."""
+    letters = "".join(ch for ch in str(symbol or "") if ch.isalpha()).upper()
+    if letters in _CFFEX_FINANCIAL_ROOTS:
+        return ["FF", "CF"]
+    return ["CF", "FF"]
+
+
 def _futures_zh_spot(symbol: str) -> Optional[Dict[str, Any]]:
     code = str(symbol or "").strip()
     if not code:
@@ -384,29 +395,33 @@ def _futures_zh_spot(symbol: str) -> Optional[Dict[str, Any]]:
         queries.extend([code.upper(), code.lower()])
     else:
         queries.extend([code.lower(), code.upper()])
-    for query in queries:
-        try:
-            frame = ak.futures_zh_spot(symbol=query, market="CF", adjust="0")
-            if frame is None or getattr(frame, "empty", True):
-                continue
-            row = frame.iloc[-1]
-            return {
-                "symbol": query,
-                "name": str(row.get("symbol") or query),
-                "price": _safe_float(row.get("current_price")),
-                "open": _safe_float(row.get("open")),
-                "high": _safe_float(row.get("high")),
-                "low": _safe_float(row.get("low")),
-                "bid": _safe_float(row.get("bid_price")),
-                "ask": _safe_float(row.get("ask_price")),
-                "volume": _safe_float(row.get("volume")),
-                "open_interest": _safe_float(row.get("hold")),
-                "avg_price": _safe_float(row.get("avg_price")),
-                "prev_close": _safe_float(row.get("last_close")),
-                "prev_settle": _safe_float(row.get("last_settle_price")),
-            }
-        except Exception as exc:
-            logger.debug("futures_zh_spot %s failed: %s", query, exc)
+    for market in _futures_spot_markets(code):
+        for query in queries:
+            try:
+                frame = ak.futures_zh_spot(symbol=query, market=market, adjust="0")
+                if frame is None or getattr(frame, "empty", True):
+                    continue
+                row = frame.iloc[-1]
+                price = _safe_float(row.get("current_price"))
+                if price is None or price <= 0:
+                    continue
+                return {
+                    "symbol": query,
+                    "name": str(row.get("symbol") or query),
+                    "price": price,
+                    "open": _safe_float(row.get("open")),
+                    "high": _safe_float(row.get("high")),
+                    "low": _safe_float(row.get("low")),
+                    "bid": _safe_float(row.get("bid_price")),
+                    "ask": _safe_float(row.get("ask_price")),
+                    "volume": _safe_float(row.get("volume")),
+                    "open_interest": _safe_float(row.get("hold")),
+                    "avg_price": _safe_float(row.get("avg_price")),
+                    "prev_close": _safe_float(row.get("last_close")),
+                    "prev_settle": _safe_float(row.get("last_settle_price")),
+                }
+            except Exception as exc:
+                logger.debug("futures_zh_spot %s market=%s failed: %s", query, market, exc)
     return None
 
 
@@ -717,7 +732,12 @@ def build_spot_panel(root: str) -> Dict[str, Any]:
 def build_futures_panel(root: str) -> Dict[str, Any]:
     root_u = str(root or "").upper()
     product = _product_payload(root_u)
-    board = _spot_board_row(root_u)
+    # Commodity futures_spot_price_daily has no CFFEX index rows and wastes
+    # several seconds on non-trading days.
+    if root_u in _CFFEX_FINANCIAL_ROOTS:
+        board = None
+    else:
+        board = _spot_board_row(root_u)
     opt_root = index_option_root_for_futures(root_u)
     months = _option_months(opt_root or root_u)
     chain_root = opt_root or root_u

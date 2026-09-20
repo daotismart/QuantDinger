@@ -230,6 +230,12 @@ def test_index_option_root_for_futures():
     assert svc.index_option_root_for_futures("IC") == ""
 
 
+def test_futures_spot_markets_prefers_ff_for_cffex():
+    assert svc._futures_spot_markets("IH0") == ["FF", "CF"]
+    assert svc._futures_spot_markets("ih2609") == ["FF", "CF"]
+    assert svc._futures_spot_markets("m2505") == ["CF", "FF"]
+
+
 def test_build_futures_panel_ih_uses_ho_months_without_option_walk(monkeypatch):
     quotes = {
         "ih2609": {"price": 2862.0, "volume": 100, "open_interest": 200, "prev_settle": 0.0},
