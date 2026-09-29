@@ -1,4 +1,4 @@
-import { buildCallPutStackedGexSeries, buildStackedNetGexSeries } from './gex-chart-series.js'
+import { buildCallPutStackedGexSeries, buildOiStrikeChart, buildStackedNetGexSeries } from './gex-chart-series.js'
 
 function assert (cond, msg) {
   if (!cond) throw new Error(msg)
@@ -51,5 +51,19 @@ const twoMonths = [
 const stacked = buildStackedNetGexSeries(twoMonths, [{ strike: 1.5, net_gex: 15 }], palette, marks)
 assert(stacked.series.filter(s => s.type === 'bar').length === 2, 'all-months Net GEX stacks per month')
 assert(stacked.series.some(s => s.type === 'line' && s.name === 'Net GEX'), 'all-months keep Net GEX line')
+assert(net.xAxis && net.xAxis.type === 'value', 'Net GEX x-axis must be numeric')
+assert(stacked.xAxis && stacked.xAxis.type === 'value', 'stacked Net GEX x-axis must be numeric')
+const netFlip = buildStackedNetGexSeries([{ month: '202610', gex_distribution: wide }], wide, palette, flipMarks)
+const netFlipMark = (((netFlip.series.find(s => s.markLine) || {}).markLine || {}).data || []).find(m => m.name === 'Flip')
+assert(netFlipMark && Math.abs(netFlipMark.xAxis - 1.503) < 1e-9, `Net GEX Flip must sit at 1.503, got ${netFlipMark && netFlipMark.xAxis}`)
+
+const oiPoints = wide.map(p => ({ strike: p.strike, call_oi: 10, put_oi: 8, net_oi: 2 }))
+const oi = buildOiStrikeChart(oiPoints, flipMarks)
+assert(oi.xAxis && oi.xAxis.type === 'value', 'OI x-axis must be numeric')
+assert(!Array.isArray(oi.xAxis.data), 'OI numeric x-axis must not carry category labels')
+const oiBar = oi.series.find(s => s.name === 'Call OI')
+assert(Array.isArray(oiBar.data[0]) && oiBar.data[0][0] === 1.3, `OI bars must be [strike, value], got ${JSON.stringify(oiBar.data[0])}`)
+const oiFlip = (((oi.series.find(s => s.markLine) || {}).markLine || {}).data || []).find(m => m.name === 'Flip')
+assert(oiFlip && Math.abs(oiFlip.xAxis - 1.503) < 1e-9, `OI Flip must sit at 1.503, got ${oiFlip && oiFlip.xAxis}`)
 
 console.log('gex-chart-series.test.mjs ok')
