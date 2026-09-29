@@ -551,6 +551,7 @@ import {
   callPutValueAxis
 } from './gex-chart-series'
 import { buildStrikeMarkLineData as createStrikeMarkLineData } from './strike-mark-lines'
+import { formatIvKlineTooltip, ivKlineMaSeries } from './iv-kline-ma'
 
 // Same-benchmark option underlyings that must always appear together on the
 // index tab (STAR 50: 588000 Huatai-PineBridge + 588080 E Fund).
@@ -2697,12 +2698,13 @@ export default {
         if (r.open == null || r.close == null) return [null, null, null, null]
         return [r.open, r.close, r.low, r.high]
       })
+      const closes = rows.map(r => (r.close == null ? null : Number(r.close)))
       const slice = this.historySlices[this.historySliceIndex] || {}
       const markLabel = slice.label || slice.ts || labels[this.historySliceIndex]
       const month = (rows.find(r => r.month) || {}).month
       chart.setOption({
         ...this.baseChartOption(),
-        legend: { top: 0, textStyle: { color: this.chartText } },
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         grid: { left: 56, right: 24, top: 48, bottom: 48 },
         xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
         yAxis: {
@@ -2714,18 +2716,7 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'cross' },
-          formatter: params => {
-            const item = Array.isArray(params) ? params[0] : params
-            if (!item || !item.data) return ''
-            const [o, c, l, h] = item.data
-            if (o == null) return `${item.axisValue}<br/>--`
-            const pct = v => `${(Number(v) * 100).toFixed(2)}%`
-            return [
-              item.axisValue,
-              `O ${pct(o)} / C ${pct(c)}`,
-              `L ${pct(l)} / H ${pct(h)}`
-            ].join('<br/>')
-          }
+          formatter: formatIvKlineTooltip
         },
         series: [
           {
@@ -2748,7 +2739,8 @@ export default {
                 data: [{ xAxis: markLabel }]
               }
               : undefined
-          }
+          },
+          ...ivKlineMaSeries(closes)
         ]
       }, true)
     },
