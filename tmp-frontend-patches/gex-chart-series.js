@@ -7,7 +7,12 @@
  * pairs on a numeric x-axis so Price / Flip marks can sit between strikes.
  */
 
-import { pairPointField, pairStrikeData } from './strike-mark-lines.js'
+import {
+  markLineXValues,
+  pairPointField,
+  pairStrikeData,
+  strikeValueAxis
+} from './strike-mark-lines.js'
 
 const CALL_PALETTE = ['#237804', '#389e0d', '#52c41a', '#73d13d', '#95de64', '#b7eb8f', '#d9f7be']
 const PUT_PALETTE = ['#a8071a', '#cf1322', '#f5222d', '#ff4d4f', '#ff7875', '#ffa39e', '#ffccc7']
@@ -154,7 +159,15 @@ export function buildCallPutStackedGexSeries (monthSeries, points, buildMarks) {
     })
   }
 
-  return { strikes, series, valueRange: symmetricValueRange(series) }
+  const valueRange = symmetricValueRange(series)
+  return {
+    strikes,
+    series,
+    valueRange,
+    xAxis: strikeValueAxis(strikes, markLineXValues(series), {
+      axisLine: { onZero: true }
+    })
+  }
 }
 
 function sliceMonthTotal (slice, month, field) {

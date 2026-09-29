@@ -2093,14 +2093,14 @@ export default {
     applyCallPutGexChart (chart, monthSeries, points, buildMarks) {
       if (!chart) return
       const stacked = createCallPutStackedGexSeries(monthSeries, points, buildMarks)
+      const xAxis = stacked.xAxis || { type: 'value', scale: true }
       chart.setOption({
         ...this.baseChartOption(),
         legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         grid: { left: 56, right: 36, top: 56, bottom: 40 },
         xAxis: {
-          type: 'category',
-          data: stacked.strikes,
-          axisLabel: { color: this.chartText },
+          ...xAxis,
+          axisLabel: { ...(xAxis.axisLabel || {}), color: this.chartText },
           axisLine: { onZero: true }
         },
         yAxis: callPutValueAxis(stacked.valueRange, {
