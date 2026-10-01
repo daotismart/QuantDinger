@@ -222,6 +222,49 @@ def test_underlying_futures_symbol_for_index_options():
     assert svc._underlying_futures_symbol("M", "m2505") == "m2505"
 
 
+def test_index_option_root_for_futures():
+    assert svc.index_option_root_for_futures("IH") == "HO"
+    assert svc.index_option_root_for_futures("IF") == "IO"
+    assert svc.index_option_root_for_futures("IM") == "MO"
+    assert svc.index_option_root_for_futures("HO") == "HO"
+    assert svc.index_option_root_for_futures("IC") == ""
+
+
+def test_futures_spot_markets_prefers_ff_for_cffex():
+    assert svc._futures_spot_markets("IH0") == ["FF", "CF"]
+    assert svc._futures_spot_markets("ih2609") == ["FF", "CF"]
+    assert svc._futures_spot_markets("m2505") == ["CF", "FF"]
+
+
+def test_build_futures_panel_ih_uses_ho_months_without_option_walk(monkeypatch):
+    quotes = {
+        "ih2609": {"price": 2862.0, "volume": 100, "open_interest": 200, "prev_settle": 0.0},
+        "ih2612": {"price": 2870.0, "volume": 80, "open_interest": 150, "prev_settle": 0.0},
+        "IH0": {"price": 2813.0, "volume": 50, "open_interest": 90, "prev_settle": 0.0},
+    }
+
+    def _spot(symbol):
+        key = str(symbol or "")
+        return quotes.get(key) or quotes.get(key.upper()) or quotes.get(key.lower())
+
+    monkeypatch.setattr(svc, "_spot_board_row", lambda root: None)
+    monkeypatch.setattr(svc, "_option_months", lambda root: ["ho2609", "ho2612"] if root == "HO" else [])
+    monkeypatch.setattr(svc, "_option_chain_table", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no option walk")))
+    monkeypatch.setattr(svc, "_futures_zh_spot", _spot)
+    monkeypatch.setattr(
+        svc,
+        "_product_payload",
+        lambda root: {"root": root, "name_cn": "上证50股指期货", "continuous_symbol": "IH0", "multiplier": 300, "option_multiplier": 100},
+    )
+    data = svc.build_futures_panel("IH")
+    symbols = [p["symbol"] for p in data["term_structure"]]
+    assert "ih2609" in symbols
+    assert "ih2612" in symbols
+    assert data["index_option_root"] == "HO"
+    assert data["monthly_activity"]
+    assert data["options_settled_capital"] == []
+
+
 def test_cffex_option_months(monkeypatch):
     class _Ak:
         def option_cffex_hs300_list_sina(self):

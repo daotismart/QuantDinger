@@ -20,8 +20,19 @@ Backend
     spot.index.linked_etfs
     spot.index.etf_share
     spot.index.option_greeks
-  Options panel cache key etf_options_panel:v3:{code6}:all is read first;
-  cache miss falls back to build_etf_options_panel(..., 25s).
+  Options panel cache key etf_options_panel:v3:{code6}:all is cache-only on
+  the index *spot* request path (no live build_etf_options_panel there).
+  The index tab separately loads GET /options?scope=etf for every linked ETF
+  (STAR 50: 588000 and 588080), not only the selected picker code, so
+  各ETF分项 lists each option underlying. ETF期权风险数据 stays on the
+  selected ETF; 对应期权希腊字母名义资金 is the yuan sum. Live fetches also
+  warm the Redis panel cache.
+  Index enrich uses cache/DB constituent snapshots (live=False).
+
+  Index tab also loads IH/IF futures + HO/IO options in parallel with spot:
+  股指期货期权风险数据 = HO greeks / GEX; 股指期货 = monthly IH;
+  股指期货期权 = HO capital. ETF期权风险数据 = selected ETF option greeks/GEX.
+  Those sections render as soon as the ETF maps to options / IH/HO.
 
 Frontend (QuantDinger-Vue)
   src/views/market-composite-analysis/etf-derivatives.vue

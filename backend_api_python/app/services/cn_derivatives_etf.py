@@ -49,8 +49,8 @@ ETF_CN_NAMES: Dict[str, str] = {
     "510050": "上证50ETF",
     "510300": "沪深300ETF",
     "510500": "中证500ETF",
-    "588000": "科创50ETF",
-    "588080": "科创50ETF",
+    "588000": "华泰柏瑞科创50ETF",
+    "588080": "易方达科创50ETF",
     "159901": "深证100ETF",
     "159915": "创业板ETF",
     "159919": "沪深300ETF",
@@ -75,6 +75,13 @@ ETF_INDEX_FUTURES_ROOT: Dict[str, str] = {
     "510500": "IC",
     "159919": "IF",
     "159922": "IC",
+}
+
+# CFFEX index options on that futures root (IC has no dedicated options).
+ETF_INDEX_OPTION_ROOT: Dict[str, str] = {
+    "510050": "HO",
+    "510300": "IO",
+    "159919": "IO",
 }
 
 
@@ -164,6 +171,7 @@ def _etf_product_payload(code6: str) -> Dict[str, Any]:
         index_symbol=index_symbol,
         index_name=index_name,
         index_futures_root=ETF_INDEX_FUTURES_ROOT.get(code6, ""),
+        index_option_root=ETF_INDEX_OPTION_ROOT.get(code6, ""),
     )
 
 
@@ -247,7 +255,7 @@ def build_spot_index_panel(symbol: str, *, etf_code: str = "") -> Dict[str, Any]
         from app.services.cn_derivatives_etf_metrics import enrich_index_metrics
 
         enriched = _call_with_timeout(
-            lambda: enrich_index_metrics(sym),
+            lambda: enrich_index_metrics(sym, live=False),
             _ENRICH_TIMEOUT_SEC,
             default=None,
         )
@@ -607,7 +615,12 @@ def _option_notionals_row_from_panel(code6: str, panel: Dict[str, Any], primary6
 
 
 def _build_index_option_notionals(codes: List[str], primary: str = "") -> Dict[str, Any]:
-    """Greeks + premium/margin/TV for each linked ETF, plus a yuan total."""
+    """Greeks + premium/margin/TV from the options-panel cache only.
+
+    Never submit ``build_etf_options_panel`` onto ``_TIMED_POOL``: a cold
+    50ETF rebuild can occupy every gthread for tens of seconds and starve
+    the rest of the index panel (price / volume / holdings / PE).
+    """
     from app.services.cn_derivatives_etf_metrics import merge_option_notionals
 
     primary6 = _etf_code6(primary)
@@ -627,23 +640,10 @@ def _build_index_option_notionals(codes: List[str], primary: str = "") -> Dict[s
         else:
             misses.append(code6)
     if misses:
-        timeout = 25.0 if primary6 in misses else 12.0
-        futs = {
-            _TIMED_POOL.submit(build_etf_options_panel, code6, "all"): code6
-            for code6 in misses
-        }
-        try:
-            for fut in as_completed(futs, timeout=timeout):
-                code6 = futs[fut]
-                try:
-                    panel = fut.result(timeout=0.05)
-                except Exception as exc:
-                    logger.warning("index option panel %s failed: %s", code6, exc)
-                    continue
-                if isinstance(panel, dict):
-                    rows.append(_option_notionals_row_from_panel(code6, panel, primary6))
-        except Exception as exc:
-            logger.warning("index option panels timed out: %s", exc)
+        logger.info(
+            "index option panels cache miss (skipped live rebuild): %s",
+            ",".join(misses),
+        )
     rows.sort(key=lambda row: (not row.get("primary"), str(row.get("etf_code") or "")))
     total = merge_option_notionals(rows)
     if not total.get("etf_code") and primary6:
@@ -1041,7 +1041,7 @@ def warm_etf_options_panel_cache(codes: Optional[List[str]] = None) -> Dict[str,
 
     if not etf_options_ch_enabled() or not ch_ping():
         return {"skipped": True, "reason": "clickhouse_unavailable", "warmed": [], "count": 0}
-    raw = codes if codes is not None else os.getenv("ETF_OPTIONS_PANEL_WARM_CODES", "510050,510300,588000")
+    raw = codes if codes is not None else os.getenv("ETF_OPTIONS_PANEL_WARM_CODES", "510050,510300,588000,588080")
     if isinstance(raw, str):
         items = [part.strip() for part in raw.split(",")]
     else:

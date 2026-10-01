@@ -9,6 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from app.markets.cn_futures import get_future_product, list_products
 from app.markets.cn_options import INDEX_OPTION_UNDERLYING
+
+# Reverse of INDEX_OPTION_UNDERLYING: IH futures -> HO options, IF -> IO, IM -> MO.
+INDEX_FUTURES_OPTION_ROOT = {fut: opt for opt, fut in INDEX_OPTION_UNDERLYING.items()}
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -371,6 +374,17 @@ def _spot_board_row(root: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+_CFFEX_FINANCIAL_ROOTS = frozenset({"IF", "IH", "IC", "IM", "IO", "HO", "MO", "T", "TF", "TS", "TL"})
+
+
+def _futures_spot_markets(symbol: str) -> List[str]:
+    """CFFEX financials need Sina FF; commodities use CF. Try the other as fallback."""
+    letters = "".join(ch for ch in str(symbol or "") if ch.isalpha()).upper()
+    if letters in _CFFEX_FINANCIAL_ROOTS:
+        return ["FF", "CF"]
+    return ["CF", "FF"]
+
+
 def _futures_zh_spot(symbol: str) -> Optional[Dict[str, Any]]:
     code = str(symbol or "").strip()
     if not code:
@@ -381,30 +395,42 @@ def _futures_zh_spot(symbol: str) -> Optional[Dict[str, Any]]:
         queries.extend([code.upper(), code.lower()])
     else:
         queries.extend([code.lower(), code.upper()])
-    for query in queries:
-        try:
-            frame = ak.futures_zh_spot(symbol=query, market="CF", adjust="0")
-            if frame is None or getattr(frame, "empty", True):
-                continue
-            row = frame.iloc[-1]
-            return {
-                "symbol": query,
-                "name": str(row.get("symbol") or query),
-                "price": _safe_float(row.get("current_price")),
-                "open": _safe_float(row.get("open")),
-                "high": _safe_float(row.get("high")),
-                "low": _safe_float(row.get("low")),
-                "bid": _safe_float(row.get("bid_price")),
-                "ask": _safe_float(row.get("ask_price")),
-                "volume": _safe_float(row.get("volume")),
-                "open_interest": _safe_float(row.get("hold")),
-                "avg_price": _safe_float(row.get("avg_price")),
-                "prev_close": _safe_float(row.get("last_close")),
-                "prev_settle": _safe_float(row.get("last_settle_price")),
-            }
-        except Exception as exc:
-            logger.debug("futures_zh_spot %s failed: %s", query, exc)
+    for market in _futures_spot_markets(code):
+        for query in queries:
+            try:
+                frame = ak.futures_zh_spot(symbol=query, market=market, adjust="0")
+                if frame is None or getattr(frame, "empty", True):
+                    continue
+                row = frame.iloc[-1]
+                price = _safe_float(row.get("current_price"))
+                if price is None or price <= 0:
+                    continue
+                return {
+                    "symbol": query,
+                    "name": str(row.get("symbol") or query),
+                    "price": price,
+                    "open": _safe_float(row.get("open")),
+                    "high": _safe_float(row.get("high")),
+                    "low": _safe_float(row.get("low")),
+                    "bid": _safe_float(row.get("bid_price")),
+                    "ask": _safe_float(row.get("ask_price")),
+                    "volume": _safe_float(row.get("volume")),
+                    "open_interest": _safe_float(row.get("hold")),
+                    "avg_price": _safe_float(row.get("avg_price")),
+                    "prev_close": _safe_float(row.get("last_close")),
+                    "prev_settle": _safe_float(row.get("last_settle_price")),
+                }
+            except Exception as exc:
+                logger.debug("futures_zh_spot %s market=%s failed: %s", query, market, exc)
     return None
+
+
+def index_option_root_for_futures(root: str) -> str:
+    """CFFEX option root for an index-futures (or option) root. IH -> HO."""
+    root_u = str(root or "").upper()
+    if root_u in CFFEX_OPTION_LIST_FN:
+        return root_u
+    return INDEX_FUTURES_OPTION_ROOT.get(root_u, "")
 
 
 def _option_months(root: str) -> List[str]:
@@ -706,8 +732,15 @@ def build_spot_panel(root: str) -> Dict[str, Any]:
 def build_futures_panel(root: str) -> Dict[str, Any]:
     root_u = str(root or "").upper()
     product = _product_payload(root_u)
-    board = _spot_board_row(root_u)
-    months = _option_months(root_u)
+    # Commodity futures_spot_price_daily has no CFFEX index rows and wastes
+    # several seconds on non-trading days.
+    if root_u in _CFFEX_FINANCIAL_ROOTS:
+        board = None
+    else:
+        board = _spot_board_row(root_u)
+    opt_root = index_option_root_for_futures(root_u)
+    months = _option_months(opt_root or root_u)
+    chain_root = opt_root or root_u
 
     candidates: List[str] = []
     if board:
@@ -715,10 +748,12 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
             sym = str(board.get(key) or "").strip()
             if sym:
                 candidates.append(sym)
-    candidates.extend(months)
-    if root_u in INDEX_OPTION_UNDERLYING:
+    if not opt_root:
+        candidates.extend(months)
+    if opt_root or root_u in INDEX_OPTION_UNDERLYING:
+        map_root = opt_root or root_u
         for m in months:
-            candidates.append(_underlying_futures_symbol(root_u, m))
+            candidates.append(_underlying_futures_symbol(map_root, m))
     candidates.append(str(product.get("continuous_symbol") or f"{root_u.lower()}0"))
 
     seen = set()
@@ -760,8 +795,12 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
     options_capital = []
     capital_by_month: Dict[str, Dict[str, float]] = {}
     mult = float(product.get("option_multiplier") or product.get("multiplier") or 1)
-    for month in months[:6]:
-        chain = _option_chain_table(root_u, month)
+    # Index-futures roots (IH/IF/IM) map onto HO/IO/MO chains. Walking those
+    # chains here can take tens of seconds and starve the index tab; the index
+    # page loads the option root separately for GEX / 权利金.
+    walk_option_chains = not bool(opt_root) or root_u in CFFEX_OPTION_LIST_FN
+    for month in months[:6] if walk_option_chains else []:
+        chain = _option_chain_table(chain_root, month)
         if not chain:
             continue
         month_quote = _futures_zh_spot(month)
@@ -820,6 +859,7 @@ def build_futures_panel(root: str) -> Dict[str, Any]:
         },
         "monthly_activity": monthly_activity,
         "options_settled_capital": options_capital,
+        "index_option_root": opt_root or None,
         "asof": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -966,6 +1006,11 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
             month=m,
             multiplier=mult,
         )
+        capital = _option_capital_for_chain(
+            chain,
+            underlying=float(underlying or 0.0),
+            multiplier=mult,
+        )
         month_series.append(
             {
                 "month": m,
@@ -979,6 +1024,12 @@ def build_options_panel(root: str, month: Optional[str] = None) -> Dict[str, Any
                 "time_value_yield": tv_yield,
                 "buyer_leverage": buyer_leverage,
                 "indicators": gex_fields.get("indicators") or {},
+                "call_notional": capital.get("call_notional"),
+                "put_notional": capital.get("put_notional"),
+                "notional": capital.get("notional"),
+                "call_premium": capital.get("call_premium"),
+                "put_premium": capital.get("put_premium"),
+                "premium": capital.get("premium"),
             }
         )
 

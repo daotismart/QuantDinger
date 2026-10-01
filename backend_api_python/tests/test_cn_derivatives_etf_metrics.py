@@ -97,21 +97,69 @@ def test_enrich_index_metrics_uses_index_constituents(monkeypatch):
             {"code": "601318", "name": "中国平安", "weight_pct": 5.0, "market_value": None},
         ],
     )
-    monkeypatch.setattr(
-        metrics,
-        "_enrich_constituent_snapshots",
-        lambda codes, **kwargs: {
+    captured = {}
+
+    def _snap(codes, **kwargs):
+        captured.update(kwargs)
+        return {
             "600519": {"net_profit": 100.0, "pe_ratio": 20.0, "profit_margin": 25.0, "market_cap": 1e12},
             "601318": {"net_profit": 50.0, "pe_ratio": 10.0, "profit_margin": 15.0, "market_cap": 5e11},
-        },
-    )
+        }
+
+    monkeypatch.setattr(metrics, "_enrich_constituent_snapshots", _snap)
     out = metrics.enrich_index_metrics("000016.SH")
+    assert captured.get("live") is False
     assert out["holdings_count"] == 2
     assert out["holdings"][0]["market_value"] == 1e12
     assert out["constituent_market_cap_sum"] == 1.5e12
     assert out["avg_pe"] == 16.67
     assert "total_fee_pct" not in out
     assert "scale" not in out
+
+
+def test_enrich_constituent_snapshots_live_false_skips_remote(monkeypatch):
+    called = {"live": 0}
+    complete = {
+        "net_profit": 100.0,
+        "pe_ratio": 20.0,
+        "profit_margin": 25.0,
+        "market_cap": 1e12,
+        "price": 1800.0,
+    }
+
+    def _cache_get(key):
+        if str(key).endswith(":600519"):
+            return complete
+        if str(key).endswith(":601318"):
+            return {"net_profit": 50.0}
+        return None
+
+    monkeypatch.setattr(metrics, "_cache_get", _cache_get)
+    monkeypatch.setattr(metrics, "_cache_set", lambda *a, **k: None)
+
+    def _live(code):
+        called["live"] += 1
+        raise AssertionError(f"live snapshot should not run for {code}")
+
+    monkeypatch.setattr(metrics, "_stock_constituent_snapshot", _live)
+    out = metrics._enrich_constituent_snapshots(["600519", "601318"], live=False)
+    assert called["live"] == 0
+    assert out["600519"]["market_cap"] == 1e12
+    assert out["601318"]["net_profit"] == 50.0
+
+
+def test_enrich_index_metrics_prefers_stale_bundle(monkeypatch):
+    stale = {"code": "000016", "holdings_count": 50, "avg_pe": 11.0, "holdings": [{"code": "600519"}]}
+    monkeypatch.setattr(metrics, "_cache_get", lambda key: stale if "metrics_bundle" in key else None)
+
+    def _boom(*a, **k):
+        raise AssertionError("should not rebuild when stale bundle exists")
+
+    monkeypatch.setattr(metrics, "_load_index_constituent_rows", _boom)
+    monkeypatch.setattr(metrics, "_enrich_constituent_snapshots", _boom)
+    out = metrics.enrich_index_metrics("000016.SH")
+    assert out["avg_pe"] == 11.0
+    assert out["holdings_count"] == 50
 
 
 def test_build_index_metrics_history_shape(monkeypatch):
