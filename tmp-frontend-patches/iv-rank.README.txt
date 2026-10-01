@@ -5,7 +5,9 @@ Backend
   ETF: scope=etf  → near-month ATM IV rank from ClickHouse playback
   Futures:        → 20-day realized-vol rank of the continuous contract
 
-Frontend (QuantDinger-Vue)
+Near-month IV smile history candlestick also overlays SMA MA5 / MA10 / MA20
+on close (tmp-frontend-patches/iv-kline-ma.js). Copy iv-kline-ma.js next to
+the Vue files above.
 
   cp tmp-frontend-patches/etf-derivatives.vue \
      QuantDinger-Vue/src/views/market-composite-analysis/etf-derivatives.vue
