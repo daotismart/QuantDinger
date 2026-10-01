@@ -1072,23 +1072,15 @@ export default {
 
       if (key === 'options.oi' || key === 'options.gex') {
         const points = slice.gex_distribution || []
-        const strikes = points.map(p => p.strike)
-        const series = key === 'options.oi'
-          ? [
-            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi) },
-            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi) },
-            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi) }
-          ]
-          : [
-            { name: 'Net GEX', type: 'bar', data: points.map(p => p.net_gex), itemStyle: { color: '#fa8c16', opacity: 0.78 } }
-          ]
-        chart.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, textStyle: { color: this.chartText } },
-          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series
-        }, true)
+        const summary = slice.gex_summary || {}
+        const price = slice.current_price || slice.underlying || summary.underlying
+        const markDefs = this.buildOptionsMarkDefs(summary, price)
+        const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
+        if (key === 'options.oi') {
+          this.applyOiStrikeChart(chart, points, buildMarks)
+        } else {
+          this.applyNetGexChart(chart, slice.month_series || [], points, ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb'], buildMarks)
+        }
         return
       }
 

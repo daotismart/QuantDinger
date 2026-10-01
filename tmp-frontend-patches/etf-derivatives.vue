@@ -159,7 +159,30 @@
               row-key="code"
             />
           </div>
-          <div v-if="hasIndexOptionGreeks" class="fda-section">
+          <div v-if="showIndexEtfOptionSection" class="fda-section" data-testid="index-etf-option-risk">
+            <h3>{{ $t('marketComposite.etf.metrics.etfOptionRiskData') }}</h3>
+            <p v-if="selectedUnderlyingCode" class="fda-muted">
+              {{ (selectedProduct && selectedProduct.name_cn) || selectedUnderlyingCode }}
+            </p>
+            <a-spin :spinning="loadingIndexEtfOptions && !hasIndexEtfOptionRisk">
+              <template v-if="hasIndexEtfOptionRisk">
+                <div class="fda-metrics">
+                  <div class="fda-metric" v-for="item in indexEtfOptionRiskGreekCards" :key="'idx-etf-risk-g-' + item.key">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ fmt(item.value, 4) }}</strong>
+                  </div>
+                </div>
+                <div class="fda-metrics fda-metrics-gex">
+                  <div class="fda-metric" v-for="item in indexEtfOptionRiskGexCards" :key="'idx-etf-risk-x-' + item.key">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.display }}</strong>
+                  </div>
+                </div>
+              </template>
+              <p v-else-if="!loadingIndexEtfOptions" class="fda-muted">
+                {{ $t('marketComposite.futures.noData') }}
+              </p>
+            </a-spin>
             <h3>{{ $t('marketComposite.etf.metrics.optionGreekNotional') }}</h3>
             <p v-if="indexOptionGreeksMeta" class="fda-muted">{{ indexOptionGreeksMeta }}</p>
             <div class="fda-metrics">
@@ -168,19 +191,137 @@
                 <strong>{{ item.display }}</strong>
               </div>
             </div>
+            <div v-if="indexOptionEtfRows.length" class="fda-section">
+              <h3>{{ $t('marketComposite.etf.metrics.optionEtfBreakdown') }}</h3>
+              <a-table
+                class="fda-table"
+                size="small"
+                :pagination="false"
+                :columns="indexOptionEtfColumns"
+                :data-source="indexOptionEtfRows"
+                row-key="etf_code"
+              />
+            </div>
           </div>
-          <div v-if="indexHoldings.length" class="fda-section fda-constituents">
-            <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
-            <p v-if="indexHoldingsMeta" class="fda-muted">{{ indexHoldingsMeta }}</p>
-            <a-table
-              class="fda-table"
-              size="small"
-              :pagination="etfHoldingsPagination"
-              :columns="etfConstituentColumns"
-              :data-source="indexHoldings"
-              row-key="code"
-            />
+        </div>
+        <div v-if="showIndexRiskSection" class="fda-section" data-testid="index-risk-data">
+          <h3>{{ $t('marketComposite.etf.metrics.indexOptionRiskData') }}</h3>
+          <p v-if="selectedIndexOptionRoot" class="fda-muted">
+            {{ selectedIndexOptionRoot }}
+          </p>
+          <a-spin :spinning="loadingIndexDerivatives && !hasIndexRiskMetrics">
+            <template v-if="hasIndexRiskMetrics">
+              <div class="fda-metrics">
+                <div class="fda-metric" v-for="item in indexRiskGreekCards" :key="'idx-risk-g-' + item.key">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ fmt(item.value, 4) }}</strong>
+                </div>
+              </div>
+              <div class="fda-metrics fda-metrics-gex">
+                <div class="fda-metric" v-for="item in indexRiskGexCards" :key="'idx-risk-x-' + item.key">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.display }}</strong>
+                </div>
+              </div>
+            </template>
+            <p v-else-if="!loadingIndexDerivatives" class="fda-muted">
+              {{ $t('marketComposite.futures.noData') }}
+            </p>
+          </a-spin>
+        </div>
+        <template v-if="showIndexFuturesSection">
+          <div class="fda-section" data-testid="index-futures">
+            <h3>{{ $t('marketComposite.etf.labels.indexFutures') }}</h3>
+            <a-spin :spinning="loadingIndexDerivatives && !futuresData">
+              <div class="fda-metrics">
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.futures.spotPrice') }}</span>
+                  <strong>{{ fmt(indexFuturesSpotPrice) }}</strong>
+                </div>
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.futures.nearBasis') }}</span>
+                  <strong :class="tone(indexFuturesNearBasis)">{{ fmt(indexFuturesNearBasis) }}</strong>
+                </div>
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.futures.domBasis') }}</span>
+                  <strong :class="tone(indexFuturesDomBasis)">{{ fmt(indexFuturesDomBasis) }}</strong>
+                </div>
+              </div>
+              <div class="fda-charts">
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="termChart" class="fda-chart" />
+                </div>
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="activityChart" class="fda-chart fda-chart-tall" />
+                </div>
+              </div>
+              <a-table
+                class="fda-table"
+                size="small"
+                :pagination="false"
+                :columns="futuresColumns"
+                :data-source="(futuresData && futuresData.monthly_activity) || []"
+                row-key="symbol"
+              />
+              <p v-if="!loadingIndexDerivatives && !(futuresData && (futuresData.monthly_activity || []).length)" class="fda-muted">
+                {{ $t('marketComposite.futures.noData') }}
+              </p>
+            </a-spin>
           </div>
+          <div class="fda-section" data-testid="index-futures-options">
+            <h3>{{ $t('marketComposite.etf.labels.indexFuturesOptions') }}</h3>
+            <a-spin :spinning="loadingIndexDerivatives && !indexFuturesOptionsData">
+              <div class="fda-metrics">
+                <div class="fda-metric">
+                  <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
+                  <strong>{{ fmt(indexFuturesOptionsData && (indexFuturesOptionsData.current_price || indexFuturesOptionsData.underlying), 3, true) }}</strong>
+                </div>
+                <div class="fda-metric" v-if="selectedIndexOptionRoot">
+                  <span>{{ $t('marketComposite.etf.labels.indexFuturesOptions') }}</span>
+                  <strong>{{ selectedIndexOptionRoot }}</strong>
+                </div>
+              </div>
+              <div class="fda-charts">
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="notionalChart" class="fda-chart" />
+                </div>
+                <div class="fda-chart-box">
+                  <div class="fda-chart-head">
+                    <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
+                    <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
+                  </div>
+                  <div ref="premiumChart" class="fda-chart" />
+                </div>
+              </div>
+              <p v-if="!loadingIndexDerivatives && !indexFuturesOptionsData" class="fda-muted">
+                {{ $t('marketComposite.futures.noData') }}
+              </p>
+            </a-spin>
+          </div>
+        </template>
+        <div v-if="indexHoldings.length" class="fda-section fda-constituents">
+          <h3>{{ $t('marketComposite.etf.metrics.constituentList') }}</h3>
+          <p v-if="indexHoldingsMeta" class="fda-muted">{{ indexHoldingsMeta }}</p>
+          <a-table
+            class="fda-table"
+            size="small"
+            :pagination="etfHoldingsPagination"
+            :columns="etfConstituentColumns"
+            :data-source="indexHoldings"
+            row-key="code"
+          />
         </div>
         <div class="fda-section">
           <h3>{{ $t('marketComposite.futures.spot.analysis') }}</h3>
@@ -191,64 +332,6 @@
             {{ $t('marketComposite.futures.noData') }}
           </p>
         </div>
-        <template v-if="futuresData">
-          <div class="fda-metrics">
-            <div class="fda-metric">
-              <span>{{ $t('marketComposite.futures.futures.spotPrice') }}</span>
-              <strong>{{ fmt(futuresData && futuresData.basis && futuresData.basis.spot_price) }}</strong>
-            </div>
-            <div class="fda-metric">
-              <span>{{ $t('marketComposite.futures.futures.nearBasis') }}</span>
-              <strong :class="tone(futuresData && futuresData.basis && futuresData.basis.near_basis)">
-                {{ fmt(futuresData && futuresData.basis && futuresData.basis.near_basis) }}
-              </strong>
-            </div>
-            <div class="fda-metric">
-              <span>{{ $t('marketComposite.futures.futures.domBasis') }}</span>
-              <strong :class="tone(futuresData && futuresData.basis && futuresData.basis.dom_basis)">
-                {{ fmt(futuresData && futuresData.basis && futuresData.basis.dom_basis) }}
-              </strong>
-            </div>
-          </div>
-          <div class="fda-charts">
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.termStructure') }}</h3>
-                <a-button size="small" @click="openHistory('futures.term')">{{ $t('marketComposite.futures.history') }}</a-button>
-              </div>
-              <div ref="termChart" class="fda-chart" />
-            </div>
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.monthlyActivity') }}</h3>
-                <a-button size="small" @click="openHistory('futures.activity')">{{ $t('marketComposite.futures.history') }}</a-button>
-              </div>
-              <div ref="activityChart" class="fda-chart fda-chart-tall" />
-            </div>
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.optionsNotional') }}</h3>
-                <a-button size="small" @click="openHistory('futures.notional')">{{ $t('marketComposite.futures.history') }}</a-button>
-              </div>
-              <div ref="notionalChart" class="fda-chart" />
-            </div>
-            <div class="fda-chart-box">
-              <div class="fda-chart-head">
-                <h3>{{ $t('marketComposite.futures.futures.optionsPremium') }}</h3>
-                <a-button size="small" @click="openHistory('futures.premium')">{{ $t('marketComposite.futures.history') }}</a-button>
-              </div>
-              <div ref="premiumChart" class="fda-chart" />
-            </div>
-          </div>
-          <a-table
-            class="fda-table"
-            size="small"
-            :pagination="false"
-            :columns="futuresColumns"
-            :data-source="(futuresData && futuresData.monthly_activity) || []"
-            row-key="symbol"
-          />
-        </template>
       </div>
 
       <!-- Options -->
@@ -270,21 +353,23 @@
             </a-select>
           </div>
 
-          <div class="fda-metrics">
-            <div class="fda-metric fda-metric-price">
-              <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
-              <strong>{{ fmt(optionsData && (optionsData.current_price || optionsData.underlying), 3, true) }}</strong>
+          <div class="fda-section" data-testid="etf-option-risk">
+            <h3>{{ $t('marketComposite.etf.metrics.etfOptionRiskData') }}</h3>
+            <div class="fda-metrics">
+              <div class="fda-metric fda-metric-price">
+                <span>{{ $t('marketComposite.futures.options.currentPrice') }}</span>
+                <strong>{{ fmt(optionsData && (optionsData.current_price || optionsData.underlying), 3, true) }}</strong>
+              </div>
+              <div class="fda-metric" v-for="item in greeksMetrics" :key="item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ fmt(item.value, 4) }}</strong>
+              </div>
             </div>
-            <div class="fda-metric" v-for="item in greeksMetrics" :key="item.key">
-              <span>{{ item.label }}</span>
-              <strong>{{ fmt(item.value, 4) }}</strong>
-            </div>
-          </div>
-
-          <div class="fda-metrics fda-metrics-gex">
-            <div class="fda-metric" v-for="item in gexMetrics" :key="item.key">
-              <span>{{ item.label }}</span>
-              <strong>{{ item.display }}</strong>
+            <div class="fda-metrics fda-metrics-gex">
+              <div class="fda-metric" v-for="item in gexMetrics" :key="item.key">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.display }}</strong>
+              </div>
             </div>
           </div>
 
@@ -463,9 +548,19 @@ import {
 import {
   buildCallPutGexTrendSeries,
   buildCallPutStackedGexSeries as createCallPutStackedGexSeries,
-  callPutValueAxis
+  buildOiStrikeChart as createOiStrikeChart,
+  buildStackedNetGexSeries as createStackedNetGexSeries,
+  callPutValueAxis,
+  styleStrikeXAxis
 } from './gex-chart-series'
 import { buildStrikeMarkLineData as createStrikeMarkLineData } from './strike-mark-lines'
+import { formatIvKlineTooltip, ivKlineMaSeries } from './iv-kline-ma'
+
+// Same-benchmark option underlyings that must always appear together on the
+// index tab (STAR 50: 588000 Huatai-PineBridge + 588080 E Fund).
+const INDEX_LINKED_ETF_CODES = {
+  '000688.SH': ['588000', '588080']
+}
 
 export default {
   name: 'EtfDerivativesAnalysis',
@@ -480,7 +575,12 @@ export default {
       loadingTab: false,
       spotData: null,
       futuresData: null,
+      indexFuturesOptionsData: null,
+      indexEtfOptionsData: null,
+      indexEtfOptionsByCode: {},
       optionsData: null,
+      loadingIndexDerivatives: false,
+      loadingIndexEtfOptions: false,
       charts: {},
       historyVisible: false,
       historyLoading: false,
@@ -665,17 +765,56 @@ export default {
         }
       ]
     },
-    indexOptionGreeks () {
+    indexSpotOptionGreeks () {
       return (this.indexSpot && this.indexSpot.option_greeks) || {}
+    },
+    linkedIndexEtfCodes () {
+      const idx = String(this.selectedIndexSymbol || '').toUpperCase()
+      const codes = []
+      const seen = new Set()
+      const add = (raw) => {
+        const code = String(raw || '').replace(/\D/g, '').slice(0, 6)
+        if (code && !seen.has(code)) {
+          seen.add(code)
+          codes.push(code)
+        }
+      }
+      add(this.selectedUnderlyingCode)
+      for (const extra of INDEX_LINKED_ETF_CODES[idx] || []) add(extra)
+      for (const product of this.products || []) {
+        if (idx && String(product.index_symbol || '').toUpperCase() === idx) {
+          add(product.underlying_code || product.root)
+        }
+      }
+      for (const row of this.indexLinkedEtfs || []) add(row.code)
+      return codes
+    },
+    indexOptionGreeks () {
+      const rows = this.indexOptionEtfRows
+      if (rows.length) return this.mergeOptionNotionals(rows)
+      return this.indexSpotOptionGreeks
     },
     hasIndexOptionGreeks () {
       const g = this.indexOptionGreeks
-      return !!(g && (g.delta_notional != null || g.gamma_notional != null || g.vega_notional != null || g.theta_notional != null))
+      return !!(g && (
+        g.delta_notional != null ||
+        g.gamma_notional != null ||
+        g.vega_notional != null ||
+        g.theta_notional != null ||
+        g.premium_total != null ||
+        g.margin_total != null ||
+        g.time_value_total != null
+      ))
     },
     indexOptionGreeksMeta () {
       const g = this.indexOptionGreeks
       const parts = []
-      if (g.etf_name || g.etf_code) parts.push(g.etf_name || g.etf_code)
+      const count = g.etf_count || ((g.etfs || []).length)
+      if (count > 1) {
+        parts.push(`${this.$t('marketComposite.etf.metrics.optionEtfCombined')} ${count}`)
+      } else if (g.etf_name || g.etf_code) {
+        parts.push(g.etf_name || g.etf_code)
+      }
       if (g.spot != null) parts.push(`${this.$t('marketComposite.etf.metrics.price')} ${this.fmt(g.spot, 4)}`)
       return parts.join(' · ')
     },
@@ -686,11 +825,95 @@ export default {
         { key: 'delta', label: `Delta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.delta_notional), unit: units.delta_notional },
         { key: 'gamma', label: `Gamma ${this.$t('marketComposite.etf.metrics.notional')} (GEX)`, display: this.fmtMoney(g.gamma_notional), unit: units.gamma_notional },
         { key: 'vega', label: `Vega ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.vega_notional), unit: units.vega_notional || '元/1%' },
-        { key: 'theta', label: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.theta_notional), unit: units.theta_notional || '元/日' }
+        { key: 'theta', label: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, display: this.fmtMoney(g.theta_notional), unit: units.theta_notional || '元/日' },
+        { key: 'premium', label: this.$t('marketComposite.futures.options.premiumTotal'), display: this.fmtMoney(g.premium_total), unit: units.premium_total },
+        { key: 'margin', label: this.$t('marketComposite.etf.metrics.optionMargin'), display: this.fmtMoney(g.margin_total), unit: units.margin_total },
+        { key: 'timeValue', label: this.$t('marketComposite.futures.options.timeValueTotal'), display: this.fmtMoney(g.time_value_total), unit: units.time_value_total }
       ].map(item => ({
         ...item,
         display: item.display === '-' ? '-' : (item.unit && item.unit !== '元' ? `${item.display} (${item.unit})` : item.display)
       }))
+    },
+    indexOptionEtfRows () {
+      const byCode = {}
+      const spotRows = (this.indexSpotOptionGreeks && this.indexSpotOptionGreeks.etfs) || []
+      spotRows.forEach(row => {
+        const code = String((row && row.etf_code) || '').replace(/\D/g, '').slice(0, 6)
+        if (code) byCode[code] = row
+      })
+      Object.keys(this.indexEtfOptionsByCode || {}).forEach(code => {
+        const panel = this.indexEtfOptionsByCode[code]
+        if (panel) byCode[code] = this.optionNotionalsRowFromPanel(code, panel)
+      })
+      if (!Object.keys(byCode).length && this.indexEtfOptionsData) {
+        const row = this.optionNotionalsRowFromPanel(this.selectedUnderlyingCode, this.indexEtfOptionsData)
+        if (row && row.etf_code) byCode[row.etf_code] = row
+      }
+      const order = this.linkedIndexEtfCodes
+      const extras = Object.keys(byCode).filter(code => order.indexOf(code) < 0)
+      const codes = order.length ? order.concat(extras) : extras
+      return codes.map(code => byCode[code] || {
+        etf_code: code,
+        etf_name: this.etfDisplayName(code),
+        etf_count: 1,
+        primary: code === this.selectedUnderlyingCode
+      })
+    },
+    hasIndexEtfOptions () {
+      return this.linkedIndexEtfCodes.length > 0
+    },
+    showIndexEtfOptionSection () {
+      return !!(
+        this.hasIndexEtfOptions ||
+        this.hasIndexOptionGreeks ||
+        this.hasIndexEtfOptionRisk ||
+        this.loadingIndexEtfOptions
+      )
+    },
+    hasIndexEtfOptionRisk () {
+      const panel = this.indexEtfOptionsData || {}
+      const g = panel.greeks || {}
+      const s = panel.gex_summary || {}
+      return !!(g.delta != null || g.gamma != null || s.net_gex != null || s.flip != null)
+    },
+    indexEtfOptionRiskGreekCards () {
+      const g = (this.indexEtfOptionsData && this.indexEtfOptionsData.greeks) || {}
+      return [
+        { key: 'delta', label: 'Delta', value: g.delta },
+        { key: 'gamma', label: 'Gamma', value: g.gamma },
+        { key: 'vega', label: 'Vega', value: g.vega },
+        { key: 'theta', label: 'Theta', value: g.theta }
+      ]
+    },
+    indexEtfOptionRiskGexCards () {
+      const s = (this.indexEtfOptionsData && this.indexEtfOptionsData.gex_summary) || {}
+      const mp = this.indexEtfOptionsData && this.indexEtfOptionsData.max_pain
+      return [
+        { key: 'net', label: 'Net GEX', display: this.fmt(s.net_gex, 0) },
+        { key: 'call', label: 'Call GEX', display: this.fmt(s.call_gex, 0) },
+        { key: 'put', label: 'Put GEX', display: this.fmt(s.put_gex, 0) },
+        { key: 'flip', label: 'Flip', display: this.fmt(s.flip) },
+        { key: 'callWall', label: 'Call Wall', display: this.fmt(s.call_wall) },
+        { key: 'putWall', label: 'Put Wall', display: this.fmt(s.put_wall) },
+        { key: 'pin', label: 'Pin', display: this.fmt(s.pin) },
+        { key: 'maxPain', label: 'Max Pain', display: this.fmt(mp && mp.strike) }
+      ]
+    },
+    indexEtfOptionNotionalsFromPanel () {
+      return this.optionNotionalsRowFromPanel(this.selectedUnderlyingCode, this.indexEtfOptionsData)
+    },
+    indexOptionEtfColumns () {
+      return [
+        { title: this.$t('marketComposite.etf.metrics.colCode'), dataIndex: 'etf_code', width: 92 },
+        { title: this.$t('marketComposite.etf.metrics.colName'), dataIndex: 'etf_name', ellipsis: true },
+        { title: this.$t('marketComposite.futures.options.premiumTotal'), dataIndex: 'premium_total', customRender: v => this.fmtMoney(v) },
+        { title: this.$t('marketComposite.etf.metrics.optionMargin'), dataIndex: 'margin_total', customRender: v => this.fmtMoney(v) },
+        { title: this.$t('marketComposite.futures.options.timeValueTotal'), dataIndex: 'time_value_total', customRender: v => this.fmtMoney(v) },
+        { title: `Delta ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'delta_notional', customRender: v => this.fmtMoney(v) },
+        { title: `Gamma ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'gamma_notional', customRender: v => this.fmtMoney(v) },
+        { title: `Vega ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'vega_notional', customRender: v => this.fmtMoney(v) },
+        { title: `Theta ${this.$t('marketComposite.etf.metrics.notional')}`, dataIndex: 'theta_notional', customRender: v => this.fmtMoney(v) }
+      ]
     },
     etfHoldings () {
       const etf = this.etfSpot
@@ -760,6 +983,82 @@ export default {
     selectedFuturesRoot () {
       const product = this.selectedProduct || {}
       return product.index_futures_root || ''
+    },
+    selectedIndexOptionRoot () {
+      const product = this.selectedProduct || {}
+      return product.index_option_root || ''
+    },
+    showIndexRiskSection () {
+      return !!(this.selectedIndexOptionRoot || this.hasIndexRiskMetrics || this.loadingIndexDerivatives)
+    },
+    showIndexFuturesSection () {
+      return !!(
+        this.selectedFuturesRoot ||
+        this.selectedIndexOptionRoot ||
+        this.futuresData ||
+        this.indexFuturesOptionsData ||
+        this.loadingIndexDerivatives
+      )
+    },
+    indexFuturesMonths () {
+      return ((this.futuresData && this.futuresData.term_structure) || []).filter(p => !p.is_continuous)
+    },
+    indexFuturesSpotPrice () {
+      const fromBoard = this.futuresData && this.futuresData.basis && this.futuresData.basis.spot_price
+      if (fromBoard) return fromBoard
+      return this.spotData && this.spotData.spot_price
+    },
+    indexFuturesNearBasis () {
+      const board = this.futuresData && this.futuresData.basis
+      if (board && board.near_basis != null) return board.near_basis
+      const spot = Number(this.indexFuturesSpotPrice)
+      const near = this.indexFuturesMonths[0]
+      if (!near || !Number.isFinite(spot) || !spot) return null
+      const px = Number(near.price)
+      return Number.isFinite(px) ? px - spot : null
+    },
+    indexFuturesDomBasis () {
+      const board = this.futuresData && this.futuresData.basis
+      if (board && board.dom_basis != null) return board.dom_basis
+      const spot = Number(this.indexFuturesSpotPrice)
+      const rows = this.indexFuturesMonths
+      const dom = rows.reduce((best, row) => {
+        const oi = Number(row && row.open_interest) || 0
+        const bestOi = Number(best && best.open_interest) || 0
+        return oi >= bestOi ? row : best
+      }, rows[0])
+      if (!dom || !Number.isFinite(spot) || !spot) return null
+      const px = Number(dom.price)
+      return Number.isFinite(px) ? px - spot : null
+    },
+    hasIndexRiskMetrics () {
+      const panel = this.indexFuturesOptionsData || {}
+      const g = panel.greeks || {}
+      const s = panel.gex_summary || {}
+      return !!(g.delta != null || g.gamma != null || s.net_gex != null || s.flip != null)
+    },
+    indexRiskGreekCards () {
+      const g = (this.indexFuturesOptionsData && this.indexFuturesOptionsData.greeks) || {}
+      return [
+        { key: 'delta', label: 'Delta', value: g.delta },
+        { key: 'gamma', label: 'Gamma', value: g.gamma },
+        { key: 'vega', label: 'Vega', value: g.vega },
+        { key: 'theta', label: 'Theta', value: g.theta }
+      ]
+    },
+    indexRiskGexCards () {
+      const s = (this.indexFuturesOptionsData && this.indexFuturesOptionsData.gex_summary) || {}
+      const mp = this.indexFuturesOptionsData && this.indexFuturesOptionsData.max_pain
+      return [
+        { key: 'net', label: 'Net GEX', display: this.fmt(s.net_gex, 0) },
+        { key: 'call', label: 'Call GEX', display: this.fmt(s.call_gex, 0) },
+        { key: 'put', label: 'Put GEX', display: this.fmt(s.put_gex, 0) },
+        { key: 'flip', label: 'Flip', display: this.fmt(s.flip) },
+        { key: 'callWall', label: 'Call Wall', display: this.fmt(s.call_wall) },
+        { key: 'putWall', label: 'Put Wall', display: this.fmt(s.put_wall) },
+        { key: 'pin', label: 'Pin', display: this.fmt(s.pin) },
+        { key: 'maxPain', label: 'Max Pain', display: this.fmt(mp && mp.strike) }
+      ]
     },
     selectedUnderlyingCode () {
       const product = this.selectedProduct || {}
@@ -928,6 +1227,13 @@ export default {
     },
     isDarkTheme () {
       this.$nextTick(() => this.renderActiveCharts())
+    },
+    linkedIndexEtfCodes (codes) {
+      if (this.activeTab !== 'index') return
+      const have = this.indexEtfOptionsByCode || {}
+      if ((codes || []).some(code => !Object.prototype.hasOwnProperty.call(have, code))) {
+        this.loadIndexEtfOptions()
+      }
     }
   },
   methods: {
@@ -1070,6 +1376,9 @@ export default {
       // Keep the same ETF selection across tabs; only reload the active panel.
       this.spotData = null
       this.futuresData = null
+      this.indexFuturesOptionsData = null
+      this.indexEtfOptionsData = null
+      this.indexEtfOptionsByCode = {}
       this.optionsData = null
       this.reloadActiveTab()
     },
@@ -1101,6 +1410,9 @@ export default {
       this.selectedRoot = root
       this.spotData = null
       this.futuresData = null
+      this.indexFuturesOptionsData = null
+      this.indexEtfOptionsData = null
+      this.indexEtfOptionsByCode = {}
       this.optionsData = null
       this.selectedMonth = 'all'
       if (this.$router) {
@@ -1120,7 +1432,10 @@ export default {
       }
     },
     async loadIndexTab () {
-      // Spot panel for the ETF's corresponding benchmark index.
+      // CFFEX + ETF option risk must start immediately, otherwise the
+      // sections stay hidden until spot + history finish (several seconds).
+      this.loadIndexFuturesAndOptions()
+      this.loadIndexEtfOptions()
       this.loadingTab = true
       try {
         const indexSymbol = this.selectedIndexSymbol
@@ -1137,22 +1452,169 @@ export default {
           // Fallback: ETF spot panel still carries the embedded index quote.
           await this.loadSpot()
         }
-        const futuresRoot = this.selectedFuturesRoot
-        if (futuresRoot) {
-          try {
-            const fres = await getFuturesPanel(futuresRoot)
-            this.futuresData = (fres && fres.data) || null
-            this.$nextTick(() => this.renderFuturesCharts())
-          } catch (e) {
-            this.futuresData = null
-          }
-        } else {
-          this.futuresData = null
-        }
       } catch (e) {
         this.$message.error((e && e.message) || this.$t('marketComposite.futures.loadFailed'))
       } finally {
         this.loadingTab = false
+      }
+    },
+    panelPayload (res) {
+      if (!res || typeof res !== 'object') return null
+      if (res.greeks || res.gex_summary || res.term_structure || res.monthly_activity) return res
+      const inner = res.data
+      if (inner && typeof inner === 'object') return inner
+      return inner || null
+    },
+    etfDisplayName (code) {
+      const want = String(code || '').replace(/\D/g, '').slice(0, 6)
+      const product = (this.products || []).find(item => String(item.underlying_code || '') === want)
+      return (product && (product.name_cn || product.name)) || want
+    },
+    optionNotionalsRowFromPanel (code, panel) {
+      const data = panel && typeof panel === 'object' ? panel : {}
+      const g = data.greeks || {}
+      const s = data.gex_summary || {}
+      const total = ((data.capital_curve || {}).total) || {}
+      const spot = Number(data.current_price != null ? data.current_price : data.underlying)
+      const delta = Number(g.delta)
+      const gamma = Number(g.gamma)
+      const vega = Number(g.vega)
+      const theta = Number(g.theta)
+      const netGex = Number(s.net_gex)
+      const hasSpot = Number.isFinite(spot)
+      const margin = total.margin_total != null ? total.margin_total : total.margin_short_total
+      const code6 = String(code || '').replace(/\D/g, '').slice(0, 6)
+      return {
+        etf_code: code6,
+        etf_name: this.etfDisplayName(code6),
+        etf_count: 1,
+        primary: code6 === this.selectedUnderlyingCode,
+        spot: hasSpot ? spot : null,
+        delta_notional: Number.isFinite(delta) && hasSpot ? delta * spot : null,
+        gamma_notional: Number.isFinite(netGex) ? netGex : (Number.isFinite(gamma) && hasSpot ? gamma * spot : null),
+        vega_notional: Number.isFinite(vega) ? vega : null,
+        theta_notional: Number.isFinite(theta) ? theta : null,
+        premium_total: total.premium_total,
+        margin_total: margin,
+        margin_long_total: total.margin_long_total,
+        margin_short_total: total.margin_short_total,
+        time_value_total: total.time_value_total,
+        units: {
+          delta_notional: '元',
+          gamma_notional: '元',
+          vega_notional: '元/1%波动',
+          theta_notional: '元/日',
+          premium_total: '元',
+          margin_total: '元',
+          time_value_total: '元'
+        }
+      }
+    },
+    mergeOptionNotionals (rows) {
+      const keys = [
+        'delta_notional', 'gamma_notional', 'vega_notional', 'theta_notional',
+        'premium_total', 'margin_total', 'margin_long_total', 'margin_short_total', 'time_value_total'
+      ]
+      const list = (rows || []).filter(Boolean)
+      const total = {}
+      keys.forEach(key => {
+        const vals = list.map(row => row[key]).filter(v => v != null && Number.isFinite(Number(v)))
+        total[key] = vals.length ? vals.reduce((sum, v) => sum + Number(v), 0) : null
+      })
+      const primary = list.find(row => row.primary) || list[0] || {}
+      total.spot = primary.spot
+      total.etf_code = primary.etf_code
+      total.etf_name = primary.etf_name
+      total.multiplier = primary.multiplier
+      total.units = Object.assign({}, primary.units || {})
+      total.etf_count = list.length
+      total.etfs = list
+      return total
+    },
+    async loadIndexEtfOptions () {
+      const codes = this.linkedIndexEtfCodes
+      if (!codes.length) {
+        this.indexEtfOptionsData = null
+        this.indexEtfOptionsByCode = {}
+        this.loadingIndexEtfOptions = false
+        return
+      }
+      const panels = Object.assign({}, this.indexEtfOptionsByCode || {})
+      const missing = codes.filter(code => !Object.prototype.hasOwnProperty.call(panels, code))
+      const selected = this.selectedUnderlyingCode
+      if (!missing.length) {
+        this.indexEtfOptionsData = panels[selected] || Object.values(panels).find(Boolean) || null
+        this.loadingIndexEtfOptions = false
+        return
+      }
+      const seq = (this._indexEtfOptSeq = (this._indexEtfOptSeq || 0) + 1)
+      this.loadingIndexEtfOptions = true
+      try {
+        await Promise.all(missing.map(code => (
+          getOptionsPanel(code, 'all', this.etfScopeParams()).then(res => {
+            if (seq !== this._indexEtfOptSeq) return
+            panels[code] = this.panelPayload(res)
+          }).catch(() => {
+            if (seq !== this._indexEtfOptSeq) return
+            panels[code] = null
+          })
+        )))
+        if (seq !== this._indexEtfOptSeq) return
+        this.indexEtfOptionsByCode = panels
+        this.indexEtfOptionsData = panels[selected] || Object.values(panels).find(Boolean) || null
+      } catch (e) {
+        if (seq !== this._indexEtfOptSeq) return
+        this.indexEtfOptionsData = null
+        this.indexEtfOptionsByCode = {}
+      } finally {
+        if (seq === this._indexEtfOptSeq) this.loadingIndexEtfOptions = false
+      }
+    },
+    async loadIndexFuturesAndOptions () {
+      const futuresRoot = this.selectedFuturesRoot
+      const optionRoot = this.selectedIndexOptionRoot
+      if (!futuresRoot && !optionRoot) {
+        this.futuresData = null
+        this.indexFuturesOptionsData = null
+        this.loadingIndexDerivatives = false
+        return
+      }
+      const seq = (this._indexDerivSeq = (this._indexDerivSeq || 0) + 1)
+      this.loadingIndexDerivatives = true
+      const tasks = []
+      if (futuresRoot) {
+        tasks.push(
+          getFuturesPanel(futuresRoot).then(res => {
+            if (seq !== this._indexDerivSeq) return
+            this.futuresData = this.panelPayload(res)
+          }).catch(() => {
+            if (seq !== this._indexDerivSeq) return
+            this.futuresData = null
+          })
+        )
+      } else {
+        this.futuresData = null
+      }
+      if (optionRoot) {
+        tasks.push(
+          getOptionsPanel(optionRoot, 'all', {}).then(res => {
+            if (seq !== this._indexDerivSeq) return
+            this.indexFuturesOptionsData = this.panelPayload(res)
+          }).catch(() => {
+            if (seq !== this._indexDerivSeq) return
+            this.indexFuturesOptionsData = null
+          })
+        )
+      } else {
+        this.indexFuturesOptionsData = null
+      }
+      try {
+        await Promise.all(tasks)
+      } finally {
+        if (seq === this._indexDerivSeq) {
+          this.loadingIndexDerivatives = false
+          this.$nextTick(() => this.renderFuturesCharts())
+        }
       }
     },
     spotRequestParams () {
@@ -1403,7 +1865,7 @@ export default {
           this.selectedMonth,
           this.etfScopeParams()
         )
-        this.optionsData = (res && res.data) || null
+        this.optionsData = this.panelPayload(res) || (res && res.data) || null
         if (this.optionsData && this.optionsData.month) {
           this.selectedMonth = this.optionsData.month
         }
@@ -1438,7 +1900,18 @@ export default {
       const curve = ((this.futuresData && this.futuresData.term_structure) || []).filter(p => !p.is_continuous)
       const activityRows = (this.futuresData && this.futuresData.monthly_activity) || curve
       const months = activityRows.map(p => p.symbol || p.label)
-      const capitalRows = (this.futuresData && this.futuresData.options_settled_capital) || []
+      let capitalRows = (this.futuresData && this.futuresData.options_settled_capital) || []
+      if (!capitalRows.length && this.indexFuturesOptionsData) {
+        capitalRows = (this.indexFuturesOptionsData.month_series || []).map(row => ({
+          month: row.month,
+          call_notional: row.call_notional,
+          put_notional: row.put_notional,
+          call_premium: row.call_premium,
+          put_premium: row.put_premium,
+          call_settled: row.call_premium,
+          put_settled: row.put_premium
+        }))
+      }
 
       if (term) {
         const termMonths = curve.map(p => p.label || p.symbol)
@@ -1573,52 +2046,7 @@ export default {
     },
 
     buildStackedGexSeries (monthSeries, points, palette, buildMarks) {
-      const months = (monthSeries || []).filter(ms => (ms.gex_distribution || []).length)
-      if (months.length > 1) {
-        const strikeNums = new Set()
-        months.forEach(ms => {
-          (ms.gex_distribution || []).forEach(p => {
-            const k = Number(p.strike)
-            if (Number.isFinite(k)) strikeNums.add(k)
-          })
-        })
-        const strikes = Array.from(strikeNums).sort((a, b) => a - b).map(k => String(k))
-        const series = months.map((ms, idx) => {
-          const byK = new Map(
-            (ms.gex_distribution || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
-          )
-          return {
-            name: String(ms.month || `M${idx + 1}`),
-            type: 'bar',
-            stack: 'gex',
-            barMaxWidth: 18,
-            data: strikes.map(k => byK.get(k) || 0),
-            itemStyle: { color: palette[idx % palette.length], opacity: 0.78 }
-          }
-        })
-        const aggByK = new Map(
-          (points || []).map(p => [String(Number(p.strike)), Number(p.net_gex) || 0])
-        )
-        const netData = strikes.map((k, i) => {
-          if (aggByK.has(k)) return aggByK.get(k)
-          return series.reduce((sum, ser) => sum + (Number(ser.data[i]) || 0), 0)
-        })
-        series.push({
-          name: 'Net GEX',
-          type: 'line',
-          data: netData,
-          itemStyle: { color: '#fa8c16' },
-          markLine: { symbol: 'none', data: buildMarks(strikes) }
-        })
-        return { strikes, series }
-      }
-      const strikes = (points || []).map(p => String(p.strike))
-      return {
-        strikes,
-        series: [
-          { name: 'Net GEX', type: 'bar', barMaxWidth: 18, data: (points || []).map(p => p.net_gex), itemStyle: { color: '#fa8c16', opacity: 0.78 }, markLine: { symbol: 'none', data: buildMarks(strikes) } }
-        ]
-      }
+      return createStackedNetGexSeries(monthSeries, points, palette, buildMarks)
     },
     applyCallPutGexChart (chart, monthSeries, points, buildMarks) {
       if (!chart) return
@@ -1627,15 +2055,34 @@ export default {
         ...this.baseChartOption(),
         legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         grid: { left: 56, right: 36, top: 56, bottom: 40 },
-        xAxis: {
-          type: 'category',
-          data: stacked.strikes,
-          axisLabel: { color: this.chartText },
-          axisLine: { onZero: true }
-        },
+        xAxis: styleStrikeXAxis(stacked.xAxis, this.chartText),
         yAxis: callPutValueAxis(stacked.valueRange, {
           splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } }
         }),
+        series: stacked.series
+      }, true)
+    },
+    applyOiStrikeChart (chart, points, buildMarks) {
+      if (!chart) return
+      const built = createOiStrikeChart(points, buildMarks)
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 24, top: 48, bottom: 40 },
+        xAxis: styleStrikeXAxis(built.xAxis, this.chartText),
+        yAxis: { type: 'value', name: 'OI', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
+        series: built.series
+      }, true)
+    },
+    applyNetGexChart (chart, monthSeries, points, palette, buildMarks, grid = {}) {
+      if (!chart) return
+      const stacked = createStackedNetGexSeries(monthSeries, points, palette, buildMarks)
+      chart.setOption({
+        ...this.baseChartOption(),
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
+        grid: { left: 56, right: 24, top: 48, bottom: 40, ...grid },
+        xAxis: styleStrikeXAxis(stacked.xAxis, this.chartText),
+        yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
         series: stacked.series
       }, true)
     },
@@ -1652,22 +2099,7 @@ export default {
       const buildStrikeMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
 
       const oi = this.ensureChart('oiChart')
-      if (oi) {
-        const strikes = points.map(p => String(p.strike))
-        const strikeMarks = buildStrikeMarks(strikes)
-        oi.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 24, top: 48, bottom: 40 },
-          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', name: 'OI', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: [
-            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi), itemStyle: { color: '#52c41a', opacity: 0.7 } },
-            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi), itemStyle: { color: '#ff4d4f', opacity: 0.7 } },
-            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi), itemStyle: { color: '#2f54eb' }, markLine: strikeMarks.length ? { symbol: 'none', data: strikeMarks } : undefined }
-          ]
-        }, true)
-      }
+      if (oi) this.applyOiStrikeChart(oi, points, buildStrikeMarks)
 
       const gexCallPut = this.ensureChart('gexCallPutChart')
       if (gexCallPut) {
@@ -1675,17 +2107,7 @@ export default {
       }
 
       const gex = this.ensureChart('gexChart')
-      if (gex) {
-        const stacked = this.buildStackedGexSeries(monthSeries, points, palette, buildStrikeMarks)
-        gex.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 24, top: 48, bottom: 40 },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stacked.series
-        }, true)
-      }
+      if (gex) this.applyNetGexChart(gex, monthSeries, points, palette, buildStrikeMarks)
 
       const tv = this.ensureChart('tvYieldChart')
       if (tv) {
@@ -2228,12 +2650,13 @@ export default {
         if (r.open == null || r.close == null) return [null, null, null, null]
         return [r.open, r.close, r.low, r.high]
       })
+      const closes = rows.map(r => (r.close == null ? null : Number(r.close)))
       const slice = this.historySlices[this.historySliceIndex] || {}
       const markLabel = slice.label || slice.ts || labels[this.historySliceIndex]
       const month = (rows.find(r => r.month) || {}).month
       chart.setOption({
         ...this.baseChartOption(),
-        legend: { top: 0, textStyle: { color: this.chartText } },
+        legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
         grid: { left: 56, right: 24, top: 48, bottom: 48 },
         xAxis: { type: 'category', data: labels, axisLabel: { color: this.chartText, hideOverlap: true } },
         yAxis: {
@@ -2245,18 +2668,7 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'cross' },
-          formatter: params => {
-            const item = Array.isArray(params) ? params[0] : params
-            if (!item || !item.data) return ''
-            const [o, c, l, h] = item.data
-            if (o == null) return `${item.axisValue}<br/>--`
-            const pct = v => `${(Number(v) * 100).toFixed(2)}%`
-            return [
-              item.axisValue,
-              `O ${pct(o)} / C ${pct(c)}`,
-              `L ${pct(l)} / H ${pct(h)}`
-            ].join('<br/>')
-          }
+          formatter: formatIvKlineTooltip
         },
         series: [
           {
@@ -2279,7 +2691,8 @@ export default {
                 data: [{ xAxis: markLabel }]
               }
               : undefined
-          }
+          },
+          ...ivKlineMaSeries(closes)
         ]
       }, true)
     },
@@ -2355,15 +2768,7 @@ export default {
           this.renderCallPutGexTrend()
           return
         }
-        const stacked = this.buildStackedGexSeries(monthSeries, points, palette, buildMarks)
-        chart.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, type: 'scroll', textStyle: { color: this.chartText } },
-          grid: { left: 56, right: 36, top: 72, bottom: 40 },
-          xAxis: { type: 'category', data: stacked.strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', name: 'GEX', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series: stacked.series
-        }, true)
+        this.applyNetGexChart(chart, monthSeries, points, palette, buildMarks, { left: 56, right: 36, top: 72 })
         this.$nextTick(() => chart.resize())
         this.renderGexLevelsHistory()
         return
@@ -2498,26 +2903,15 @@ export default {
 
       if (key === 'options.oi' || key === 'options.gex') {
         const points = slice.gex_distribution || []
-        let strikes = points.map(p => p.strike)
-        let series
+        const summary = slice.gex_summary || {}
+        const price = slice.current_price || slice.underlying || summary.underlying
+        const markDefs = this.buildOptionsMarkDefs(summary, price)
+        const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
         if (key === 'options.oi') {
-          series = [
-            { name: 'Call OI', type: 'bar', stack: 'oi', data: points.map(p => p.call_oi) },
-            { name: 'Put OI', type: 'bar', stack: 'oi', data: points.map(p => -p.put_oi) },
-            { name: 'Net OI', type: 'line', data: points.map(p => p.net_oi) }
-          ]
+          this.applyOiStrikeChart(chart, points, buildMarks)
         } else {
-          const stacked = this.buildStackedGexSeries(slice.month_series || [], points, ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb'], () => [])
-          strikes = stacked.strikes
-          series = stacked.series
+          this.applyNetGexChart(chart, slice.month_series || [], points, ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb'], buildMarks)
         }
-        chart.setOption({
-          ...this.baseChartOption(),
-          legend: { top: 0, textStyle: { color: this.chartText } },
-          xAxis: { type: 'category', data: strikes, axisLabel: { color: this.chartText } },
-          yAxis: { type: 'value', splitLine: { lineStyle: { color: this.chartGrid, type: 'dashed' } } },
-          series
-        }, true)
         return
       }
 
