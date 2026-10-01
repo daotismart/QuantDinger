@@ -95,6 +95,26 @@ export function symmetricValueRange (seriesList, paddingRatio = 0.08) {
   return { min: -limit, max: limit }
 }
 
+export function withStrikeXAxis (strikes, series, extras = {}) {
+  return {
+    strikes,
+    series,
+    xAxis: strikeValueAxis(strikes, markLineXValues(series), {
+      axisLine: { onZero: true },
+      ...extras
+    })
+  }
+}
+
+export function styleStrikeXAxis (xAxis, chartText) {
+  const axis = xAxis || { type: 'value', scale: true }
+  return {
+    ...axis,
+    axisLabel: { ...(axis.axisLabel || {}), color: chartText },
+    axisLine: { onZero: true, ...(axis.axisLine || {}) }
+  }
+}
+
 export function callPutValueAxis (valueRange, extras = {}) {
   return {
     type: 'value',
@@ -161,12 +181,8 @@ export function buildCallPutStackedGexSeries (monthSeries, points, buildMarks) {
 
   const valueRange = symmetricValueRange(series)
   return {
-    strikes,
-    series,
-    valueRange,
-    xAxis: strikeValueAxis(strikes, markLineXValues(series), {
-      axisLine: { onZero: true }
-    })
+    ...withStrikeXAxis(strikes, series),
+    valueRange
   }
 }
 
@@ -297,7 +313,7 @@ export function buildStackedNetGexSeries (monthSeries, points, palette, buildMar
       data: pairStrikeData(strikes, netValues),
       itemStyle: { color: '#fa8c16' }
     }, marks))
-    return { strikes, series }
+    return withStrikeXAxis(strikes, series)
   }
 
   const byK = netGexByStrike((source[0] && source[0].gex_distribution) || points)
@@ -308,7 +324,7 @@ export function buildStackedNetGexSeries (monthSeries, points, palette, buildMar
     data: pairStrikeData(strikes, strikes.map(k => byK.get(k) || 0)),
     itemStyle: { color: '#fa8c16', opacity: 0.78 }
   }, marks))
-  return { strikes, series }
+  return withStrikeXAxis(strikes, series)
 }
 
 export function buildOiStrikeSeries (points, strikeMarks) {
@@ -323,4 +339,11 @@ export function buildOiStrikeSeries (points, strikeMarks) {
       markLine: strikeMarks && strikeMarks.length ? { symbol: 'none', data: strikeMarks } : undefined
     }
   ]
+}
+
+export function buildOiStrikeChart (points, buildMarks) {
+  const rows = points || []
+  const strikes = collectStrikes([{ gex_distribution: rows }])
+  const marks = typeof buildMarks === 'function' ? (buildMarks(strikes) || []) : []
+  return withStrikeXAxis(strikes, buildOiStrikeSeries(rows, marks))
 }
