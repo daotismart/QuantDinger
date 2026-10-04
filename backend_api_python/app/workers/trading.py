@@ -43,21 +43,26 @@ class TradingWorker:
         logger.info("Trading worker started: %s", self.worker_id)
         self._ensure_global_services()
         self._heartbeat()
+        self._start_watchdog()
         self.restore_desired_strategies()
         try:
             while not self._stop.is_set():
-                self._heartbeat()
-                self._ensure_global_services()
-                self._renew_runtime_leases()
-                command = self.repository.claim_next(
-                    owner_id=self.worker_id,
-                    lease_seconds=self.command_lease_seconds,
-                    max_attempts=self.max_attempts,
-                )
-                if command is None:
-                    self._stop.wait(self.poll_seconds)
-                    continue
-                self._execute(command)
+                try:
+                    self._heartbeat()
+                    self._ensure_global_services()
+                    self._renew_runtime_leases()
+                    command = self.repository.claim_next(
+                        owner_id=self.worker_id,
+                        lease_seconds=self.command_lease_seconds,
+                        max_attempts=self.max_attempts,
+                    )
+                    if command is None:
+                        self._stop.wait(self.poll_seconds)
+                        continue
+                    self._execute(command)
+                except Exception:
+                    logger.exception("Trading worker loop error")
+                    self._stop.wait(max(self.poll_seconds, 1.0))
         finally:
             self._shutdown_local_runtimes()
             if self._global_services_leader:
@@ -202,6 +207,21 @@ class TradingWorker:
             return [int(value) for value in running]
         with lock:
             return [int(value) for value in running]
+
+    def _start_watchdog(self) -> None:
+        thread = threading.Thread(
+            target=self._watchdog_loop,
+            name="qd-trading-watchdog",
+            daemon=True,
+        )
+        thread.start()
+
+    def _watchdog_loop(self) -> None:
+        while not self._stop.wait(10):
+            try:
+                self._heartbeat()
+            except Exception:
+                logger.warning("Trading worker watchdog heartbeat failed", exc_info=True)
 
     def _heartbeat(self) -> None:
         now = time.monotonic()

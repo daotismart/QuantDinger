@@ -616,41 +616,56 @@ def safe_exec_isolated(
             result_pipe.close()
 
     parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
-
-    proc = multiprocessing.Process(
-        target=_worker,
-        args=(code, input_data, max_memory_mb, child_conn),
-        daemon=True,
-    )
-    proc.start()
-    child_conn.close()
-
-    proc.join(timeout=timeout)
-
-    if proc.is_alive():
-        proc.kill()
-        proc.join(timeout=5)
-        return {
-            'success': False,
-            'error': f"Code execution timed out after {timeout} seconds; subprocess terminated",
-            'result': None,
-        }
-
-    if proc.exitcode != 0 and not parent_conn.poll():
-        return {
-            'success': False,
-            'error': f"Subprocess exited abnormally (exit code: {proc.exitcode})",
-            'result': None,
-        }
-
+    proc = None
     try:
-        if parent_conn.poll(timeout=1):
-            return parent_conn.recv()
-        return {'success': False, 'error': "Subprocess returned no result", 'result': None}
-    except Exception as e:
-        return {'success': False, 'error': f"Failed to read subprocess result: {e}", 'result': None}
+        proc = multiprocessing.Process(
+            target=_worker,
+            args=(code, input_data, max_memory_mb, child_conn),
+            daemon=True,
+        )
+        proc.start()
+        child_conn.close()
+
+        proc.join(timeout=timeout)
+
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=5)
+            return {
+                'success': False,
+                'error': f"Code execution timed out after {timeout} seconds; subprocess terminated",
+                'result': None,
+            }
+
+        if proc.exitcode != 0 and not parent_conn.poll():
+            return {
+                'success': False,
+                'error': f"Subprocess exited abnormally (exit code: {proc.exitcode})",
+                'result': None,
+            }
+
+        try:
+            if parent_conn.poll(timeout=1):
+                return parent_conn.recv()
+            return {'success': False, 'error': "Subprocess returned no result", 'result': None}
+        except Exception as e:
+            return {'success': False, 'error': f"Failed to read subprocess result: {e}", 'result': None}
     finally:
-        parent_conn.close()
+        try:
+            parent_conn.close()
+        except Exception:
+            pass
+        if proc is not None:
+            try:
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=2)
+                elif proc.exitcode is None:
+                    proc.join(timeout=1)
+            except Exception:
+                pass
+        from app.utils.child_reaper import reap_children
+        reap_children()
 
 
 # Static validation

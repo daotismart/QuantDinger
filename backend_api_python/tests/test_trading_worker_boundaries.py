@@ -60,6 +60,27 @@ def test_stop_command_is_executed_by_trading_worker():
     assert repository.completed[0][1]["status"] == "stopped"
 
 
+def test_watchdog_heartbeats_while_main_loop_is_idle():
+    class HeartbeatRepo(FakeRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.beats = 0
+
+        def fail_exhausted_commands(self, *_args, **_kwargs):
+            return None
+
+        def record_worker_heartbeat(self, **_kwargs):
+            self.beats += 1
+
+    repository = HeartbeatRepo()
+    worker = TradingWorker(FakeExecutor(), repository)
+    worker._last_heartbeat = 0
+    worker._start_watchdog()
+    worker._heartbeat()
+    assert repository.beats >= 1
+    worker.stop()
+
+
 def test_failed_command_is_retried_with_backoff(monkeypatch):
     repository = FakeRepository()
     worker = TradingWorker(FakeExecutor(), repository)
