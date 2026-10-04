@@ -90,4 +90,17 @@ celery_app.conf.update(
     },
 )
 
+try:
+    from celery.signals import worker_process_init, worker_ready
+
+    def _install_child_reaper(**_kwargs) -> None:
+        from app.utils.child_reaper import install_child_reaper
+
+        install_child_reaper()
+
+    worker_process_init.connect(_install_child_reaper)
+    worker_ready.connect(_install_child_reaper)
+except Exception:
+    pass
+
 __all__ = ["celery_app"]

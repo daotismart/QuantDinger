@@ -126,6 +126,9 @@ def _bootstrap_database() -> None:
 
 def create_app(config_name='default', *, register_http_routes: bool = True):
     """Create and configure the Flask application."""
+    from app.utils.child_reaper import install_child_reaper
+
+    install_child_reaper()
     app = Flask(__name__)
     app.json_provider_class = SafeJSONProvider
     app.json = SafeJSONProvider(app)
