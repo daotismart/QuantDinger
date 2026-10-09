@@ -33,6 +33,64 @@ def _etf_code6(value: str) -> str:
     return digits[:6] if len(digits) >= 6 else digits
 
 
+# ClickHouse opt_underlying_1m is sampled and can stop before the 15:00 close.
+# If the last print is older than this, overlay the ETF cash last/close instead.
+_CH_UNDERLYING_STALE_SEC = 10 * 60
+
+
+def _parse_underlying_ts(value: Any) -> Optional[datetime]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    text = str(value).strip()[:19]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def ch_underlying_is_stale(
+    ts: Any,
+    *,
+    now: Optional[datetime] = None,
+    max_age_sec: float = _CH_UNDERLYING_STALE_SEC,
+) -> bool:
+    parsed = _parse_underlying_ts(ts)
+    if parsed is None:
+        return True
+    current = now or datetime.now()
+    return (current - parsed).total_seconds() > float(max_age_sec)
+
+
+def resolve_etf_options_underlying(
+    *,
+    ch_price: float,
+    ch_ts: Any = None,
+    spot_price: float = 0.0,
+    now: Optional[datetime] = None,
+) -> Tuple[float, str]:
+    """Pick the page current price: live CH 1m, else ETF cash last/close."""
+    ch_px = float(ch_price or 0.0)
+    spot_px = float(spot_price or 0.0)
+    if spot_px > 0 and (ch_px <= 0 or ch_underlying_is_stale(ch_ts, now=now)):
+        return spot_px, "etf_spot"
+    if ch_px > 0:
+        return ch_px, "clickhouse"
+    return 0.0, "none"
+
+
+def _etf_spot_last_price(code6: str) -> float:
+    """Latest ETF cash close from ``qd_market_bars`` (no Sina / enrich)."""
+    row = _etf_row_from_local_bars(code6)
+    try:
+        return float((row or {}).get("price") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 ETF_SSE_LIST_NAME: Dict[str, str] = {
     "510050": "50ETF",
     "510300": "300ETF",
@@ -49,7 +107,7 @@ ETF_CN_NAMES: Dict[str, str] = {
     "510050": "上证50ETF",
     "510300": "沪深300ETF",
     "510500": "中证500ETF",
-    "588000": "华泰柏瑞科创50ETF",
+    "588000": "华夏科创50ETF",
     "588080": "易方达科创50ETF",
     "159901": "深证100ETF",
     "159915": "创业板ETF",
@@ -634,7 +692,7 @@ def _build_index_option_notionals(codes: List[str], primary: str = "") -> Dict[s
     rows: List[Dict[str, Any]] = []
     misses: List[str] = []
     for code6 in wanted:
-        panel = _etf_options_cache_get(f"etf_options_panel:v3:{code6}:all")
+        panel = _etf_options_cache_get(f"etf_options_panel:v4:{code6}:all")
         if isinstance(panel, dict):
             rows.append(_option_notionals_row_from_panel(code6, panel, primary6))
         else:
@@ -943,7 +1001,7 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
         raise ValueError("underlying ETF code is required")
 
     month_raw = (month or "all").strip().lower()
-    cache_key = f"etf_options_panel:v3:{code6}:{month_raw or 'all'}"
+    cache_key = f"etf_options_panel:v4:{code6}:{month_raw or 'all'}"
     cache_ttl = etf_options_panel_cache_ttl()
     cached = _etf_options_cache_get(cache_key)
     if cached:
@@ -954,13 +1012,27 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
     name_cn = etf_underlying_display_name(code6)
     select_all = month_raw in {"", "all", "*", "全部"}
 
+    spot_px = _etf_spot_last_price(code6)
     ch_bundle = try_load_etf_option_chains(code6)
     if ch_bundle:
         months = list(ch_bundle.get("months") or [])
         selected_months = months[:8] if select_all else [month_raw]
         if not select_all and selected_months[0] not in months:
             selected_months = [months[0]] if months else selected_months
-        underlying = float(ch_bundle.get("underlying") or 0.0)
+        ch_underlying = float(ch_bundle.get("underlying") or 0.0)
+        underlying, und_src = resolve_etf_options_underlying(
+            ch_price=ch_underlying,
+            ch_ts=ch_bundle.get("underlying_ts"),
+            spot_price=spot_px,
+        )
+        if und_src == "etf_spot" and ch_underlying > 0:
+            logger.info(
+                "etf_options overlay spot=%.4f over stale CH underlying=%.4f ts=%s code=%s",
+                underlying,
+                ch_underlying,
+                ch_bundle.get("underlying_ts"),
+                code6,
+            )
         panel = _assemble_etf_options_panel(
             code6=code6,
             name_cn=name_cn,
@@ -975,6 +1047,9 @@ def build_etf_options_panel(code: str, month: Optional[str] = None) -> Dict[str,
             time_value_fn=compute_etf_time_value_annualized_yield,
             data_source="clickhouse",
         )
+        panel["underlying_source"] = und_src
+        panel["ch_underlying"] = ch_underlying
+        panel["ch_underlying_ts"] = ch_bundle.get("underlying_ts")
         if panel.get("month_series"):
             _etf_options_cache_set(cache_key, panel, cache_ttl)
             panel["cache_hit"] = False

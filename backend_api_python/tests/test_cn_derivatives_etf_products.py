@@ -33,6 +33,7 @@ def test_products_include_benchmark_index_and_options_flags():
 
 def test_star50_and_chinext_have_index_without_futures():
     rows = {r["underlying_code"]: r for r in list_etf_derivative_products()}
+    assert rows["588000"]["name_cn"] == "华夏科创50ETF"
     assert rows["588000"]["index_symbol"] == "000688.SH"
     assert rows["588000"]["index_futures_root"] == ""
     assert rows["588000"].get("index_option_root") in ("", None)
