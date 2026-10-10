@@ -555,6 +555,12 @@ import {
 } from './gex-chart-series'
 import { buildStrikeMarkLineData as createStrikeMarkLineData } from './strike-mark-lines'
 import { formatIvKlineTooltip, ivKlineMaSeries } from './iv-kline-ma'
+import {
+  latestPriceBands,
+  overlayTvYieldMovingAverages,
+  priceBandMarkDefs,
+  priceBandValueAxisMarks
+} from './price-bands'
 
 // Same-benchmark option underlyings that must always appear together on the
 // index tab (STAR 50: 588000 Huatai-PineBridge + 588080 E Fund).
@@ -1288,13 +1294,17 @@ export default {
       const n = Number(price)
       return Number.isFinite(n) ? n : null
     },
-    buildOptionsMarkDefs (summary, price) {
+    currentPriceBands (asOf) {
+      return latestPriceBands(this.etfHistoryPoints || [], { asOf })
+    },
+    buildOptionsMarkDefs (summary, price, asOf) {
       return [
         { name: 'Price', value: price, color: '#1890ff', width: 2 },
         { name: 'Flip', value: summary.flip, color: '#faad14', width: 1.5 },
         { name: 'Call Wall', value: summary.call_wall, color: '#52c41a', width: 1.5 },
         { name: 'Put Wall', value: summary.put_wall, color: '#ff4d4f', width: 1.5 },
-        { name: 'Pin', value: summary.pin, color: '#722ed1', width: 1.5 }
+        { name: 'Pin', value: summary.pin, color: '#722ed1', width: 1.5 },
+        ...priceBandMarkDefs(this.currentPriceBands(asOf))
       ]
     },
     buildCurrentPriceValueAxisMarkData (price) {
@@ -1875,7 +1885,27 @@ export default {
         this.loadingTab = false
         this.scheduleOptionsChartRender()
         this.loadIvRankLive()
+        this.loadEtfPriceHistoryForBands()
       }
+    },
+    async loadEtfPriceHistoryForBands () {
+      if ((this.etfHistoryPoints || []).length) {
+        this.scheduleOptionsChartRender()
+        return
+      }
+      try {
+        const res = await getChartHistory({
+          root: this.spotRequestRoot(),
+          chart: 'etf.metrics',
+          days: 180,
+          frequency: 'day',
+          ...this.etfScopeParams()
+        })
+        this.etfHistoryPoints = ((res && res.data) || {}).points || []
+      } catch (e) {
+        if (!(this.etfHistoryPoints || []).length) this.etfHistoryPoints = []
+      }
+      this.scheduleOptionsChartRender()
     },
     ensureChart (refName) {
       const el = this.$refs[refName]
@@ -2135,6 +2165,8 @@ export default {
           })
         }
         tvMarkData.push(...this.buildCurrentPriceValueAxisMarkData(price))
+        tvMarkData.push(...priceBandValueAxisMarks(this.currentPriceBands(), v => this.formatCurrentPrice(v)))
+        series.push(...overlayTvYieldMovingAverages(series))
         if (tvMarkData.length) {
           series.push({
             name: this.$t('marketComposite.futures.options.tvYieldMarket'),
@@ -2760,7 +2792,8 @@ export default {
         const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#2f54eb']
         const summary = slice.gex_summary || {}
         const price = slice.current_price || slice.underlying || summary.underlying
-        const markDefs = this.buildOptionsMarkDefs(summary, price)
+        const asOf = slice.date || slice.ts || slice.label
+        const markDefs = this.buildOptionsMarkDefs(summary, price, asOf)
         const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
         if (key === 'options.gexCallPut') {
           this.applyCallPutGexChart(chart, monthSeries, points, buildMarks)
@@ -2905,7 +2938,8 @@ export default {
         const points = slice.gex_distribution || []
         const summary = slice.gex_summary || {}
         const price = slice.current_price || slice.underlying || summary.underlying
-        const markDefs = this.buildOptionsMarkDefs(summary, price)
+        const asOf = slice.date || slice.ts || slice.label
+        const markDefs = this.buildOptionsMarkDefs(summary, price, asOf)
         const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
         if (key === 'options.oi') {
           this.applyOiStrikeChart(chart, points, buildMarks)
@@ -2956,6 +2990,11 @@ export default {
           })
         }
         tvMarkData.push(...this.buildCurrentPriceValueAxisMarkData(slicePrice))
+        tvMarkData.push(...priceBandValueAxisMarks(
+          this.currentPriceBands(slice.date || slice.ts || slice.label),
+          v => this.formatCurrentPrice(v)
+        ))
+        series.push(...overlayTvYieldMovingAverages(series))
         if (tvMarkData.length) {
           series.push({
             name: this.$t('marketComposite.futures.options.tvYieldMarket'),

@@ -1074,7 +1074,7 @@ export default {
         const points = slice.gex_distribution || []
         const summary = slice.gex_summary || {}
         const price = slice.current_price || slice.underlying || summary.underlying
-        const markDefs = this.buildOptionsMarkDefs(summary, price)
+        const markDefs = this.buildOptionsMarkDefs(summary, price, slice.date || slice.ts || slice.label)
         const buildMarks = (strikes) => this.buildStrikeMarkLineData(markDefs, strikes)
         if (key === 'options.oi') {
           this.applyOiStrikeChart(chart, points, buildMarks)

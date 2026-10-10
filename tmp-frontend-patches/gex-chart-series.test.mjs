@@ -65,5 +65,8 @@ const oiBar = oi.series.find(s => s.name === 'Call OI')
 assert(Array.isArray(oiBar.data[0]) && oiBar.data[0][0] === 1.3, `OI bars must be [strike, value], got ${JSON.stringify(oiBar.data[0])}`)
 const oiFlip = (((oi.series.find(s => s.markLine) || {}).markLine || {}).data || []).find(m => m.name === 'Flip')
 assert(oiFlip && Math.abs(oiFlip.xAxis - 1.503) < 1e-9, `OI Flip must sit at 1.503, got ${oiFlip && oiFlip.xAxis}`)
+assert(oi.series.some(s => s.name === 'Net MA5'), 'OI chart overlays Net MA5')
+assert(piled.series.some(s => s.name === 'Call MA5') && piled.series.some(s => s.name === 'Put MA5'), 'GEX dist overlays Call/Put MA5')
+assert(netFlip.series.some(s => s.name === 'Net MA5'), 'Net GEX overlays Net MA5')
 
 console.log('gex-chart-series.test.mjs ok')
