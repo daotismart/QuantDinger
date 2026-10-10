@@ -1,0 +1,4 @@
+"marketComposite.futures.options.gexDist": "净GEX 分布（净GEX / Price / Flip / BOLL / MA）",
+"marketComposite.futures.options.gexCallPutDist": "GEX分布（Call / Put / BOLL / MA）",
+"marketComposite.futures.options.oiDist": "OI 分布（Call / Put / BOLL / MA）",
+"marketComposite.futures.options.timeValueYield": "时间价值年化收益率（BOLL / MA）"

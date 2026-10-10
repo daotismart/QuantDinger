@@ -109,8 +109,12 @@ export function strikeValueAxis (strikes, extraValues = [], extras = {}) {
   return axis
 }
 
-function usesExactPrice (name) {
-  return name === 'Price' || name === 'Flip'
+export function usesExactPrice (name) {
+  const label = String(name || '')
+  return label === 'Price'
+    || label === 'Flip'
+    || /^MA\d+$/i.test(label)
+    || /^BOLL\b/i.test(label)
 }
 
 function markLabel (item, fallback, formatPrice, formatStrike) {

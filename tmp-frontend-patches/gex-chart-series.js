@@ -13,6 +13,7 @@ import {
   pairStrikeData,
   strikeValueAxis
 } from './strike-mark-lines.js'
+import { DIST_MA_PERIOD, strikeMovingAverageSeries } from './price-bands.js'
 
 const CALL_PALETTE = ['#237804', '#389e0d', '#52c41a', '#73d13d', '#95de64', '#b7eb8f', '#d9f7be']
 const PUT_PALETTE = ['#a8071a', '#cf1322', '#f5222d', '#ff4d4f', '#ff7875', '#ffa39e', '#ffccc7']
@@ -166,6 +167,13 @@ export function buildCallPutStackedGexSeries (monthSeries, points, buildMarks) {
     })
   })
 
+  const callTot = strikes.map(k => mapped.reduce((sum, item) => sum + (item.byCall.get(k) || 0), 0))
+  const putTot = strikes.map(k => mapped.reduce((sum, item) => sum + (item.byPut.get(k) || 0), 0))
+  if (strikes.length >= DIST_MA_PERIOD) {
+    series.push(strikeMovingAverageSeries(pairStrikeData(strikes, callTot), DIST_MA_PERIOD, 'Call MA5', '#f59e0b'))
+    series.push(strikeMovingAverageSeries(pairStrikeData(strikes, putTot), DIST_MA_PERIOD, 'Put MA5', '#fb7185'))
+  }
+
   const marks = typeof buildMarks === 'function' ? (buildMarks(strikes) || []) : []
   if (marks.length) {
     series.push({
@@ -307,38 +315,51 @@ export function buildStackedNetGexSeries (monthSeries, points, palette, buildMar
       if (aggByK.has(k)) return aggByK.get(k)
       return series.reduce((sum, ser) => sum + (Number(ser.data[i] && ser.data[i][1]) || 0), 0)
     })
+    const netPairs = pairStrikeData(strikes, netValues)
     series.push(attachMarks({
       name: 'Net GEX',
       type: 'line',
-      data: pairStrikeData(strikes, netValues),
+      data: netPairs,
       itemStyle: { color: '#fa8c16' }
     }, marks))
+    if (strikes.length >= DIST_MA_PERIOD) {
+      series.push(strikeMovingAverageSeries(netPairs, DIST_MA_PERIOD, 'Net MA5', '#f59e0b'))
+    }
     return withStrikeXAxis(strikes, series)
   }
 
   const byK = netGexByStrike((source[0] && source[0].gex_distribution) || points)
+  const netPairs = pairStrikeData(strikes, strikes.map(k => byK.get(k) || 0))
   series.push(attachMarks({
     name: 'Net GEX',
     type: 'bar',
     barMaxWidth: 18,
-    data: pairStrikeData(strikes, strikes.map(k => byK.get(k) || 0)),
+    data: netPairs,
     itemStyle: { color: '#fa8c16', opacity: 0.78 }
   }, marks))
+  if (strikes.length >= DIST_MA_PERIOD) {
+    series.push(strikeMovingAverageSeries(netPairs, DIST_MA_PERIOD, 'Net MA5', '#f59e0b'))
+  }
   return withStrikeXAxis(strikes, series)
 }
 
 export function buildOiStrikeSeries (points, strikeMarks) {
-  return [
+  const netPairs = pairPointField(points, 'net_oi')
+  const series = [
     { name: 'Call OI', type: 'bar', stack: 'oi', barMaxWidth: 18, data: pairPointField(points, 'call_oi'), itemStyle: { color: '#52c41a', opacity: 0.7 } },
     { name: 'Put OI', type: 'bar', stack: 'oi', barMaxWidth: 18, data: pairPointField(points, 'put_oi', -1), itemStyle: { color: '#ff4d4f', opacity: 0.7 } },
     {
       name: 'Net OI',
       type: 'line',
-      data: pairPointField(points, 'net_oi'),
+      data: netPairs,
       itemStyle: { color: '#2f54eb' },
       markLine: strikeMarks && strikeMarks.length ? { symbol: 'none', data: strikeMarks } : undefined
     }
   ]
+  if ((points || []).length >= DIST_MA_PERIOD) {
+    series.push(strikeMovingAverageSeries(netPairs, DIST_MA_PERIOD, 'Net MA5', '#f59e0b'))
+  }
+  return series
 }
 
 export function buildOiStrikeChart (points, buildMarks) {

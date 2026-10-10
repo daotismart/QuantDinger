@@ -1,0 +1,29 @@
+ETF options strike charts: BOLL verticals + MA overlays
+
+Live + history slices for:
+  - OI distribution
+  - GEX Call/Put distribution
+  - Net GEX distribution
+  - Time-value yield
+
+BOLL / MA5 / MA10 use ETF daily closes from
+GET /api/cn-derivatives/history?chart=etf.metrics&days=180&frequency=day
+and sit on the numeric strike axis at the exact price (same as Price).
+
+BOLL = SMA20 ± 2σ. BOLL Mid is MA20, so MA20 is not drawn twice.
+
+Distribution MA5 is a line across neighboring strikes
+(Net OI / Call·Put GEX totals / Net GEX / each TV yield curve).
+
+Copy next to the Vue files:
+
+  cp tmp-frontend-patches/price-bands.js \
+     QuantDinger-Vue/src/views/market-composite-analysis/price-bands.js
+  cp tmp-frontend-patches/etf-derivatives.vue \
+     QuantDinger-Vue/src/views/market-composite-analysis/etf-derivatives.vue
+  cp tmp-frontend-patches/options-analytics-mixin.js \
+     QuantDinger-Vue/src/views/market-composite-analysis/options-analytics-mixin.js
+  cp tmp-frontend-patches/gex-chart-series.js \
+     QuantDinger-Vue/src/views/market-composite-analysis/gex-chart-series.js
+  cp tmp-frontend-patches/strike-mark-lines.js \
+     QuantDinger-Vue/src/views/market-composite-analysis/strike-mark-lines.js

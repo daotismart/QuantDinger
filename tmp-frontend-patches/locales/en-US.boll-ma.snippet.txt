@@ -1,0 +1,4 @@
+"marketComposite.futures.options.gexDist": "Net GEX (Net GEX / Price / Flip / BOLL / MA)",
+"marketComposite.futures.options.gexCallPutDist": "GEX distribution (Call / Put / BOLL / MA)",
+"marketComposite.futures.options.oiDist": "OI distribution (Call / Put / BOLL / MA)",
+"marketComposite.futures.options.timeValueYield": "Time-value yield (BOLL / MA)"
