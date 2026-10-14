@@ -1,0 +1,14 @@
+SPA login timeout (production hotfix 2026-10-14)
+
+Live axios default is 30s. Under host swap, POST /api/auth/login can exceed that
+and the login page looks broken even though the API later returns 200.
+
+Apply in QuantDinger-Vue/src/utils/request.js request interceptor, next to the
+existing AI/backtest timeout overrides:
+
+    if (config.url.includes('/api/auth/login') || config.url.includes('/api/auth/login-code')) {
+      config.timeout = ANALYSIS_TIMEOUT
+    }
+
+Live hashed bundle: ops/hotfixes/fe-compat/assets/index-KSaQnEjR.js
+(already inode-patched on the production host).

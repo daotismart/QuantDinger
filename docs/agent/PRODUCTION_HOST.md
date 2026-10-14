@@ -91,10 +91,23 @@ Do not raise concurrency without checking free memory first.
 
 Same `/database/ai/` host also runs:
 
-- `etf_options` (ClickHouse / Dash / gateway on various ports)
+- `etf_options` (ClickHouse / Dash / Jupyter / gateway on various ports)
 - `tradingagents` (nginx `:8880`, LLM gateway `:8080`)
+- `vnpy-web-trader` (QuestDB / recorder / web; md_receiver is optional)
 
 Do not reclaim those ports when redeploying QuantDinger.
+
+When ClickHouse + Jupyter + vnpy + QuantDinger are all resident, the 3.6 GiB
+host swaps hard. `/api/health` and `/api/auth/login` then stall past the SPA
+30s axios timeout and the login page looks broken. Recovery on 2026-10-14:
+
+- stopped `vnpy-web-trader-md_receiver-1` (`pip install redis` stuck in D-state);
+  container restart policy set to `no`
+- stopped `etf_options-jupyter-1` (~160 MiB; compose still `unless-stopped`)
+- live `index-KSaQnEjR.js` login / login-code timeout raised to 180s
+  (same change in host `QuantDinger-Vue/src/utils/request.js`)
+
+Do not start `md_receiver` or Jupyter on this host unless RAM is clearly free.
 
 ## Agent workflow
 
