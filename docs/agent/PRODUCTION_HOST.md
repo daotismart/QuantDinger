@@ -96,6 +96,30 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+### etf_options ClickHouse collector (not QuantDinger)
+
+Project dir: `/database/ai/ubuntu/data/vnpy/examples/etf_options_analysis` (`docker compose` name `etf_options`). HTTP `127.0.0.1:18123`. Tables use `ts_minute` / `trade_date` and `underlying_code` / `contract_code`.
+
+Observed 2026-10-21..22 gap:
+
+- `etf_options-poll-1` died `2026-10-21T03:03:33Z` (11:03 CST) on `NameResolutionError` for hostname `clickhouse` and stayed `Exited` (~36h). `restart: unless-stopped` did not bring it back after a stale containerd task (`Exited 128`).
+- `opt_underlying_1m` stayed complete (~2400 rows / 10 codes). Option 1m did not: 2026-10-21 bar/tick ~3356 / 1240 codes; 2026-10-22 tick SSE-only 240960 / 1004 codes, bar/analytics/daily collapsed to 162 then 644 SSE after rebuild. SZSE 1m/daily for 2026-10-22 were missing because poll was down all session.
+- Host RAM ~3.6 GiB. Poll cgroup is 384m. A full-day `rebuild-bar-1m-from-tick` plus the live poll loop was OOM-killed (`CONSTRAINT_MEMCG`). Stop poll (idle overnight) and `docker compose run --rm --no-deps poll ...` for rebuilds. Do not start `etf_options-jupyter-1` or `vnpy-web-trader-md_receiver-1` unless RAM is free.
+- `daily_collect_analyze._minute_quotes_table_for_day` used to pick `opt_quotes_bar_1m` whenever that table had any rows, hiding a richer tick set. Host copy now prefers the table with more distinct `contract_code`. Tick→bar rebuild is hash-partitioned (8 parts) so it fits 384m. ClickHouse `timezone()` is UTC; `ts_minute` is `DateTime('Asia/Shanghai')` — do not filter with naive `toDateTime('YYYY-MM-DD HH:MM:SS')`.
+- `--backfill-bar-1m-ak` **DELETE**s that day's `opt_quotes_bar_1m` and only refills keys present in tick. Do not run it on a thin tick day (it wipes bars and writes the same sparse keys). SZSE has no sina daily path; fill `opt_quotes_bar_1m` from `ak.option_minute_em` (one call per contract) then `--option-source from_1m`.
+- Poll `main()` now catches `run_minute_cycle` errors, sleeps 15s, reconnects, and continues. Recreate with `docker rm -f etf_options-poll-1 && docker compose up -d poll` if `docker start` hangs on a leftover task.
+- Remaining after 2026-10-22 rebuild: Oct 21 option 1m still thin (3356 rows / 1240 codes; daily 1240 intact). Oct 22 SSE 1m restored (bar ~216k / 975, analytics 154560 / 644, daily 644 SSE vs 676 on Oct 21). Oct 22 SZSE 1m/daily still empty. `ak.option_minute_em` from this host returned `RemoteDisconnected` (2026-10-23 ~00:50 CST), so SZSE could not be backfilled overnight. Poll is up again for the next session.
+
+Coverage probe (ClickHouse client; HTTP GET of long queries returns 404, POST works):
+
+```bash
+docker exec etf_options-clickhouse-1 clickhouse-client --database etf_options -q \
+  "SELECT toDate(ts_minute) d, count() n, uniqExact(contract_code) c
+   FROM opt_quotes_bar_1m
+   WHERE ts_minute >= toDateTime('2026-10-13 00:00:00')
+   GROUP BY d ORDER BY d"
+```
+
 ## Agent workflow
 
 1. SSH to host (key preferred).
