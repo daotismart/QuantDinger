@@ -96,6 +96,26 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+### etf_options poll robustness (588000 / SSE book)
+
+Collector lives at `/database/ai/ubuntu/data/vnpy/examples/etf_options_analysis` (not this repo). `etf_options-poll-1` bind-mounts that tree.
+
+Why 588000 looked stale (2026-10-26):
+
+- One minute cycle fetched ~1312 sina quotes with 24 workers and **five** `ALTER DELETE`s. Elapsed was **180–250s**, so poll only wrote every 3–4 minutes. 588000 had all 162 contracts on those minutes, but the page “latest” lagged and charts were gappy.
+- Sunday 2026-10-25 `daily-sync` still fired `daily_collect_analyze` and failed with `no underlying daily rows`.
+- After a first robustness pass, priority-writing 588000/588080 then `DELETE WHERE ts_minute=...` wiped those rows before the rest of the book was inserted.
+
+Host mitigations (backups `*.bak.robust-20261026`):
+
+- `poll_threads_sse_quotes: 64`, `poll_sina_timeout_sec: 4`, skip DNP when the cycle already exceeded `poll_dnp_budget_sec`.
+- Skip the five mutations when the minute is empty.
+- Fetch **588000 + 588080 first** and insert immediately (`poll_priority_underlyings`). Do **not** DELETE that minute afterwards.
+- LOCF-copy the last snapshot into intra-session skipped minutes (`poll_fill_skipped_minutes`).
+- `daily_sync_scheduler` skips weekend analytics runs.
+
+After the change, 588000 ticks persist in ~40s (vs 3–4 minutes behind). Full-book cycles are still ~100s because sina is ~4s/request from this host; gap-fill keeps the 1m axis continuous. Do not start jupyter during the session.
+
 ## Agent workflow
 
 1. SSH to host (key preferred).
