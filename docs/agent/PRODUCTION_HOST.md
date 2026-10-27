@@ -96,6 +96,16 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+### LLM gateway (TradingAgents, not this repo)
+
+Host project: `/database/ai/TradingAgents` (`docker compose -f docker-compose.prod.yml`). Public OpenAI-compatible API is `http://129.211.55.75:8080/v1`.
+
+`/v1/models` and `/v1/chat/completions` require `Authorization: Bearer <OPENAI_COMPATIBLE_API_KEY>`. `/health` stays open for the container healthcheck. The client key lives in `/database/ai/TradingAgents/.env` (mode `600`); a root-only copy is `/root/.llm-gateway-client-key`. Do not commit it.
+
+`CURSOR_API_KEY` is the upstream Cursor key used by the SDK bridge only. The previous `app.py` discarded the incoming Bearer header (`del authorization`), so the gateway was open to the internet. Chat 502s after a long uptime were a dead `cursor-sdk-bridge` while FastAPI still reported `bridge: true`; the gateway now relaunches the bridge on connect errors.
+
+Host `gateway/app.py` is bind-mounted onto `tradingagents-llm-gateway-1`. Recreate with `--no-build` after edits. QuantDinger `backend_api_python/.env` `CUSTOM_API_KEY` was aligned to the same client key; recreate the QuantDinger backend only if you need the app itself to call the gateway again.
+
 ## Agent workflow
 
 1. SSH to host (key preferred).
