@@ -96,6 +96,38 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+### etf_options poll: underlying 1m duplicates (2026-10-28)
+
+Host project: `/database/ai/ubuntu/data/vnpy/examples/etf_options_analysis` (`docker compose` project `etf_options`). Poll bind-mounts that tree onto `/app`.
+
+`opt_underlying_1m` is MergeTree ordered by `(underlying_code, ts_minute)` with **no unique key**. A delayed `ak.stock_zh_a_minute` last bar used to be inserted under `bar_time` (not the poll minute). When that bar was stale (same close, e.g. `588000=1.32`), later cycles re-wrote it onto older minutes. Priority persist then skips the per-minute `DELETE`, and LOCF fill copied **all** underlying rows forward, so the UI current price flipped between the live print and the stuck overlay.
+
+Host `src/poll_minute.py` now:
+
+- stamps every underlying row with the poll `ts_minute`;
+- uses `sina_hq_last_price` as the live last (ak 1m `close` can stay on yesterday/open, e.g. `588000=1.32`, even when `bar_time` looks current);
+- falls back to a fresh ak 1m bar only when sina is empty; rejects an ak bar **older** than 2 minutes;
+- `DELETE`s existing `opt_underlying_1m` rows for that minute+code before insert, so leftover overlays cannot sit next to the live print (the table has no unique key);
+- LOCF-copies one underlying row per code and refreshes dest underlying even when tick already exists; does not copy bar/analytics contracts that are missing from the source tick;
+- deletes `opt_underlying_1m` rows **ahead of** the current poll minute, and dummy ak placeholders (`volume=0` and flat OHLC, usually yesterday/open), at the start and end of each cycle;
+- Dash `opt_underlying_1m` reads now skip those dummy rows (`volume IS NULL OR volume > 0`) so 当前价 follows the live sina/ak print.
+
+QuantDinger ETF options page (`/api/cn-derivatives/options?scope=etf`) reads spot via host hotfix `ops/hotfixes/etf_options_clickhouse.py` (`fetch_underlying_spot`). The old query was `ORDER BY ts_minute DESC LIMIT 1`, so a volume=0 prev-close row a minute ahead of the live persist made **当前价** flip between the live print and yesterday's close on refresh. The query now keeps only `volume IS NULL OR volume > 0` and caps `ts_minute` at today's max option tick. Panel cache key is `etf_options_panel:v4:` so stale 1.32 entries are ignored. Bind-mount is already on `quantdinger-backend`; restart that container after editing (do not recreate).
+
+Backup on host: `src/poll_minute.py.bak.spot-dup-20261028`. Recreate or restart `etf_options-poll-1` after editing (do not recreate QuantDinger backend).
+
+To drop today's stale overlay after a restart (keep the live last on the same minute):
+
+```bash
+docker exec etf_options-clickhouse-1 clickhouse-client --query "
+SELECT underlying_code, uniq(ts_minute), uniq(last_price), min(last_price), max(last_price)
+FROM etf_options.opt_underlying_1m
+WHERE toDate(ts_minute) = today('Asia/Shanghai')
+GROUP BY underlying_code
+ORDER BY 1
+"
+```
+
 ## Agent workflow
 
 1. SSH to host (key preferred).
