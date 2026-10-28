@@ -112,6 +112,8 @@ Host `src/poll_minute.py` now:
 - deletes `opt_underlying_1m` rows **ahead of** the current poll minute, and dummy ak placeholders (`volume=0` and flat OHLC, usually yesterday/open), at the start and end of each cycle;
 - Dash `opt_underlying_1m` reads now skip those dummy rows (`volume IS NULL OR volume > 0`) so 当前价 follows the live sina/ak print.
 
+QuantDinger ETF options page (`/api/cn-derivatives/options?scope=etf`) reads spot via host hotfix `ops/hotfixes/etf_options_clickhouse.py` (`fetch_underlying_spot`). The old query was `ORDER BY ts_minute DESC LIMIT 1`, so a volume=0 prev-close row a minute ahead of the live persist made **当前价** flip between the live print and yesterday's close on refresh. The query now keeps only `volume IS NULL OR volume > 0` and caps `ts_minute` at today's max option tick. Panel cache key is `etf_options_panel:v4:` so stale 1.32 entries are ignored. Bind-mount is already on `quantdinger-backend`; restart that container after editing (do not recreate).
+
 Backup on host: `src/poll_minute.py.bak.spot-dup-20261028`. Recreate or restart `etf_options-poll-1` after editing (do not recreate QuantDinger backend).
 
 To drop today's stale overlay after a restart (keep the live last on the same minute):
