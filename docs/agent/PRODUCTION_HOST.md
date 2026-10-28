@@ -109,7 +109,8 @@ Host `src/poll_minute.py` now:
 - falls back to a fresh ak 1m bar only when sina is empty; rejects an ak bar **older** than 2 minutes;
 - `DELETE`s existing `opt_underlying_1m` rows for that minute+code before insert, so leftover overlays cannot sit next to the live print (the table has no unique key);
 - LOCF-copies one underlying row per code and refreshes dest underlying even when tick already exists; does not copy bar/analytics contracts that are missing from the source tick;
-- deletes `opt_underlying_1m` rows **ahead of** the current poll minute at the start and end of each cycle so a volume=0 prev-close overlay cannot become `max(ts_minute)` (Dash orders by time and treats that as 当前价).
+- deletes `opt_underlying_1m` rows **ahead of** the current poll minute, and dummy ak placeholders (`volume=0` and flat OHLC, usually yesterday/open), at the start and end of each cycle;
+- Dash `opt_underlying_1m` reads now skip those dummy rows (`volume IS NULL OR volume > 0`) so 当前价 follows the live sina/ak print.
 
 Backup on host: `src/poll_minute.py.bak.spot-dup-20261028`. Recreate or restart `etf_options-poll-1` after editing (do not recreate QuantDinger backend).
 
