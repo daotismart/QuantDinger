@@ -96,6 +96,32 @@ Same `/database/ai/` host also runs:
 
 Do not reclaim those ports when redeploying QuantDinger.
 
+### etf_options poll: underlying 1m duplicates (2026-10-28)
+
+Host project: `/database/ai/ubuntu/data/vnpy/examples/etf_options_analysis` (`docker compose` project `etf_options`). Poll bind-mounts that tree onto `/app`.
+
+`opt_underlying_1m` is MergeTree ordered by `(underlying_code, ts_minute)` with **no unique key**. A delayed `ak.stock_zh_a_minute` last bar used to be inserted under `bar_time` (not the poll minute). When that bar was stale (same close, e.g. `588000=1.32`), later cycles re-wrote it onto older minutes. Priority persist then skips the per-minute `DELETE`, and LOCF fill copied **all** underlying rows forward, so the UI current price flipped between the live print and the stuck overlay.
+
+Host `src/poll_minute.py` now:
+
+- stamps every underlying row with the poll `ts_minute`;
+- rejects an ak 1m bar older than 2 minutes and falls back to `sina_hq_last_price`;
+- LOCF-copies one underlying row per code (drops the duplicated stale last) and does not copy bar/analytics contracts that are missing from the source tick.
+
+Backup on host: `src/poll_minute.py.bak.spot-dup-20261028`. Recreate or restart `etf_options-poll-1` after editing (do not recreate QuantDinger backend).
+
+To drop today's stale overlay after a restart (keep the live last on the same minute):
+
+```bash
+docker exec etf_options-clickhouse-1 clickhouse-client --query "
+SELECT underlying_code, uniq(ts_minute), uniq(last_price), min(last_price), max(last_price)
+FROM etf_options.opt_underlying_1m
+WHERE toDate(ts_minute) = today('Asia/Shanghai')
+GROUP BY underlying_code
+ORDER BY 1
+"
+```
+
 ## Agent workflow
 
 1. SSH to host (key preferred).
