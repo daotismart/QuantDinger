@@ -105,7 +105,8 @@ Host project: `/database/ai/ubuntu/data/vnpy/examples/etf_options_analysis` (`do
 Host `src/poll_minute.py` now:
 
 - stamps every underlying row with the poll `ts_minute`;
-- rejects an ak 1m bar older than 2 minutes and falls back to `sina_hq_last_price`;
+- rejects an ak 1m bar **older** than 2 minutes (a bar a few minutes ahead of `ts_minute` on a long cycle is still live) and falls back to `sina_hq_last_price`;
+- `DELETE`s existing `opt_underlying_1m` rows for that minute+code before insert, so leftover overlays cannot sit next to the live print (the table has no unique key);
 - LOCF-copies one underlying row per code (drops the duplicated stale last) and does not copy bar/analytics contracts that are missing from the source tick.
 
 Backup on host: `src/poll_minute.py.bak.spot-dup-20261028`. Recreate or restart `etf_options-poll-1` after editing (do not recreate QuantDinger backend).
